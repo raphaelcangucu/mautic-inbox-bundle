@@ -1,0 +1,24 @@
+{
+    "name": "raphaelcangucu/mautic-inbox-bundle",
+    "description": "Native support inbox for Mautic Meta channels.",
+    "type": "mautic-plugin",
+    "license": "GPL-3.0-or-later",
+    "require": {
+        "php": ">=8.2",
+        "mautic/core-lib": "^7.0",
+        "raphaelcangucu/mautic-meta-bundle": "^0.12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "MauticPlugin\\MauticInboxBundle\\": ""
+        }
+    },
+    "extra": {
+        "install-directory-name": "MauticInboxBundle"
+    },
+    "authors": [
+        {
+            "name": "Raphael Cangucu"
+        }
+    ]
+}
