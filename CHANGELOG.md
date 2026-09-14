@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.2
+
+- Adiciona captura atual do atendimento ao README.
+- Atualiza instruções de instalação para Inbox 1.0.2 e Meta 0.12.1.
+- Vincula a documentação visual do conector e esclarece a compatibilidade entre os plugins.
+- Mantém o comportamento do atendimento e a dependência mínima Meta ^0.12.0.
+
 ## 1.0.1
 
 - Publica o Atendimento como repositório independente, extraído da tag `inbox-v1.0.0` do Mautic.

@@ -2,6 +2,12 @@
 
 Plugin nativo de atendimento para Mautic, com conversas de WhatsApp, Instagram e Facebook/Messenger no mesmo painel. Organiza o trabalho humano: responsáveis, filas, respostas, notas e histórico. A comunicação com a Meta é realizada pelo [Mautic Meta Bundle](https://github.com/raphaelcangucu/mautic-meta-bundle).
 
+## Interface atual — v1.0.2
+
+![Atendimento no Mautic com conversa de teste, identificação do participante e painel de contexto](docs/screenshots/atendimento.png)
+
+Captura real da instalação de validação, em setembro de 2026. A tela reúne histórico, responsáveis, resposta privada, notas e contexto do contato. Veja também a [interface de administração do conector](https://github.com/raphaelcangucu/mautic-meta-bundle/blob/v0.12.1/docs/INTERFACE.md).
+
 ## Documentação
 
 - [Instalação e dependências](docs/INSTALACAO.md)
@@ -36,7 +42,7 @@ Plugin nativo de atendimento para Mautic, com conversas de WhatsApp, Instagram e
 
 ## Instalação resumida
 
-Instale o conector `v0.12.0` em `plugins/MauticMetaBundle` e este plugin `v1.0.1` em `plugins/MauticInboxBundle`. Na raiz do Mautic, recarregue os plugins e limpe o cache. Depois conceda as permissões de Atendimento e Meta ao papel do atendente, configure os canais no conector e mantenha o processamento da fila ativo.
+Instale o conector `v0.12.1` em `plugins/MauticMetaBundle` e este plugin `v1.0.2` em `plugins/MauticInboxBundle`. Na raiz do Mautic, recarregue os plugins e limpe o cache. Depois conceda as permissões de Atendimento e Meta ao papel do atendente, configure os canais no conector e mantenha o processamento da fila ativo.
 
 Consulte o [guia completo](docs/INSTALACAO.md) para comandos, cron, Composer e importação de conversas existentes. A interface fica em `/s/atendimento`, respeitando o prefixo configurado no Mautic.
 
@@ -47,3 +53,5 @@ A versão `v1.0.1` extrai o código validado do repositório Mautic e corrige o 
 Limites atuais: permissões por papel, sem isolamento por ativo; envio humano de texto, sem compositor de upload de anexos; mídia remota sujeita à disponibilidade das URLs; alertas apenas com a caixa aberta. Reels dependem do contexto recebido da Meta e não foram validados em teste real específico.
 
 Licença: [GPL-3.0-or-later](LICENSE). Projeto independente, integrado ao Mautic.
+
+A versão `v1.0.2` atualiza a documentação e as capturas, mantendo o comportamento do atendimento. A combinação recomendada é Inbox `v1.0.2` + Meta `v0.12.1`; a dependência mínima permanece `^0.12.0`.
