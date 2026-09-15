@@ -1,11 +1,109 @@
 {% extends '@MauticCore/Default/content.html.twig' %}
 
 {% block mauticContent %}inbox{% endblock %}
-{% block headerTitle %}Atendimento{% endblock %}
+{% block headerTitle %}{{ 'mautic.inbox.ui.support_inbox_fff9ea'|trans }}{% endblock %}
 
 {% block content %}
-{{ includeStylesheet('plugins/MauticInboxBundle/Assets/css/inbox.css?inbox=20260913-alerts-1') }}
-<div id="inbox-app" class="inbox-app"
+{{ includeStylesheet('plugins/MauticInboxBundle/Assets/css/inbox.css?inbox=20260915-unlimited-media1') }}
+{% set uiTranslations = {'mautic.inbox.ai.ai_assign':'mautic.inbox.ai.ai_assign'|trans,'mautic.inbox.ai.choose':'mautic.inbox.ai.choose'|trans,'mautic.inbox.ai.not_allowed':'mautic.inbox.ai.not_allowed'|trans,'mautic.inbox.ai.none_available':'mautic.inbox.ai.none_available'|trans,'mautic.inbox.ai.read_only':'mautic.inbox.ai.read_only'|trans,'mautic.inbox.ai.validate_first':'mautic.inbox.ai.validate_first'|trans,'mautic.inbox.ai.reset':'mautic.inbox.ai.reset'|trans,'mautic.inbox.ai.reset_success':'mautic.inbox.ai.reset_success'|trans,'mautic.inbox.ai.unlimited':'mautic.inbox.ai.unlimited'|trans,'mautic.inbox.ui.media_retry':'mautic.inbox.ui.media_retry'|trans,
+'mautic.inbox.template.header':'mautic.inbox.template.header'|trans,'mautic.inbox.template.body':'mautic.inbox.template.body'|trans,'mautic.inbox.template.invalid_recipient':'mautic.inbox.template.invalid_recipient'|trans,
+'mautic.inbox.template.choose':'mautic.inbox.template.choose'|trans,'mautic.inbox.template.title':'mautic.inbox.template.title'|trans,'mautic.inbox.template.select':'mautic.inbox.template.select'|trans,'mautic.inbox.template.loading':'mautic.inbox.template.loading'|trans,'mautic.inbox.template.empty':'mautic.inbox.template.empty'|trans,'mautic.inbox.template.send':'mautic.inbox.template.send'|trans,'mautic.inbox.template.unsupported':'mautic.inbox.template.unsupported'|trans,'mautic.inbox.template.variable':'mautic.inbox.template.variable'|trans,'mautic.inbox.template.close':'mautic.inbox.template.close'|trans,'mautic.inbox.template.sending':'mautic.inbox.template.sending'|trans,'mautic.inbox.template.queued':'mautic.inbox.template.queued'|trans,'mautic.inbox.template.whatsapp_only':'mautic.inbox.template.whatsapp_only'|trans,'mautic.inbox.template.account_unverified':'mautic.inbox.template.account_unverified'|trans,'mautic.inbox.template.unavailable':'mautic.inbox.template.unavailable'|trans,'mautic.inbox.template.variables_required':'mautic.inbox.template.variables_required'|trans,'mautic.inbox.template.consent_required':'mautic.inbox.template.consent_required'|trans,'mautic.inbox.template.confirm':'mautic.inbox.template.confirm'|trans,
+'mautic.inbox.ui.accepted_by_meta_212288': 'mautic.inbox.ui.accepted_by_meta_212288'|trans,
+'mautic.inbox.ui.add_note_344d88': 'mautic.inbox.ui.add_note_344d88'|trans,
+'mautic.inbox.ui.assign_to_me_and_send_509661': 'mautic.inbox.ui.assign_to_me_and_send_509661'|trans,
+'mautic.inbox.ui.automatic_updates_8a484f': 'mautic.inbox.ui.automatic_updates_8a484f'|trans,
+'mautic.inbox.ui.automation_available_a68946': 'mautic.inbox.ui.automation_available_a68946'|trans,
+'mautic.inbox.ui.automation_paused_for_this_conversation_5e3144': 'mautic.inbox.ui.automation_paused_for_this_conversation_5e3144'|trans,
+'mautic.inbox.ui.awaiting_reply_f6a6ba': 'mautic.inbox.ui.awaiting_reply_f6a6ba'|trans,
+'mautic.inbox.ui.channel_message_f3ffdf': 'mautic.inbox.ui.channel_message_f3ffdf'|trans,
+'mautic.inbox.ui.comment_by_8b43f4': 'mautic.inbox.ui.comment_by_8b43f4'|trans,
+'mautic.inbox.ui.comments_6fe305': 'mautic.inbox.ui.comments_6fe305'|trans,
+'mautic.inbox.ui.contact_not_linked_yet_e9a529': 'mautic.inbox.ui.contact_not_linked_yet_e9a529'|trans,
+'mautic.inbox.ui.conversation_assigned_e9e32d': 'mautic.inbox.ui.conversation_assigned_e9e32d'|trans,
+'mautic.inbox.ui.conversation_created_fa0fd7': 'mautic.inbox.ui.conversation_created_fa0fd7'|trans,
+'mautic.inbox.ui.conversation_reopened_5108d0': 'mautic.inbox.ui.conversation_reopened_5108d0'|trans,
+'mautic.inbox.ui.conversation_reopened_by_a_new_message_306e4e': 'mautic.inbox.ui.conversation_reopened_by_a_new_message_306e4e'|trans,
+'mautic.inbox.ui.conversation_resolved_973a89': 'mautic.inbox.ui.conversation_resolved_973a89'|trans,
+'mautic.inbox.ui.conversation_returned_to_the_queue_dee084': 'mautic.inbox.ui.conversation_returned_to_the_queue_dee084'|trans,
+'mautic.inbox.ui.conversation_snoozed_2489e7': 'mautic.inbox.ui.conversation_snoozed_2489e7'|trans,
+'mautic.inbox.ui.conversation_transferred_f5ab14': 'mautic.inbox.ui.conversation_transferred_f5ab14'|trans,
+'mautic.inbox.ui.conversation_updated_f74900': 'mautic.inbox.ui.conversation_updated_f74900'|trans,
+'mautic.inbox.ui.conversations_86d0e6': 'mautic.inbox.ui.conversations_86d0e6'|trans,
+'mautic.inbox.ui.could_not_complete_the_action_0cb5b3': 'mautic.inbox.ui.could_not_complete_the_action_0cb5b3'|trans,
+'mautic.inbox.ui.could_not_load_the_preview_9f03de': 'mautic.inbox.ui.could_not_load_the_preview_9f03de'|trans,
+'mautic.inbox.ui.could_not_save_the_draft_a70018': 'mautic.inbox.ui.could_not_save_the_draft_a70018'|trans,
+'mautic.inbox.ui.delivered_e0ca94': 'mautic.inbox.ui.delivered_e0ca94'|trans,
+'mautic.inbox.ui.draft_saved_a76c6d': 'mautic.inbox.ui.draft_saved_a76c6d'|trans,
+'mautic.inbox.ui.enable_sound_e0b13b': 'mautic.inbox.ui.enable_sound_e0b13b'|trans,
+'mautic.inbox.ui.enable_sound_notifications_9d9271': 'mautic.inbox.ui.enable_sound_notifications_9d9271'|trans,
+'mautic.inbox.ui.internal_note_010aa1': 'mautic.inbox.ui.internal_note_010aa1'|trans,
+'mautic.inbox.ui.internal_note_only_your_team_will_see_this_text_6f8a19': 'mautic.inbox.ui.internal_note_only_your_team_will_see_this_text_6f8a19'|trans,
+'mautic.inbox.ui.live_c81a1f': 'mautic.inbox.ui.live_c81a1f'|trans,
+'mautic.inbox.ui.loading_conversations_cb1a50': 'mautic.inbox.ui.loading_conversations_cb1a50'|trans,
+'mautic.inbox.ui.loading_more_cfca50': 'mautic.inbox.ui.loading_more_cfca50'|trans,
+'mautic.inbox.ui.message_received_0d110d': 'mautic.inbox.ui.message_received_0d110d'|trans,
+'mautic.inbox.ui.network_id_f461ad': 'mautic.inbox.ui.network_id_f461ad'|trans,
+'mautic.inbox.ui.no_conversations_found_12522a': 'mautic.inbox.ui.no_conversations_found_12522a'|trans,
+'mautic.inbox.ui.not_sent_3f0e80': 'mautic.inbox.ui.not_sent_3f0e80'|trans,
+'mautic.inbox.ui.send_again': 'mautic.inbox.ui.send_again'|trans,
+'mautic.inbox.ui.sending_again': 'mautic.inbox.ui.sending_again'|trans,
+'mautic.inbox.ui.sent_again': 'mautic.inbox.ui.sent_again'|trans,
+'mautic.inbox.ui.open_5c072d': 'mautic.inbox.ui.open_5c072d'|trans,
+'mautic.inbox.ui.open_825b3a': 'mautic.inbox.ui.open_825b3a'|trans,
+'mautic.inbox.ui.open_full_size_image_44fa9f': 'mautic.inbox.ui.open_full_size_image_44fa9f'|trans,
+'mautic.inbox.ui.open_private_conversation_edf027': 'mautic.inbox.ui.open_private_conversation_edf027'|trans,
+'mautic.inbox.ui.photo_of_5bece3': 'mautic.inbox.ui.photo_of_5bece3'|trans,
+'mautic.inbox.ui.post_linked_to_the_original_comment_405f5e': 'mautic.inbox.ui.post_linked_to_the_original_comment_405f5e'|trans,
+'mautic.inbox.ui.private_reply_ecd924': 'mautic.inbox.ui.private_reply_ecd924'|trans,
+'mautic.inbox.ui.public_comment_4a1398': 'mautic.inbox.ui.public_comment_4a1398'|trans,
+'mautic.inbox.ui.public_reply_42dc43': 'mautic.inbox.ui.public_reply_42dc43'|trans,
+'mautic.inbox.ui.public_reply_on_facebook_38b969': 'mautic.inbox.ui.public_reply_on_facebook_38b969'|trans,
+'mautic.inbox.ui.queued_a3ecf1': 'mautic.inbox.ui.queued_a3ecf1'|trans,
+'mautic.inbox.ui.read_5ac9d4': 'mautic.inbox.ui.read_5ac9d4'|trans,
+'mautic.inbox.ui.reconnecting_5c2ce7': 'mautic.inbox.ui.reconnecting_5c2ce7'|trans,
+'mautic.inbox.ui.reply_queued_8a4e0a': 'mautic.inbox.ui.reply_queued_8a4e0a'|trans,
+'mautic.inbox.ui.reply_requested_immediate': 'mautic.inbox.ui.reply_requested_immediate'|trans,
+'mautic.inbox.ui.resolved_0d46ce': 'mautic.inbox.ui.resolved_0d46ce'|trans,
+'mautic.inbox.ui.saving_draft_1493aa': 'mautic.inbox.ui.saving_draft_1493aa'|trans,
+'mautic.inbox.ui.send_reply_c50a43': 'mautic.inbox.ui.send_reply_c50a43'|trans,
+'mautic.inbox.ui.sending_569978': 'mautic.inbox.ui.sending_569978'|trans,
+'mautic.inbox.ui.sending_5e91dc': 'mautic.inbox.ui.sending_5e91dc'|trans,
+'mautic.inbox.ui.sent_e1be83': 'mautic.inbox.ui.sent_e1be83'|trans,
+'mautic.inbox.ui.snooze_period_ended_360c38': 'mautic.inbox.ui.snooze_period_ended_360c38'|trans,
+'mautic.inbox.ui.snoozed_435da9': 'mautic.inbox.ui.snoozed_435da9'|trans,
+'mautic.inbox.ui.sound_notifications_for_new_messages_click_to_enable_or_mute_5f2dc2': 'mautic.inbox.ui.sound_notifications_for_new_messages_click_to_enable_or_mute_5f2dc2'|trans,
+'mautic.inbox.ui.sound_off_95de2d': 'mautic.inbox.ui.sound_off_95de2d'|trans,
+'mautic.inbox.ui.sound_on_ff7013': 'mautic.inbox.ui.sound_on_ff7013'|trans,
+'mautic.inbox.ui.sound_unavailable_029b22': 'mautic.inbox.ui.sound_unavailable_029b22'|trans,
+'mautic.inbox.ui.source_post_eed81e': 'mautic.inbox.ui.source_post_eed81e'|trans,
+'mautic.inbox.ui.the_file_was_not_stored_request_it_again_if_needed_1cc4cb': 'mautic.inbox.ui.the_file_was_not_stored_request_it_again_if_needed_1cc4cb'|trans,
+'mautic.inbox.ui.unassigned_3986c8': 'mautic.inbox.ui.unassigned_3986c8'|trans,
+'mautic.inbox.ui.unassigned_5c8896': 'mautic.inbox.ui.unassigned_5c8896'|trans,
+'mautic.inbox.ui.unconfirmed_90d72f': 'mautic.inbox.ui.unconfirmed_90d72f'|trans,
+'mautic.inbox.ui.unconfirmed_send_3c9317': 'mautic.inbox.ui.unconfirmed_send_3c9317'|trans,
+'mautic.inbox.ui.unnamed_contact_666b99': 'mautic.inbox.ui.unnamed_contact_666b99'|trans,
+'mautic.inbox.ui.unsupported_link_9a5896': 'mautic.inbox.ui.unsupported_link_9a5896'|trans,
+'mautic.inbox.ui.video_preview_b48d9b': 'mautic.inbox.ui.video_preview_b48d9b'|trans,
+'mautic.inbox.ui.view_contact_in_mautic_199894': 'mautic.inbox.ui.view_contact_in_mautic_199894'|trans,
+'mautic.inbox.ui.view_original_comment_0d3156': 'mautic.inbox.ui.view_original_comment_0d3156'|trans,
+'mautic.inbox.ui.view_post_on_b9e2d7': 'mautic.inbox.ui.view_post_on_b9e2d7'|trans,
+'mautic.inbox.ui.waiting_to_retry_5ea365': 'mautic.inbox.ui.waiting_to_retry_5ea365'|trans,
+'mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89': 'mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89'|trans,
+'mautic.inbox.ui.write_a_private_reply_394bc1': 'mautic.inbox.ui.write_a_private_reply_394bc1'|trans,
+'mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01': 'mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01'|trans,
+'mautic.inbox.ui.insert_canned_response_97c0df': 'mautic.inbox.ui.insert_canned_response_97c0df'|trans,
+'mautic.inbox.settings.canned_new': 'mautic.inbox.settings.canned_new'|trans,
+'mautic.inbox.settings.canned_edit': 'mautic.inbox.settings.canned_edit'|trans,
+'mautic.inbox.settings.canned_delete': 'mautic.inbox.settings.canned_delete'|trans,
+'mautic.inbox.settings.canned_cancel': 'mautic.inbox.settings.canned_cancel'|trans,
+'mautic.inbox.settings.canned_empty': 'mautic.inbox.settings.canned_empty'|trans,
+'mautic.inbox.settings.canned_confirm_delete': 'mautic.inbox.settings.canned_confirm_delete'|trans,
+'mautic.inbox.settings.canned_saved': 'mautic.inbox.settings.canned_saved'|trans,
+'mautic.inbox.settings.canned_deleted': 'mautic.inbox.settings.canned_deleted'|trans,
+'mautic.inbox.settings.canned_save_changes': 'mautic.inbox.settings.canned_save_changes'|trans,
+'mautic.inbox.ui.save_response_8d37d6': 'mautic.inbox.ui.save_response_8d37d6'|trans
+} %}
+<div id="inbox-app" data-ai-url="{{ path('mautic_inbox_ai_available', {stateId:0}) }}" data-locale="{{ app.request.locale|e('html_attr') }}" data-translations="{{ uiTranslations|json_encode|e('html_attr') }}" class="inbox-app"
      data-stream-url="{{ path('mautic_inbox_stream') }}"
      data-list-url="{{ path('mautic_inbox_list') }}"
      data-detail-url="{{ path('mautic_inbox_detail', {stateId: 0}) }}"
@@ -13,75 +111,136 @@
      data-poll-url="{{ path('mautic_inbox_poll') }}"
      data-take-url="{{ path('mautic_inbox_take', {stateId: 0}) }}"
      data-state-url="{{ path('mautic_inbox_state', {stateId: 0}) }}"
+     data-templates-url="{{ path('mautic_inbox_templates', {stateId:0}) }}"
      data-reply-url="{{ path('mautic_inbox_reply', {stateId: 0}) }}"
+     data-retry-url="{{ path('mautic_inbox_retry', {outboundId: 0}) }}"
      data-note-url="{{ path('mautic_inbox_note', {stateId: 0}) }}"
      data-draft-url="{{ path('mautic_inbox_draft', {stateId: 0}) }}"
      data-canned-url="{{ path('mautic_inbox_canned') }}"
+     data-canned-item-url="{{ path('mautic_inbox_canned_update', {responseId: 0}) }}"
+     data-canned-settings="{{ cannedResponses|json_encode|e('html_attr') }}"
      data-csrf="{{ csrf_token('mautic_inbox') }}"
      data-current-user="{{ currentUserId }}">
     <div class="inbox-toolbar">
-        <div class="inbox-product-heading"><span class="inbox-product-icon" data-icon="inbox"></span><div><strong>Atendimento</strong><span>Caixa de entrada compartilhada · <span id="inbox-live-status">Conectando…</span></span></div></div>
-        <button type="button" id="inbox-sound" class="btn btn-default btn-sm" aria-pressed="false">Ativar som</button>
-        <nav class="inbox-tabs" aria-label="Área de atendimento">
-            <button class="active" data-view="inbox"><span data-icon="chat"></span>Conversas</button>
-            <button data-view="comments"><span data-icon="comment"></span>Comentários</button>
-            <button data-view="automation"><span data-icon="bolt"></span>Automações</button>
+        <div class="inbox-product-heading"><span class="inbox-product-icon" data-icon="inbox"></span><div><strong>{{ 'mautic.inbox.ui.support_inbox_fff9ea'|trans }}</strong><span>{{ 'mautic.inbox.ui.shared_inbox_822665'|trans }} <span id="inbox-live-status">{{ 'mautic.inbox.ui.connecting_dc8abc'|trans }}</span></span></div></div>
+        <nav class="inbox-tabs" aria-label="{{ 'mautic.inbox.ui.support_workspace_d55134'|trans|e('html_attr') }}">
+            <button class="active" data-view="inbox"><span data-icon="chat"></span>{{ 'mautic.inbox.ui.conversations_86d0e6'|trans }}</button>
+            <button data-view="comments"><span data-icon="comment"></span>{{ 'mautic.inbox.ui.comments_6fe305'|trans }}</button>
+            <button data-view="automation"><span data-icon="bolt"></span>{{ 'mautic.inbox.ui.automations_3714d9'|trans }}</button>
+            <button class="inbox-settings-tab" data-view="settings" title="{{ 'mautic.inbox.settings.title'|trans|e('html_attr') }}" aria-label="{{ 'mautic.inbox.settings.open'|trans|e('html_attr') }}"><span data-icon="settings"></span><span class="sr-only">{{ 'mautic.inbox.settings.title'|trans }}</span></button>
         </nav>
     </div>
     {% for notice in channelNotices|default([]) %}<div class="inbox-channel-notice" role="status">{{ notice }}</div>{% endfor %}
     <div class="inbox-workspace" data-inbox-only>
-        <section class="inbox-list-column" aria-label="Lista de conversas">
-            <div class="inbox-list-heading"><h2 id="inbox-list-heading">Conversas</h2><span id="inbox-list-total" class="inbox-counter">0</span><button class="inbox-icon-button" id="inbox-filter-toggle" title="Filtrar conversas" aria-label="Filtrar conversas" aria-expanded="false"><span data-icon="filter"></span></button></div>
-            <div class="inbox-search-wrap"><span data-icon="search"></span><input id="inbox-search" type="search" placeholder="Buscar conversas" aria-label="Buscar conversas"></div>
-            <nav class="inbox-queues" aria-label="Filas">
-                <button data-queue="mine"><span>Minhas</span><b data-count="mine">0</b></button>
-                <button data-queue="unassigned"><span>Não atribuídas</span><b data-count="unassigned">0</b></button>
-                <button class="active" data-queue="all"><span>Todas</span><b data-count="all">0</b></button>
+        <section class="inbox-list-column" aria-label="{{ 'mautic.inbox.ui.conversation_list'|trans|e('html_attr') }}">
+            <div class="inbox-list-heading"><h2 id="inbox-list-heading">{{ 'mautic.inbox.ui.conversations_86d0e6'|trans }}</h2><span id="inbox-list-total" class="inbox-counter">0</span><button class="inbox-icon-button" id="inbox-filter-toggle" title="{{ 'mautic.inbox.ui.filter_conversations_9d8aa3'|trans|e('html_attr') }}" aria-label="{{ 'mautic.inbox.ui.filter_conversations_9d8aa3'|trans|e('html_attr') }}" aria-expanded="false"><span data-icon="filter"></span></button></div>
+            <div class="inbox-search-wrap"><span data-icon="search"></span><input id="inbox-search" type="search" placeholder="{{ 'mautic.inbox.ui.search_conversations_519789'|trans|e('html_attr') }}" aria-label="{{ 'mautic.inbox.ui.search_conversations_519789'|trans|e('html_attr') }}"></div>
+            <nav class="inbox-queues" aria-label="{{ 'mautic.inbox.ui.queues_8e5d55'|trans|e('html_attr') }}">
+                <button data-queue="mine"><span>{{ 'mautic.inbox.ui.mine_1380c1'|trans }}</span><b data-count="mine">0</b></button>
+                <button data-queue="unassigned"><span>{{ 'mautic.inbox.ui.unassigned_a121ae'|trans }}</span><b data-count="unassigned">0</b></button>
+                <button class="active" data-queue="all"><span>{{ 'mautic.inbox.ui.all_8a3c34'|trans }}</span><b data-count="all">0</b></button>
             </nav>
             <div class="inbox-filters hide" id="inbox-filter-panel">
-                <label>Situação<select id="inbox-lifecycle" class="not-chosen form-control"><option value="active">Em andamento</option><option value="open">Abertas</option><option value="snoozed">Adiadas</option><option value="resolved">Resolvidas</option><option value="all">Todas</option></select></label>
-                <label>Canal<select id="inbox-channel" class="not-chosen form-control"><option value="">Todos os canais</option><option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option><option value="facebook">Facebook / Messenger</option></select></label>
-                <label class="inbox-check"><input id="inbox-needs-response" type="checkbox"> Aguardando resposta</label>
+                <label>{{ 'mautic.inbox.ui.status_2d3abf'|trans }}<select id="inbox-lifecycle" class="not-chosen form-control"><option value="active">{{ 'mautic.inbox.ui.in_progress_5ca373'|trans }}</option><option value="open">{{ 'mautic.inbox.ui.open_bcd313'|trans }}</option><option value="snoozed">{{ 'mautic.inbox.ui.snoozed_ae3ae2'|trans }}</option><option value="resolved">{{ 'mautic.inbox.ui.resolved_6d70e1'|trans }}</option><option value="all">{{ 'mautic.inbox.ui.all_8a3c34'|trans }}</option></select></label>
+                <label>{{ 'mautic.inbox.ui.channel_61f21e'|trans }}<select id="inbox-channel" class="not-chosen form-control"><option value="">{{ 'mautic.inbox.ui.all_channels_44265e'|trans }}</option><option value="whatsapp">WhatsApp</option><option value="instagram">Instagram</option><option value="facebook">Facebook / Messenger</option></select></label>
+                <label class="inbox-check"><input id="inbox-needs-response" type="checkbox"> {{ 'mautic.inbox.ui.awaiting_reply_f6a6ba'|trans }}</label>
             </div>
-            <div class="inbox-list-scroll"><div id="inbox-list-status" class="inbox-state">Carregando conversas…</div><div id="inbox-list" class="inbox-list"></div><button id="inbox-more" class="btn btn-default btn-sm hide">Carregar mais</button></div>
+            <div class="inbox-list-scroll"><div id="inbox-list-status" class="inbox-state">{{ 'mautic.inbox.ui.loading_conversations_cb1a50'|trans }}</div><div id="inbox-list" class="inbox-list"></div><button id="inbox-more" class="btn btn-default btn-sm hide">{{ 'mautic.inbox.ui.load_more_eb48bb'|trans }}</button></div>
         </section>
         <main class="inbox-thread">
-            <div id="inbox-empty" class="inbox-empty"><div class="inbox-empty-symbol" data-icon="chat"></div><h3>Seu atendimento, em um só lugar.</h3><p>Selecione uma conversa para ver o histórico<br>e continuar o atendimento.</p></div>
+            <div id="inbox-empty" class="inbox-empty"><div class="inbox-empty-symbol" data-icon="chat"></div><h3>{{ 'mautic.inbox.ui.your_support_conversations_in_one_place_b05a85'|trans }}</h3><p>{{ 'mautic.inbox.ui.select_a_conversation_to_view_its_history_a1750d'|trans }}<br>{{ 'mautic.inbox.ui.and_continue_helping_the_customer_ae8878'|trans }}</p></div>
             <div id="inbox-selected" class="hide">
                 <header class="inbox-thread-header">
-                    <button id="inbox-back" class="inbox-icon-button" aria-label="Voltar para conversas"><span data-icon="back"></span></button>
+                    <button id="inbox-back" class="inbox-icon-button" aria-label="{{ 'mautic.inbox.ui.back_to_conversations_5a51a8'|trans|e('html_attr') }}"><span data-icon="back"></span></button>
                     <div id="inbox-header-avatar" class="inbox-avatar"></div><div class="inbox-thread-identity"><h3 id="inbox-contact-name"></h3><p id="inbox-context"></p></div>
-                    <div class="inbox-actions"><button id="inbox-take" class="btn btn-primary btn-sm">Assumir conversa</button><button id="inbox-resolve" class="btn btn-primary btn-sm">Resolver</button><button id="inbox-reopen" class="btn btn-default btn-sm hide">Reabrir</button><button id="inbox-contact-toggle" class="inbox-icon-button" aria-expanded="true" title="Detalhes do contato" aria-label="Detalhes do contato"><span data-icon="panel"></span></button></div>
+                    <div id="inbox-ai-header" class="inbox-ai-header hide" role="status"><span class="inbox-ai-live-dot" aria-hidden="true"></span><span><strong id="inbox-ai-header-name"></strong><small id="inbox-ai-header-status"></small></span></div>
+                    <div class="inbox-actions"><button id="inbox-take" class="btn btn-primary btn-sm">{{ 'mautic.inbox.ui.assign_to_me_96f796'|trans }}</button><button id="inbox-resolve" class="btn btn-primary btn-sm">{{ 'mautic.inbox.ui.resolve_3628ac'|trans }}</button><button id="inbox-reopen" class="btn btn-default btn-sm hide">{{ 'mautic.inbox.ui.reopen_3a7b78'|trans }}</button><button id="inbox-contact-toggle" class="inbox-icon-button" aria-expanded="true" title="{{ 'mautic.inbox.ui.contact_details_1ee714'|trans|e('html_attr') }}" aria-label="{{ 'mautic.inbox.ui.contact_details_1ee714'|trans|e('html_attr') }}"><span data-icon="panel"></span></button></div>
                 </header>
                 <div class="inbox-thread-body">
-                    <section class="inbox-messages-wrap" aria-label="Histórico da conversa"><div class="inbox-history-heading"><span data-icon="lock"></span> Histórico da conversa</div><button id="inbox-older" class="btn btn-link btn-sm hide">Carregar mensagens anteriores</button><div id="inbox-timeline" class="inbox-timeline" aria-live="polite"></div></section>
-                    <aside id="inbox-contact-panel" class="inbox-contact-panel" aria-label="Detalhes do contato">
+                    <section class="inbox-messages-wrap" aria-label="{{ 'mautic.inbox.ui.conversation_history_87eaf7'|trans|e('html_attr') }}"><div class="inbox-history-heading"><span data-icon="lock"></span> {{ 'mautic.inbox.ui.conversation_history_87eaf7'|trans }}</div><button id="inbox-older" class="btn btn-link btn-sm hide">{{ 'mautic.inbox.ui.load_earlier_messages_3d0b6c'|trans }}</button><div id="inbox-timeline" class="inbox-timeline" aria-live="polite"></div></section>
+                    <aside id="inbox-contact-panel" class="inbox-contact-panel" aria-label="{{ 'mautic.inbox.ui.contact_details_1ee714'|trans|e('html_attr') }}">
                         <div class="inbox-profile"><div id="inbox-profile-avatar" class="inbox-avatar large"></div><h3 id="inbox-profile-name"></h3><span id="inbox-profile-handle"></span><div id="inbox-contact-card"></div></div>
-                        <section class="inbox-detail-section"><h4>Conversa</h4><div class="inbox-detail-row"><span>Situação</span><span id="inbox-lifecycle-badge" class="inbox-pill"></span></div><label class="inbox-field-label" for="inbox-transfer">Responsável</label><select id="inbox-transfer" class="not-chosen form-control" aria-label="Transferir para"><option value="">Transferir atendimento…</option><option value="unassign">Devolver à fila</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select><div id="inbox-assignee-label" class="inbox-secondary"></div><div class="inbox-detail-row"><span>Caixa de entrada</span></div><div id="inbox-channel-card" class="inbox-channel-card"></div></section>
-                        <section class="inbox-detail-section"><h4>Próxima ação</h4><div class="inbox-snooze-controls"><select id="inbox-snooze-duration" class="not-chosen form-control" aria-label="Prazo para adiar"><option value="60">Em 1 hora</option><option value="240">Em 4 horas</option><option value="tomorrow">Amanhã, 9h</option></select><button id="inbox-snooze" class="btn btn-default" title="Adiar conversa">Adiar</button></div><div class="inbox-takeover"><span data-icon="shield"></span><span id="inbox-takeover-text">Automação disponível</span></div></section>
-                        <section id="inbox-origin-section" class="inbox-detail-section hide"><h4>Origem do atendimento</h4><div id="inbox-origin-card"></div></section>
+                        <section class="inbox-detail-section">
+                            <h4>{{ 'mautic.inbox.ui.conversation_b70a33'|trans }}</h4>
+                            <div class="inbox-detail-row"><span>{{ 'mautic.inbox.ui.status_2d3abf'|trans }}</span><span id="inbox-lifecycle-badge" class="inbox-pill"></span></div>
+                            <label class="inbox-field-label" for="inbox-transfer">{{ 'mautic.inbox.ui.assignee_b1ce0b'|trans }}</label>
+                            <select id="inbox-transfer" class="not-chosen form-control" aria-label="{{ 'mautic.inbox.ui.transfer_to_fb6a4c'|trans|e('html_attr') }}"><option value="">{{ 'mautic.inbox.ui.transfer_conversation_0194f9'|trans }}</option><option value="unassign">{{ 'mautic.inbox.ui.return_to_queue_a86b9c'|trans }}</option>{% for user in users %}<option value="{{ user.id }}">{{ user.name }}</option>{% endfor %}</select>
+                            <div id="inbox-assignee-label" class="inbox-secondary"></div>
+                            <div class="inbox-ai-transfer">
+                                <label class="inbox-field-label" for="inbox-ai-select">{{ 'mautic.inbox.ai.ai_assign'|trans }}</label>
+                                <select id="inbox-ai-select" class="form-control not-chosen" aria-label="{{ 'mautic.inbox.ai.ai_assign'|trans }}" aria-describedby="inbox-ai-status"><option value="">{{ 'mautic.inbox.ai.choose'|trans }}</option></select>
+                                <div id="inbox-ai-agent-card" class="inbox-ai-agent-card hide" role="status">
+                                    <span class="inbox-ai-avatar" aria-hidden="true">✦</span>
+                                    <span class="inbox-ai-agent-copy"><strong id="inbox-ai-agent-name"></strong><small id="inbox-ai-agent-activity"></small></span>
+                                    <span class="inbox-ai-agent-actions"><span id="inbox-ai-agent-progress" class="inbox-ai-progress"></span><button type="button" id="inbox-ai-reset" class="inbox-ai-reset" title="{{ 'mautic.inbox.ai.reset'|trans|e('html_attr') }}" aria-label="{{ 'mautic.inbox.ai.reset'|trans|e('html_attr') }}">↻</button></span>
+                                </div>
+                                <div id="inbox-ai-status" class="inbox-secondary" role="status"></div>
+                                <a class="inbox-ai-settings-link" href="{{ path('mautic_inbox_ai') }}">{{ 'mautic.inbox.ai.pi'|trans }}</a>
+                            </div>
+                            <div class="inbox-detail-row inbox-detail-row-spaced"><span>{{ 'mautic.inbox.ui.inbox_227cf7'|trans }}</span></div>
+                            <div id="inbox-channel-card" class="inbox-channel-card"></div>
+                        </section>
+                        <section class="inbox-detail-section"><h4>{{ 'mautic.inbox.ui.next_action_dd848a'|trans }}</h4><div class="inbox-snooze-controls"><select id="inbox-snooze-duration" class="not-chosen form-control" aria-label="{{ 'mautic.inbox.ui.snooze_duration_38b154'|trans|e('html_attr') }}"><option value="60">{{ 'mautic.inbox.ui.in_1_hour_f47829'|trans }}</option><option value="240">{{ 'mautic.inbox.ui.in_4_hours_9f8243'|trans }}</option><option value="tomorrow">{{ 'mautic.inbox.ui.tomorrow_9_am_b2eccf'|trans }}</option></select><button id="inbox-snooze" class="btn btn-default" title="{{ 'mautic.inbox.ui.snooze_conversation_cd8362'|trans|e('html_attr') }}">{{ 'mautic.inbox.ui.snooze_2d407d'|trans }}</button></div><div class="inbox-takeover"><span data-icon="shield"></span><span id="inbox-takeover-text">{{ 'mautic.inbox.ui.automation_available_a68946'|trans }}</span></div></section>
+                        <section id="inbox-origin-section" class="inbox-detail-section hide"><h4>{{ 'mautic.inbox.ui.conversation_source_229634'|trans }}</h4><div id="inbox-origin-card"></div></section>
                     </aside>
                 </div>
                 <footer class="inbox-composer">
-                    <div class="inbox-composer-top"><div class="inbox-composer-tabs"><button class="active" data-mode="reply"><span data-icon="reply"></span>Resposta privada</button><button data-mode="note"><span data-icon="note"></span>Nota interna</button></div><span id="inbox-composer-channel" class="inbox-secondary"></span></div>
+                    <div class="inbox-composer-top"><div class="inbox-composer-tabs"><button class="active" data-mode="reply"><span data-icon="reply"></span>{{ 'mautic.inbox.ui.private_reply_ecd924'|trans }}</button><button data-mode="note"><span data-icon="note"></span>{{ 'mautic.inbox.ui.internal_note_010aa1'|trans }}</button></div><span id="inbox-composer-channel" class="inbox-secondary"></span></div>
+                    <section id="inbox-template-panel" class="inbox-template-panel hide" aria-label="{{ 'mautic.inbox.template.title'|trans }}">
+                        <div class="inbox-template-heading"><strong>{{ 'mautic.inbox.template.title'|trans }}</strong><button id="inbox-template-close" class="btn btn-link btn-sm" type="button">{{ 'mautic.inbox.template.close'|trans }}</button></div>
+                        <select id="inbox-template-select" class="not-chosen form-control" aria-label="{{ 'mautic.inbox.template.select'|trans }}"></select>
+                        <div id="inbox-template-status" role="status"></div><div id="inbox-template-fields"></div><div id="inbox-template-preview" class="inbox-template-preview"></div>
+                        <button id="inbox-template-send" class="btn btn-primary" type="button" disabled>{{ 'mautic.inbox.template.send'|trans }}</button>
+                    </section>
                     <div id="inbox-reply-hint" class="inbox-reply-hint" role="status"></div><div id="inbox-feedback" role="alert"></div>
-                    <textarea id="inbox-composer-text" maxlength="4000" rows="3" placeholder="Escreva sua resposta…" aria-label="Texto da resposta"></textarea>
-                    <div class="inbox-composer-footer"><div class="inbox-composer-tools"><span data-icon="bolt"></span><select class="not-chosen" id="inbox-canned" aria-label="Inserir resposta pronta"><option value="">Respostas prontas</option>{% for item in cannedResponses %}<option value="{{ item.id }}" data-body="{{ item.body|e('html_attr') }}">{{ item.name }}</option>{% endfor %}</select></div><button id="inbox-send" class="btn btn-primary">Enviar resposta</button></div>
-                    <div class="inbox-editor-status"><span id="inbox-draft-state">Rascunho salvo automaticamente</span><span>⌘ / Ctrl + Enter para enviar</span></div>
+                    <textarea id="inbox-composer-text" maxlength="4000" rows="3" placeholder="{{ 'mautic.inbox.ui.write_your_reply_8ea6e1'|trans|e('html_attr') }}" aria-label="{{ 'mautic.inbox.ui.reply_text_680d6f'|trans|e('html_attr') }}"></textarea>
+                    <div class="inbox-composer-footer"><div class="inbox-composer-tools"><span data-icon="bolt"></span><select class="not-chosen" id="inbox-canned" aria-label="{{ 'mautic.inbox.ui.insert_canned_response_97c0df'|trans|e('html_attr') }}"><option value="">{{ 'mautic.inbox.ui.canned_responses_f45beb'|trans }}</option><optgroup id="inbox-canned-group" label="{{ 'mautic.inbox.ui.canned_responses_f45beb'|trans|e('html_attr') }}">{% for item in cannedResponses %}<option value="{{ item.id }}" data-body="{{ item.body|e('html_attr') }}">{{ item.name }}</option>{% endfor %}</optgroup><optgroup id="inbox-template-group" label="WhatsApp · {{ 'mautic.inbox.template.select'|trans|e('html_attr') }}" hidden disabled></optgroup></select></div><button id="inbox-send" class="btn btn-primary">{{ 'mautic.inbox.ui.send_reply_c50a43'|trans }}</button></div>
+                    <div class="inbox-editor-status"><span id="inbox-draft-state">{{ 'mautic.inbox.ui.draft_saved_automatically_da72a0'|trans }}</span><span>{{ 'mautic.inbox.ui.ctrl_enter_to_send_0d34b5'|trans }}</span></div>
                 </footer>
             </div>
         </main>
     </div>
 
     <section id="inbox-automation" class="inbox-automation hide">
-        <div class="panel panel-default"><div class="panel-heading"><h3 class="panel-title">Regras de comentários do Instagram</h3></div><div class="panel-body">
-            <p>As regras complexas continuam nas Campanhas do Mautic. Aqui aparecem as regras de comentário já configuradas; nenhuma campanha é ativada por esta tela.</p>
-            <div class="table-responsive"><table class="table table-hover"><thead><tr><th>Campanha</th><th>Regra</th><th>Ativo Meta</th><th>Mídia</th><th>Estado</th><th></th></tr></thead><tbody>
-            {% for rule in automationRules %}<tr><td>{{ rule.campaign }}</td><td>{{ rule.name }}</td><td>{{ rule.asset_id }}</td><td><code>{{ rule.media_id }}</code></td><td>{{ rule.published ? 'Publicada' : 'Pausada' }}</td><td><a class="btn btn-default btn-xs" href="{{ rule.url }}">Abrir campanha</a></td></tr>{% else %}<tr><td colspan="6" class="text-muted">Nenhuma regra de comentário configurada.</td></tr>{% endfor %}
+        <div class="panel panel-default"><div class="panel-heading"><h3 class="panel-title">{{ 'mautic.inbox.ui.instagram_comment_rules_b6e5bf'|trans }}</h3></div><div class="panel-body">
+            <p>{{ 'mautic.inbox.ui.complex_rules_remain_in_mautic_campaigns_this_page_shows_existing_7c55a6'|trans }}</p>
+            <div class="table-responsive"><table class="table table-hover"><thead><tr><th>{{ 'mautic.inbox.ui.campaign_df4fbe'|trans }}</th><th>{{ 'mautic.inbox.ui.rule_e6ee04'|trans }}</th><th>{{ 'mautic.inbox.ui.meta_asset_d48602'|trans }}</th><th>{{ 'mautic.inbox.ui.media_01fec9'|trans }}</th><th>{{ 'mautic.inbox.ui.status_87cf2a'|trans }}</th><th></th></tr></thead><tbody>
+            {% for rule in automationRules %}<tr><td>{{ rule.campaign }}</td><td>{{ rule.name }}</td><td>{{ rule.asset_id }}</td><td><code>{{ rule.media_id }}</code></td><td>{{ rule.published ? ('mautic.inbox.ui.published_9d32b0'|trans) : ('mautic.inbox.ui.paused_144ffd'|trans) }}</td><td><a class="btn btn-default btn-xs" href="{{ rule.url }}">{{ 'mautic.inbox.ui.open_campaign_cde8e4'|trans }}</a></td></tr>{% else %}<tr><td colspan="6" class="text-muted">{{ 'mautic.inbox.ui.no_comment_rules_configured_afcbbb'|trans }}</td></tr>{% endfor %}
             </tbody></table></div>
         </div>
-        <div class="panel panel-default"><div class="panel-heading"><h3 class="panel-title">Respostas prontas</h3></div><div class="panel-body"><form id="inbox-canned-form" class="form-inline"><input name="name" class="form-control" maxlength="100" required placeholder="Nome"><input name="body" class="form-control inbox-canned-body" maxlength="4000" required placeholder="Texto da resposta"><button class="btn btn-primary" type="submit">Salvar resposta</button></form><p class="help-block">As respostas prontas apenas preenchem o editor; o atendente revisa e envia.</p></div></div>
+    </section>
+
+    <section id="inbox-settings" class="inbox-settings hide" aria-labelledby="inbox-settings-title">
+        <header class="inbox-settings-heading">
+            <div><h2 id="inbox-settings-title">{{ 'mautic.inbox.settings.title'|trans }}</h2><p>{{ 'mautic.inbox.settings.subtitle'|trans }}</p></div>
+        </header>
+        <div class="inbox-settings-grid">
+            <article class="inbox-settings-card">
+                <div class="inbox-settings-card-icon" data-icon="sound"></div>
+                <div><h3>{{ 'mautic.inbox.settings.notifications'|trans }}</h3><p>{{ 'mautic.inbox.settings.notifications_hint'|trans }}</p><button type="button" id="inbox-sound" class="btn btn-default btn-sm" aria-pressed="false">{{ 'mautic.inbox.ui.enable_sound_e0b13b'|trans }}</button></div>
+            </article>
+            {% if app.user.isAdmin() %}
+                <article class="inbox-settings-card">
+                    <div class="inbox-settings-card-icon" data-icon="agent"></div>
+                    <div><h3>{{ 'mautic.inbox.ai.agents'|trans }}</h3><p>{{ 'mautic.inbox.settings.ai_hint'|trans }}</p><a class="btn btn-default btn-sm" href="{{ path('mautic_inbox_ai') }}">{{ 'mautic.inbox.settings.ai_manage'|trans }}</a></div>
+                </article>
+            {% endif %}
+        </div>
+        {% if canManageCannedResponses %}
+            <article class="inbox-settings-canned">
+                <div class="inbox-settings-section-heading"><div><h3>{{ 'mautic.inbox.ui.canned_responses_f45beb'|trans }}</h3><p>{{ 'mautic.inbox.settings.canned_hint'|trans }}</p></div><button id="inbox-canned-new" class="btn btn-primary btn-sm" type="button">{{ 'mautic.inbox.settings.canned_new'|trans }}</button></div>
+                <div id="inbox-canned-feedback" class="inbox-settings-feedback" role="status" aria-live="polite"></div>
+                <div id="inbox-canned-list" class="inbox-canned-list"></div>
+                <form id="inbox-canned-form" class="inbox-canned-form hide">
+                    <input type="hidden" name="id" value="">
+                    <h4 id="inbox-canned-form-title">{{ 'mautic.inbox.settings.canned_new'|trans }}</h4>
+                    <label>{{ 'mautic.inbox.ui.name_13030d'|trans }}<input name="name" class="form-control" maxlength="100" required></label>
+                    <label>{{ 'mautic.inbox.ui.reply_text_680d6f'|trans }}<textarea name="body" class="form-control" maxlength="4000" rows="6" required></textarea></label>
+                    <div class="inbox-canned-form-actions"><button class="btn btn-primary" type="submit" id="inbox-canned-save">{{ 'mautic.inbox.ui.save_response_8d37d6'|trans }}</button><button class="btn btn-default" type="button" id="inbox-canned-cancel">{{ 'mautic.inbox.settings.canned_cancel'|trans }}</button></div>
+                </form>
+            </article>
+        {% endif %}
     </section>
 </div>
-{{ includeScript('plugins/MauticInboxBundle/Assets/js/inbox.js?inbox=20260913-alerts-1', 'inboxOnLoad', 'inboxOnLoad') }}
+{{ includeScript('plugins/MauticInboxBundle/Assets/js/inbox.js?inbox=20260915-unlimited-media2', 'inboxOnLoad', 'inboxOnLoad') }}
 {% endblock %}

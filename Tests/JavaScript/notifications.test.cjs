@@ -9,7 +9,15 @@ const {parseHTML}=require('linkedom');
  document.createElement=(tag)=>{const e=create(tag);if(tag==='canvas'){e.getContext=()=>({fillRect(){},drawImage(){},beginPath(){},arc(){},fill(){},fillText(){}});e.toDataURL=()=> 'data:image/png;base64,test';}return e;};
  const source=fs.readFileSync(require('path').join(__dirname,'../../Assets/js/inbox.js'),'utf8');
  const code=source.slice(source.indexOf('    function createInboxAlerts('),source.indexOf('    function boot()'));
- const context={window,document,Image:class{},localStorage:{getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)},navigator:{},Map,Array,Math};
+ const labels={
+  'mautic.inbox.ui.enable_sound_e0b13b':'Ativar som',
+  'mautic.inbox.ui.sound_on_ff7013':'Som ligado',
+  'mautic.inbox.ui.sound_off_95de2d':'Som desligado',
+  'mautic.inbox.ui.sound_unavailable_029b22':'Som indisponível',
+  'mautic.inbox.ui.sound_notifications_for_new_messages_click_to_enable_or_mute_5f2dc2':'Avisos sonoros',
+  'mautic.inbox.ui.enable_sound_notifications_9d9271':'Ativar avisos sonoros'
+ };
+ const context={window,document,Image:class{},localStorage:{getItem:k=>values.get(k)||null,setItem:(k,v)=>values.set(k,v)},navigator:{},Map,Array,Math,t:key=>labels[key]||key};
  vm.createContext(context);vm.runInContext(code+';globalThis.factory=createInboxAlerts;',context);
  const root=document.getElementById('inbox-app'),button=document.getElementById('inbox-sound'),alerts=context.factory(root);
  assert.equal(starts,0);assert.equal(button.textContent,'Ativar som');

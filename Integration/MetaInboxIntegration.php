@@ -127,11 +127,53 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
 
     public function runHumanTransition(ConversationState $state, callable $operation): mixed
     {
-        return $this->withLocks($this->lockKeys($state->getConversation()->getAsset(), $state->getConversation()->getRecipient()), $operation);
+        return $this->withLocks($this->lockKeys($state->getConversation()->getAsset(), $state->getConversation()->getRecipient()), function() use ($state,$operation) {
+            $result=$operation();
+            // Assignment changes invalidate pending AI generations; AiService writes its new lease afterwards.
+            return $result;
+        });
+    }
+
+    public function runAiGuarded(MetaOutboundJob $job, callable $operation): mixed
+    {
+        $p=$job->getPayload();$state=$this->states->find((int)($p['_ai_state']??0));
+        if (!$state) throw new \DomainException('Automation paused: conversation missing.');
+        return $this->withLocks($this->lockKeys($state->getConversation()->getAsset(),$state->getConversation()->getRecipient()),function()use($state,$job,$p,$operation){
+            $this->entityManager->refresh($state);$store=new \MauticPlugin\MauticInboxBundle\Application\Ai\AiStore($this->entityManager);
+            $a=$store->get('assignment',(string)$state->getId());$g=$store->config();$agent=$store->get('agent',$a['agent']??'');
+            $permission=$state->getConversation()->getAsset()->getId().':'.(str_starts_with($state->getConversation()->getRecipient(),'comment:')?'comment':'message');
+            if(empty($g['enabled'])||empty($agent['enabled'])||!in_array($permission,$g['permissions'],true)||!in_array($permission,$agent['permissions']??[],true)||$state->getAssignee()||$state->getLifecycle()!=='open'||($a['nonce']??'')!==($p['_ai_nonce']??null)||!in_array($a['status']??'', ['queued','finishing'],true)||$state->getLastInboundMessageId()!==($p['_ai_inbound']??null))throw new \DomainException('Automation paused: AI assignment changed.');
+            $result=$operation();$a['status']=($a['status']==='finishing')?'paused':'active';$a['reason']=$a['status']==='paused'?($a['finish_reason']??'human'):null;
+            $runKey=$state->getId().':'.(int)($p['_ai_inbound']??0);$run=$store->get('run',$runKey);
+            if($run){$run['status']='sent';$run['completed_at']=gmdate(DATE_ATOM);$store->put('run',$runKey,$run);}
+            if($a['status']==='paused') {if(($a['finish_action']??'')==='close')$state->setLifecycle('resolved')->setNeedsResponse(false);else $state->setNeedsResponse(true);}else{$state->setNeedsResponse(false);}
+            $store->put('assignment',(string)$state->getId(),$a);$state->setVersion($state->getVersion()+1);$this->entityManager->persist($state);$this->entityManager->flush();return $result;
+        });
     }
 
     public function outboundJobChanged(MetaOutboundJob $job): void
     {
+        $payload = $job->getPayload();
+        if (($payload['_origin'] ?? '') === 'inbox_ai' && in_array($job->getStatus(), ['failed', 'blocked', 'uncertain'], true)) {
+            $state = $this->states->find((int) ($payload['_ai_state'] ?? 0));
+            if ($state instanceof ConversationState) {
+                $this->runHumanTransition($state, function () use ($state, $payload): void {
+                    $this->entityManager->refresh($state);
+                    $store = new \MauticPlugin\MauticInboxBundle\Application\Ai\AiStore($this->entityManager);
+                    $assignment = $store->get('assignment', (string) $state->getId());
+                    if (!$assignment || ($assignment['nonce'] ?? '') !== ($payload['_ai_nonce'] ?? '')) { return; }
+                    $assignment['status'] = 'paused';
+                    $assignment['reason'] = 'delivery_failed';
+                    $assignment['nonce'] = bin2hex(random_bytes(16));
+                    $store->put('assignment', (string) $state->getId(), $assignment);
+                    $state->setNeedsResponse(true)->setLifecycle('open')->setVersion($state->getVersion() + 1);
+                    $this->entityManager->persist($state);
+                    $this->entityManager->persist((new EventLog())->setConversation($state->getConversation())->setEventType('reply_failed')->setDetails(['origin' => 'ai']));
+                    $this->entityManager->flush();
+                });
+            }
+            return;
+        }
         $request = $this->outboundRequests->findOneBy(['job' => $job]);
         if (!$request instanceof OutboundRequest) {
             return;

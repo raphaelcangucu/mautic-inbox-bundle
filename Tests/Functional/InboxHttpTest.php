@@ -6,6 +6,7 @@ namespace MauticPlugin\MauticInboxBundle\Tests\Functional;
 
 use Mautic\CoreBundle\Test\MauticMysqlTestCase;
 use Mautic\UserBundle\Entity\User;
+use MauticPlugin\MauticInboxBundle\Entity\CannedResponse;
 
 final class InboxHttpTest extends MauticMysqlTestCase
 {
@@ -15,6 +16,11 @@ final class InboxHttpTest extends MauticMysqlTestCase
         self::assertResponseIsSuccessful();
         self::assertCount(1, $crawler->filter('#inbox-app'));
         self::assertNotEmpty($crawler->filter('#inbox-app')->attr('data-csrf'));
+        self::assertSame('/s/atendimento/api/envios/0/reenviar', $crawler->filter('#inbox-app')->attr('data-retry-url'));
+        self::assertCount(1, $crawler->filter('.inbox-settings-tab'));
+        self::assertCount(1, $crawler->filter('#inbox-settings #inbox-sound'));
+        self::assertCount(0, $crawler->filter('.inbox-toolbar #inbox-sound'));
+        self::assertCount(1, $crawler->filter('#inbox-settings #inbox-canned-form'));
         $this->client->request('GET', '/s/atendimento/api/conversas?queue=all');
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
@@ -51,6 +57,41 @@ final class InboxHttpTest extends MauticMysqlTestCase
     {
         $this->client->request('POST', '/s/atendimento/api/conversas/999999/nota', [], [], ['CONTENT_TYPE' => 'application/json'], '{"body":"Must not be saved"}');
         self::assertResponseStatusCodeSame(403);
+    }
+
+    public function testCannedResponsesCanBeCreatedEditedAndSafelyRemovedFromSettings(): void
+    {
+        $crawler = $this->client->request('GET', '/s/atendimento');
+        $csrf = $crawler->filter('#inbox-app')->attr('data-csrf');
+        $headers = ['CONTENT_TYPE' => 'application/json', 'HTTP_X_CSRF_TOKEN' => $csrf];
+
+        $this->client->request('POST', '/s/atendimento/api/respostas-prontas', [], [], $headers, json_encode([
+            'name' => 'Saudação do relatório',
+            'body' => 'Olá! Seu relatório está pronto.',
+        ], JSON_THROW_ON_ERROR));
+        self::assertResponseStatusCodeSame(201);
+        $created = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        $item = current(array_filter($created['items'], static fn (array $response): bool => 'Saudação do relatório' === $response['name']));
+        self::assertIsArray($item);
+        self::assertTrue($item['enabled']);
+
+        $this->client->request('PUT', '/s/atendimento/api/respostas-prontas/'.$item['id'], [], [], $headers, json_encode([
+            'name' => 'Relatório disponível',
+            'body' => 'Olá! O relatório já está disponível para consulta.',
+        ], JSON_THROW_ON_ERROR));
+        self::assertResponseIsSuccessful();
+        $updated = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('Olá! O relatório já está disponível para consulta.', current(array_filter($updated['items'], static fn (array $response): bool => $item['id'] === $response['id']))['body']);
+
+        $this->client->request('DELETE', '/s/atendimento/api/respostas-prontas/'.$item['id'], [], [], $headers, '{}');
+        self::assertResponseIsSuccessful();
+        $deleted = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame([], array_values(array_filter($deleted['items'], static fn (array $response): bool => $item['id'] === $response['id'])));
+
+        $this->em->clear();
+        $archived = $this->em->getRepository(CannedResponse::class)->find($item['id']);
+        self::assertInstanceOf(CannedResponse::class, $archived);
+        self::assertFalse($archived->isEnabled(), 'Removing a canned response should archive it instead of deleting team data.');
     }
 
     public function testUserWithoutInboxPermissionCannotReadMessages(): void

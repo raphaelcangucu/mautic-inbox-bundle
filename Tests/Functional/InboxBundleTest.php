@@ -17,6 +17,11 @@ final class InboxBundleTest extends MauticMysqlTestCase
             self::assertTrue($schema->tablesExist([MAUTIC_TABLE_PREFIX.$table]), $table.' must exist');
         }
         self::assertSame('/s/atendimento', self::getContainer()->get('router')->getRouteCollection()->get('mautic_inbox_index')?->getPath());
+        self::assertSame('/s/atendimento/api/respostas-prontas/{responseId}', self::getContainer()->get('router')->getRouteCollection()->get('mautic_inbox_canned_update')?->getPath());
+        self::assertSame(['PUT'], self::getContainer()->get('router')->getRouteCollection()->get('mautic_inbox_canned_update')?->getMethods());
+        self::assertSame(['DELETE'], self::getContainer()->get('router')->getRouteCollection()->get('mautic_inbox_canned_delete')?->getMethods());
+        self::assertSame('/s/atendimento/api/envios/{outboundId}/reenviar', self::getContainer()->get('router')->getRouteCollection()->get('mautic_inbox_retry')?->getPath());
+        self::assertSame(['POST'], self::getContainer()->get('router')->getRouteCollection()->get('mautic_inbox_retry')?->getMethods());
         self::assertInstanceOf(MetaInboxIntegration::class, self::getContainer()->get(InboxIntegrationInterface::class));
     }
 
@@ -24,15 +29,17 @@ final class InboxBundleTest extends MauticMysqlTestCase
     {
         $this->client->request('POST', '/s/atendimento/api/conversas/999999/assumir', [], [], ['CONTENT_TYPE' => 'application/json'], '{"version":1}');
         self::assertResponseStatusCodeSame(403);
+        $this->client->request('POST', '/s/atendimento/api/envios/999999/reenviar', [], [], ['CONTENT_TYPE' => 'application/json'], '{"request_id":"retry-without-csrf"}');
+        self::assertResponseStatusCodeSame(403);
     }
 
-    public function testInboxPageUsesNativeShellAndPortugueseLabels(): void
+    public function testInboxPageUsesNativeShellAndUserLocale(): void
     {
         $this->client->request('GET', '/s/atendimento');
         self::assertResponseIsSuccessful();
         $content = (string) $this->client->getResponse()->getContent();
-        self::assertStringContainsString('Não atribuídas', $content);
-        self::assertStringContainsString('Aguardando resposta', $content);
+        self::assertStringContainsString('Unassigned', $content);
+        self::assertStringContainsString('Awaiting reply', $content);
         self::assertStringNotContainsString('access_token', $content);
     }
 }

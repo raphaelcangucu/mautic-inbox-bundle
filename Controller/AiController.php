@@ -1,0 +1,40 @@
+<?php
+namespace MauticPlugin\MauticInboxBundle\Controller;
+use Mautic\CoreBundle\Controller\CommonController;
+use Mautic\CoreBundle\Helper\UserHelper;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use MauticPlugin\MauticInboxBundle\Application\Ai\{AiStore,AiService,PiClient};
+use MauticPlugin\MauticInboxBundle\Application\InboxException;
+use MauticPlugin\MauticInboxBundle\Entity\ConversationStateRepository;
+use Symfony\Component\HttpFoundation\{Request,Response,JsonResponse};
+use Doctrine\ORM\EntityManagerInterface;
+final class AiController extends CommonController {
+ public function index(UserHelper $users): Response {if(!$users->getUser(true)?->isAdmin())throw $this->createAccessDeniedException();return $this->delegateView(['contentTemplate'=>'@MauticInbox/Ai/index.html.twig','passthroughVars'=>['mauticContent'=>'inboxai','route'=>$this->generateUrl('mautic_inbox_ai')],'viewParameters'=>[]]);}
+ public function data(UserHelper $users,AiStore $store,AiService $service,PiClient $pi): JsonResponse {if(!$users->getUser(true)?->isAdmin())throw $this->createAccessDeniedException();return new JsonResponse(['documents'=>$store->all('document'),'agents'=>$store->all('agent'),'config'=>$store->config(),'assets'=>$service->assets(),'health'=>$store->get('health','pi'),'installed'=>$pi->installed()]);}
+ public function action(Request $request,UserHelper $users,AiStore $store,AiService $service,PiClient $pi,EntityManagerInterface $em): JsonResponse {
+  $user=$users->getUser(true);if(!$user?->isAdmin()||!$this->isCsrfTokenValid('mautic_inbox',$request->headers->get('X-CSRF-Token','')))throw $this->createAccessDeniedException();
+  try{$p=json_decode($request->getContent(),true,32,JSON_THROW_ON_ERROR);if(!is_array($p))throw new \JsonException();}catch(\JsonException){return new JsonResponse(['error'=>'Invalid JSON'],400);}
+  $db=$em->getConnection();if((int)$db->fetchOne("SELECT GET_LOCK('inbox_ai_admin',1)")!==1)return new JsonResponse(['error'=>$this->translator->trans('mautic.inbox.ai.conflict')],409);
+  try{$result=[];switch($p['action']??''){
+   case 'document':$result=$store->saveDocument($p,(int)$user->getId());break;
+   case 'agent':$service->saveAgent($p);break;
+   case 'config':$config=$store->config();$model=(string)($p['model']??$config['model']);$health=$store->get('health','pi');$available=!empty($health['models_checked_at'])?($health['models']??[]):[];if(!$available){$probe=$pi->call('models');$available=$probe['models']??[];}if(!in_array($model,array_column($available,'id'),true))throw new InboxException('mautic.inbox.ai.model_invalid');$changed=$model!==$config['model'];$config=['enabled'=>!empty($p['enabled']),'limit'=>0,'permissions'=>array_values(array_filter((array)($p['permissions']??[]),'is_string')),'model'=>$model,'provider'=>'openai-codex','limit_action'=>'continue'];$store->put('config','global',$config);if($changed){$health['validated']=false;$store->put('health','pi',$health);}break;
+   case 'install':$result=$pi->install();break;
+   case 'import-auth':$result=$pi->call('import-auth');$store->put('health','pi',['validated'=>false]);break;
+   case 'health':$previous=$store->get('health','pi');$result=$pi->installed()?$pi->call('health'):['installed'=>false];if(!empty($result['installed'])){$probe=$pi->call('models');$result['models']=$probe['models']??[];$result['unavailable_models']=$probe['unavailable']??[];$result['models_checked_at']=$probe['checked_at']??gmdate(DATE_ATOM);}$selected=$store->config()['model'];$result['validated']=!empty($previous['validated'])&&in_array($selected,array_column($result['models']??[],'id'),true);$result['checked_at']=gmdate(DATE_ATOM);$store->put('health','pi',$result);break;
+   case 'validate':$previous=$store->get('health','pi');$result=$pi->call('health');$models=$previous['models']??[];if(!$models){$probe=$pi->call('models');$models=$probe['models']??[];$result['unavailable_models']=$probe['unavailable']??[];$result['models_checked_at']=$probe['checked_at']??gmdate(DATE_ATOM);}else{$result['unavailable_models']=$previous['unavailable_models']??[];$result['models_checked_at']=$previous['models_checked_at']??gmdate(DATE_ATOM);}$result['models']=$models;$model=$store->config()['model'];if(!in_array($model,array_column($models,'id'),true))throw new InboxException('mautic.inbox.ai.model_invalid');$store->put('health','pi',$result+['validated'=>false]);$result['test']=$pi->call('test',['model'=>$model]);$result['cms_test']=$pi->call('cms-test');$result['validated']=true;$result['checked_at']=gmdate(DATE_ATOM);$store->put('health','pi',$result);break;
+   default:throw new InboxException('mautic.inbox.ai.invalid_action');
+  }return new JsonResponse(['ok'=>true,'result'=>$result]);}catch(InboxException $e){return new JsonResponse(['error'=>$this->translator->trans($e->getMessage())],$e->httpStatus);}finally{$db->fetchOne("SELECT RELEASE_LOCK('inbox_ai_admin')");}
+ }
+ public function available(int $stateId,UserHelper $users,CorePermissions $permissions,ConversationStateRepository $states,AiStore $store,AiService $service): JsonResponse {
+  if(!$permissions->isGranted(['inbox:conversations:view','meta:messages:view']))throw $this->createAccessDeniedException();$s=$states->find($stateId);if(!$s)throw $this->createNotFoundException();$a=$store->get('assignment',(string)$stateId);if($a){$status=$a['status']??'paused';$reason=$a['reason']??'';$run=$s->getLastInboundMessageId()?$store->get('run',$stateId.':'.$s->getLastInboundMessageId()):[];$generating='generating'===($run['status']??null);$pending='active'===$status&&$s->needsResponse()&&''===$reason;$a['processing']=$generating||$pending||in_array($status,['queued','finishing'],true);$a['activity']=$generating?'generating':($pending?'pending':$status);$a['status_label']=$generating||$pending?$this->translator->trans('mautic.inbox.ui.sending_5e91dc'):$this->translator->trans('mautic.inbox.ai.state.'.$status);$a['reason_label']=in_array($reason,['delivery_failed','execution_failed','limit','human','offtopic','close'],true)?$this->translator->trans('mautic.inbox.ai.state.'.$reason):$reason;}
+  $agents=array_values(array_map(function($x)use($service,$s){$availability=$service->availability($s,$x);$reason=$availability['reason'];return ['key'=>$x['key'],'name'=>$x['name'],'allowed'=>$availability['allowed'],'reason'=>$reason,'reason_label'=>$reason?$this->translator->trans('mautic.inbox.ai.unavailable.'.$reason):null];},$store->all('agent')));
+  $canAssign=$permissions->isGranted(['inbox:conversations:edit','meta:messages:edit','inbox:conversations:create','meta:messages:create']);
+  if($a){$a['limit']=0;}
+  return new JsonResponse(['agents'=>$agents,'can_assign'=>$canAssign,'assignment'=>$a?array_intersect_key($a,array_flip(['agent','name','status','activity','processing','count','limit','reason','status_label','reason_label'])):null]);
+ }
+ public function assign(int $stateId,Request $request,UserHelper $users,CorePermissions $permissions,ConversationStateRepository $states,AiService $service): JsonResponse {
+  if(!$permissions->isGranted(['inbox:conversations:edit','meta:messages:edit','inbox:conversations:create','meta:messages:create'])||!$this->isCsrfTokenValid('mautic_inbox',$request->headers->get('X-CSRF-Token','')))throw $this->createAccessDeniedException();
+  try{$p=json_decode($request->getContent(),true,32,JSON_THROW_ON_ERROR);$s=$states->find($stateId);if(!$s)throw $this->createNotFoundException();$actor=$users->getUser(true);if(($p['action']??'assign')==='reset')$service->reset($s,$actor,(int)($p['version']??0));else $service->assign($s,$actor,(string)($p['agent']??''),(int)($p['version']??0));return new JsonResponse(['ok'=>true]);}catch(InboxException $e){return new JsonResponse(['error'=>$this->translator->trans($e->getMessage())],$e->httpStatus);}catch(\JsonException){return new JsonResponse(['error'=>'Invalid JSON'],400);}
+ }
+}

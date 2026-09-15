@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.12
+
+- Remove o teto de respostas dos agentes de IA; o contador passa a ser apenas telemetria.
+- Adiciona reinício seguro da sessão do agente, com novo nonce e invalidação de trabalhos antigos.
+- Mantém pausas causadas por falha de entrega, retomada humana, restrições do canal e desativação administrativa.
+- Exibe estado e autoria do agente no atendimento e simplifica a configuração para modelos realmente disponíveis no Pi/Codex.
+- Serve mídia recebida pelo WhatsApp por proxy autenticado e adiciona nova tentativa automática e manual de carregamento.
+- Amplia o histórico inicial para evitar que anexos recentes fiquem ocultos pela paginação.
+- Consolida configurações, documentos, fontes controladas, gerenciamento de respostas prontas e atualização em tempo real da interface.
+- Atualiza testes e documentação operacional.
+
 ## 1.0.2
 
 - Adiciona captura atual do atendimento ao README.

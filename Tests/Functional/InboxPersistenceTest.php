@@ -15,6 +15,7 @@ use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Application\InboxQuery;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
 use MauticPlugin\MauticInboxBundle\Entity\Draft;
+use MauticPlugin\MauticInboxBundle\Entity\EventLog;
 use MauticPlugin\MauticInboxBundle\Integration\MetaInboxIntegration;
 use MauticPlugin\MauticMetaBundle\Domain\AssetType;
 use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
@@ -35,7 +36,7 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         self::assertSame('Olá Raphael, seu relatório está pronto.', $presenter->present($message)['body']);
         $message->setDirection('inbound')->setMessageType('unsupported')->setPayload(['message' => ['type' => 'unsupported', 'errors' => [['code' => 131051]]]]);
         self::assertStringContainsString('131051', $presenter->present($message)['body']);
-        self::assertStringContainsString('não disponibilizou', $presenter->present($message)['body']);
+        self::assertStringContainsString('did not provide', $presenter->present($message)['body']);
     }
 
     public function testAcceptedPrivateReplyBlocksDuplicateAndKeepsCommentAuthor(): void
@@ -52,7 +53,7 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         $detail = $query->detail($state, $admin);
         self::assertSame('ana.teste', $detail['contact_name']);
         self::assertFalse($detail['can_reply']); self::assertFalse($detail['can_take_and_reply']);
-        self::assertStringContainsString('já recebeu', $detail['reply_blocked_reason']);
+        self::assertStringContainsString('already received', $detail['reply_blocked_reason']);
         $actions = static::getContainer()->get(ConversationActions::class);
         $state = $actions->take($state, $admin, $state->getVersion());
         $this->expectException(InboxException::class);
@@ -247,6 +248,38 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         $this->em->refresh($state);
         self::assertTrue($state->needsResponse());
         self::assertSame('open', $state->getLifecycle());
+    }
+
+    public function testFailedReplyRequiresExplicitRetryAndCreatesOneNewIdempotentJob(): void
+    {
+        $conversation = $this->conversation();
+        $this->inbound($conversation, 'offline-retry-message');
+        $state = $this->em->getRepository(ConversationState::class)->findOneBy(['conversation' => $conversation]);
+        $actor = $this->em->getRepository(User::class)->findOneBy(['username' => 'admin']);
+        $actions = static::getContainer()->get(ConversationActions::class);
+        $state = $actions->take($state, $actor, $state->getVersion());
+        $failed = $actions->reply($state, $actor, 'Tente esta mensagem novamente', 'offline-failed-000001');
+        $failed->getJob()->setStatus('failed');
+        static::getContainer()->get(MetaInboxIntegration::class)->outboundJobChanged($failed->getJob());
+
+        self::assertSame('failed', $failed->getStatus());
+        self::assertCount(1, $this->em->getRepository(MetaOutboundJob::class)->findAll(), 'Failure must never enqueue another job automatically.');
+        $timeline = static::getContainer()->get(InboxQuery::class)->timeline($state, null, 40)['items'];
+        $failedItem = current(array_filter($timeline, static fn (array $item): bool => ($item['request_id'] ?? null) === 'offline-failed-000001'));
+        self::assertTrue($failedItem['retryable']);
+
+        $retried = $actions->retry($failed, $actor, 'offline-retry-000002');
+        self::assertNotSame($failed->getId(), $retried->getId());
+        self::assertSame('inbox:offline-retry-000002', $retried->getJob()->getIdempotencyKey());
+        self::assertSame(1, $retried->getJob()->getMaxAttempts(), 'A manual retry must not start an automatic retry loop.');
+        self::assertSame('offline-failed-000001', $retried->getJob()->getPayload()['_retry_of']);
+        self::assertSame($failed->getBody(), $retried->getBody());
+        self::assertCount(2, $this->em->getRepository(MetaOutboundJob::class)->findAll());
+
+        $sameRetry = $actions->retry($failed, $actor, 'offline-retry-000002');
+        self::assertSame($retried->getId(), $sameRetry->getId());
+        self::assertCount(2, $this->em->getRepository(MetaOutboundJob::class)->findAll(), 'Repeating the same retry request id must not create another job.');
+        self::assertSame(1, $this->em->getRepository(EventLog::class)->count(['conversation' => $conversation, 'eventType' => 'reply_retried']));
     }
 
     public function testReconcileDoesNotCreateGhostPrivateConversationsOrIncrementUnreadOnReplay(): void
