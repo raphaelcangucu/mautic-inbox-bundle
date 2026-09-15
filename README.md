@@ -1,57 +1,139 @@
-# Mautic Inbox Bundle — Atendimento omnicanal
+# Atendimento omnicanal para Mautic
 
-Plugin nativo de atendimento para Mautic, com conversas de WhatsApp, Instagram e Facebook/Messenger no mesmo painel. Organiza o trabalho humano: responsáveis, filas, respostas, notas e histórico. A comunicação com a Meta é realizada pelo [Mautic Meta Bundle](https://github.com/raphaelcangucu/mautic-meta-bundle).
+Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, Instagram e Facebook. O `MauticMetaBundle` continua responsável por ativos, identidades, contatos, mensagens, webhooks e envios; o `MauticInboxBundle` organiza o atendimento humano, respostas imediatas, mídia recebida e agentes de IA executados pelo Pi/Codex.
 
-## Interface atual — v1.0.2
+## Recursos principais
 
-![Atendimento no Mautic com conversa de teste, identificação do participante e painel de contexto](docs/screenshots/atendimento.png)
+- Conversas privadas e comentários Meta em uma interface responsiva dentro do Mautic.
+- Atribuição humana, transferência, resolução, adiamento, notas internas, rascunhos e respostas prontas.
+- Envio imediato com idempotência, reenvio explícito de falhas e acompanhamento dos estados reais da Meta.
+- Imagens, áudios, vídeos, documentos e figurinhas do WhatsApp por proxy autenticado, sem expor tokens ou URLs temporárias da Meta ao navegador.
+- Atualização em tempo real por SSE, com recuperação por polling e preservação do editor.
+- URL compartilhável para cada conversa, com troca instantânea e navegação Voltar/Avançar sem recarregar a página.
+- Agentes de IA com contexto versionado, fontes controladas, indicação visual de autoria e execução e retomada humana segura.
+- Sessões de IA sem teto de mensagens. O contador é somente telemetria e pode ser reiniciado pela interface.
 
-Captura real da instalação de validação, em setembro de 2026. A tela reúne histórico, responsáveis, resposta privada, notas e contexto do contato. Veja também a [interface de administração do conector](https://github.com/raphaelcangucu/mautic-meta-bundle/blob/v0.12.1/docs/INTERFACE.md).
+## Instalação
 
-## Documentação
+Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.13.0 ou compatível instalado. Em uma instalação DDEV:
 
-- [Instalação e dependências](docs/INSTALACAO.md)
-- [Funcionamento, uso diário e limites](docs/OPERACAO.md)
-- [Arquitetura e integração com o conector](docs/ARQUITETURA.md)
-- [Diagnóstico e manutenção](docs/DIAGNOSTICO.md)
-- [Desenvolvimento e validação](docs/DESENVOLVIMENTO.md)
-- [Histórico de versões](CHANGELOG.md)
+```bash
+ddev start
+ddev composer install
+ddev exec php bin/console mautic:plugins:reload
+ddev exec php bin/console cache:clear
+```
 
-## Dependências
+O recarregamento de plugins usa os metadados Doctrine do bundle, que é a convenção de instalação de schema para plugins Mautic. Ele cria:
 
-| Componente | Requisito | Responsabilidade |
-| --- | --- | --- |
-| Mautic | 7.x | Autenticação, permissões, CRM, banco e infraestrutura Symfony |
-| PHP | >= 8.2, compatível com o Mautic instalado | Execução do plugin |
-| Mautic Meta Bundle | >= 0.12.0 e < 0.13.0 (`^0.12.0`) | Credenciais, ativos, webhooks, identidades, mensagens e fila de envio |
-| Banco | O banco suportado pela instalação Mautic | Tabelas do conector e sete tabelas de atendimento |
-| Navegador | Moderno, com JavaScript | Interface; SSE e Web Audio quando disponíveis |
+- `inbox_conversation_states`
+- `inbox_notes`
+- `inbox_drafts`
+- `inbox_event_log`
+- `inbox_canned_responses`
+- `inbox_outbound_requests`
+- `inbox_comment_contexts`
+- `inbox_ai_records`
 
-**O Atendimento não funciona sozinho.** O conector deve estar instalado e configurado na mesma instância. Ele pode operar sem o Atendimento; a dependência é em apenas uma direção. O plugin não requer Chatwoot, Redis ou servidor WebSocket próprio.
+Conceda as permissões de **Atendimento / Conversas** e **Atendimento / Respostas prontas** aos papéis apropriados. A leitura exige também permissão Meta de mensagens; o envio exige ativo publicado e ativo. As permissões deste MVP são por papel, sem isolamento por conta individual.
 
-## Recursos
+Nenhuma conversa antiga é migrada automaticamente. Confira um ativo por vez e aplique explicitamente:
 
-- Lista de conversas, histórico e contexto do contato, com as cores do Mautic.
-- Nomes, handles e fotos quando disponibilizados pelo canal; identificação alternativa quando indisponíveis.
-- Atribuição, transferência, resolução, adiamento, notas internas, respostas prontas e rascunhos.
-- Comentários separados das mensagens privadas, com contexto da publicação.
-- Resposta pública a comentários do Facebook e resposta privada a comentários do Instagram conforme disponibilidade da API.
-- Prévia de imagens e stickers, controles de vídeo e áudio, links e formatação textual segura.
-- Atualização por SSE com alternativa silenciosa; alertas sonoros opcionais e contador no favicon.
-- Bloqueio de automações durante a tomada humana, aplicado também no momento de envio.
+```bash
+# prévia, sem escrita
+ddev exec php bin/console mautic:inbox:reconcile --asset-id=12 --limit=500
 
-## Instalação resumida
+# aplica somente ao ativo informado
+ddev exec php bin/console mautic:inbox:reconcile --asset-id=12 --limit=500 --apply
+```
 
-Instale o conector `v0.12.1` em `plugins/MauticMetaBundle` e este plugin `v1.0.2` em `plugins/MauticInboxBundle`. Na raiz do Mautic, recarregue os plugins e limpe o cache. Depois conceda as permissões de Atendimento e Meta ao papel do atendente, configure os canais no conector e mantenha o processamento da fila ativo.
+O comando também separa cada comentário público por conta, mídia e comentário. A conversa privada posterior fica vinculada ao contexto do comentário, sem copiar nem mesclar o contato por nome.
 
-Consulte o [guia completo](docs/INSTALACAO.md) para comandos, cron, Composer e importação de conversas existentes. A interface fica em `/s/atendimento`, respeitando o prefixo configurado no Mautic.
+Se uma instalação antiga recebeu o mesmo celular brasileiro com e sem o nono dígito, revise e consolide as conversas equivalentes:
 
-## Estado da versão
+```bash
+# prévia, sem escrita
+ddev exec php bin/console mautic:inbox:deduplicate-whatsapp --asset-id=13
 
-A versão `v1.0.1` extrai o código validado do repositório Mautic e corrige o nome do pacote e a dependência mínima do conector. Não modifica o comportamento da versão anterior. O código foi validado com 32 testes/190 asserções do Inbox, 79 testes/218 asserções do conector e testes JavaScript. Veja o [escopo da validação](docs/DESENVOLVIMENTO.md).
+# aplica somente grupos seguros do ativo informado
+ddev exec php bin/console mautic:inbox:deduplicate-whatsapp --asset-id=13 --apply
+```
 
-Limites atuais: permissões por papel, sem isolamento por ativo; envio humano de texto, sem compositor de upload de anexos; mídia remota sujeita à disponibilidade das URLs; alertas apenas com a caixa aberta. Reels dependem do contexto recebido da Meta e não foram validados em teste real específico.
+A união mantém uma conversa canônica, todo o histórico e o estado do atendimento. Grupos associados a contatos diferentes são exibidos como conflito e nunca são alterados automaticamente. A prevenção de novas duplicidades depende do `MauticMetaBundle` 0.13.0 ou superior.
 
-Licença: [GPL-3.0-or-later](LICENSE). Projeto independente, integrado ao Mautic.
+Processe os envios Meta, as conversas atribuídas à IA e as conversas adiadas a cada minuto:
 
-A versão `v1.0.2` atualiza a documentação e as capturas, mantendo o comportamento do atendimento. A combinação recomendada é Inbox `v1.0.2` + Meta `v0.12.1`; a dependência mínima permanece `^0.12.0`.
+```cron
+* * * * * cd /caminho/do/mautic && ddev exec php bin/console mautic:meta:queue:process --limit=100
+* * * * * cd /caminho/do/mautic && ddev exec php bin/console mautic:inbox:ai:work --env=prod
+* * * * * cd /caminho/do/mautic && ddev exec php bin/console mautic:inbox:wake --limit=500
+```
+
+As leituras da caixa também acordam um lote pequeno de conversas vencidas, então uma falha curta do cron não prende conversas indefinidamente.
+
+## Agentes de IA
+
+A administração fica em `/s/inbox/ai`. Antes de atribuir conversas, instale e valide o runtime Pi, confira os modelos realmente disponíveis para a autenticação Codex do servidor, publique os documentos e libere explicitamente as contas e os canais de cada agente.
+
+```bash
+php bin/console mautic:inbox:ai:setup --env=prod
+php bin/console mautic:inbox:ai:work --env=prod
+```
+
+O agente não possui limite de respostas por conversa. O contador exibido ajuda a observar a sessão, mas não pausa, transfere ou encerra o atendimento. A ação de reinício invalida trabalhos antigos, cria uma nova sessão e zera a telemetria sem ampliar permissões. Falha de entrega, retomada humana, desativação administrativa, restrições do canal e ações explícitas do agente continuam interrompendo a automação de forma segura.
+
+O modelo só recebe ferramentas e fontes autorizadas. Credenciais do Pi e do CMS ficam fora do banco de documentos, das respostas HTTP e do repositório. Consulte [Agentes de atendimento com Pi](docs/AI-AGENTS.md) para instalação, permissões, fontes e diagnóstico.
+
+## Segurança e comportamento
+
+- Toda mutação exige permissão e token CSRF.
+- O ativo e o destinatário vêm da conversa persistida. O cliente envia apenas texto, ação, versão e identificador de requisição.
+- Assumir e transferir usam versão e atualização condicional. A resposta trava a linha da conversa antes de validar o responsável e enfileirar.
+- Uma resposta humana usa um identificador idempotente e uma tentativa. Falhas de transporte com resultado incerto ficam retidas para revisão e não são reenviadas cegamente.
+- Assumir ou responder ativa a tomada humana. Ela bloqueia automações enfileiradas no instante do envio e ações diretas de campanha. Resolver, transferir, adiar ou devolver à fila nunca religa a automação.
+- Uma nova entrada reabre uma conversa resolvida, encerra o adiamento e marca **Aguardando resposta**, sem alterar a tomada humana.
+- Notas e rascunhos nunca entram na fila externa. Rascunhos são separados por conversa, usuário e modo.
+- O polling usa cursores, limites e janelas de no máximo 24 horas. A atualização não escreve no editor.
+- A API da caixa retorna apenas campos de apresentação; tokens, respostas Meta completas e payloads brutos não são expostos.
+- Imagens, áudios, vídeos, documentos e figurinhas recebidos pelo WhatsApp são servidos por uma rota autenticada. Uma falha temporária ganha nova tentativa automática e uma ação manual de recarga.
+- Agentes de IA não têm teto de mensagens. O contador é apenas informativo; um reinício explícito invalida o trabalho anterior, zera a telemetria da sessão e mantém as permissões do canal.
+
+## Testes
+
+Neste checkout, siga a regra do repositório e não execute PHP ou Composer no host. Com DDEV disponível:
+
+```bash
+ddev exec php bin/phpunit -c app/phpunit.xml.dist plugins/MauticInboxBundle/Tests/Unit
+ddev exec php bin/phpunit -c app/phpunit.xml.dist plugins/MauticInboxBundle/Tests/Functional/InboxBundleTest.php
+ddev exec php bin/phpunit -c app/phpunit.xml.dist plugins/MauticMetaBundle/Tests/Unit/Application/Queue/OutboundQueueTest.php
+ddev composer phpstan
+ddev composer cs
+ddev exec php bin/console lint:twig plugins/MauticInboxBundle/Resources/views
+```
+
+Os testes automatizados não acessam serviços Meta nem enviam mensagens reais. A validação de mídia e entrega em produção deve usar uma conversa de teste autorizada e confirmar os estados recebidos pelo webhook.
+
+## Reversão
+
+Antes de remover o bundle, pare os crons `mautic:inbox:wake` e `mautic:inbox:ai:work`, retire as permissões e faça backup apenas das tabelas `inbox_*`. Remova o diretório do bundle e recarregue os plugins. O reload não apaga dados automaticamente. Se a remoção definitiva dos dados foi aprovada, descarte as oito tabelas `inbox_*` listadas acima em ordem inversa. Não remova tabelas `meta_*`: elas pertencem ao conector e contêm as mensagens e vínculos com contatos.
+
+As alterações opcionais no `MauticMetaBundle` podem permanecer: sem este bundle, o `NoopInboxIntegration` mantém o comportamento independente do conector.
+
+## Limites conhecidos
+
+- As permissões de conversas e Meta são concedidas no nível do papel. Não há ACL por ativo para cada atendente.
+- “Enviada” significa que o worker obteve confirmação de aceitação da operação. A interface não afirma entrega ou leitura; esses estados só existem no log Meta quando o webhook do canal os fornece.
+- A API do Instagram determina quando uma resposta privada a comentário ou uma mensagem direta ainda é permitida. Uma rejeição aparece como falha para revisão.
+- A Cloud API não fornece a foto pessoal do contato WhatsApp. O avatar do usuário vem do contato vinculado no Mautic; a mídia enviada dentro da conversa é baixada sob demanda pelo proxy autenticado.
+- A aba Automação lista regras de comentário já configuradas e abre a campanha correspondente. Ela não edita, publica ou executa campanhas.
+- O vínculo entre comentário e diálogo privado é feito pela identidade externa exata dentro do mesmo ativo. Nenhum contato é unido por nome.
+
+## Links diretos para conversas
+
+Ao selecionar uma conversa, o Inbox atualiza a URL para `/s/inbox/conversations/{id}` usando o histórico do navegador, sem desmontar a interface. O link pode ser compartilhado com outro usuário do Mautic; ao abri-lo, o destinatário precisa estar autenticado e possuir a permissão **Atendimento / Conversas**. Voltar e Avançar alternam entre as conversas já visitadas sem recarregar o workspace.
+
+O identificador do link representa o estado persistido da conversa no Inbox. Ele não contém telefone, nome, token ou outro dado pessoal e continua válido após atribuições, mensagens novas, resolução e reabertura.
+
+## Compatibilidade e versão
+
+A versão `1.0.14` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.13.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).

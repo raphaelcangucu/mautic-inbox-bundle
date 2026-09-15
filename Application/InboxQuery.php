@@ -9,6 +9,7 @@ use Mautic\CampaignBundle\Entity\Event;
 use Mautic\CampaignBundle\Entity\EventRepository;
 use Mautic\UserBundle\Entity\User;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use MauticPlugin\MauticInboxBundle\Entity\CannedResponse;
 use MauticPlugin\MauticInboxBundle\Entity\CannedResponseRepository;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
 use MauticPlugin\MauticInboxBundle\Entity\CommentContext;
@@ -17,12 +18,14 @@ use MauticPlugin\MauticInboxBundle\Entity\EventLog;
 use MauticPlugin\MauticInboxBundle\Entity\Note;
 use MauticPlugin\MauticInboxBundle\Entity\OutboundRequest;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessage;
+use MauticPlugin\MauticMetaBundle\Entity\MetaOutboundJob;
 use MauticPlugin\MauticMetaBundle\MetaEvents;
 
 final class InboxQuery
 {
     public function __construct(
         private EntityManagerInterface $entityManager,
+        private \Symfony\Contracts\Translation\TranslatorInterface $translator,
         private DraftRepository $drafts,
         private CannedResponseRepository $cannedResponses,
         private EventRepository $campaignEvents,
@@ -49,7 +52,7 @@ final class InboxQuery
         } elseif ('unassigned' === $queue) {
             $qb->andWhere('s.assignee IS NULL');
         } elseif ('all' !== $queue) {
-            throw new InboxException('Fila inválida.');
+            throw new InboxException('mautic.inbox.ui.invalid_queue_901af4');
         }
         $lifecycle = (string) ($filters['lifecycle'] ?? 'active');
         if ('active' === $lifecycle) {
@@ -57,14 +60,14 @@ final class InboxQuery
         } elseif (in_array($lifecycle, ['open', 'snoozed', 'resolved'], true)) {
             $qb->andWhere('s.lifecycle = :lifecycle')->setParameter('lifecycle', $lifecycle);
         } elseif ('all' !== $lifecycle) {
-            throw new InboxException('Filtro de situação inválido.');
+            throw new InboxException('mautic.inbox.ui.invalid_status_filter_71dd0e');
         }
         if (filter_var($filters['needs_response'] ?? false, FILTER_VALIDATE_BOOL)) {
             $qb->andWhere('s.needsResponse = :needs')->setParameter('needs', true);
         }
         $channel = trim((string) ($filters['channel'] ?? ''));
         if ('' !== $channel) {
-            if (!in_array($channel, ['whatsapp', 'instagram', 'facebook'], true)) { throw new InboxException('Canal inválido.'); }
+            if (!in_array($channel, ['whatsapp', 'instagram', 'facebook'], true)) { throw new InboxException('mautic.inbox.ui.invalid_channel_df77fb'); }
             $qb->andWhere('c.channel = :channel')->setParameter('channel', $channel);
         }
         $kind = (string) ($filters['kind'] ?? 'private');
@@ -73,7 +76,7 @@ final class InboxQuery
         } elseif ('private' === $kind) {
             $qb->andWhere('c.recipient NOT LIKE :commentRecipient')->setParameter('commentRecipient', 'comment:%');
         } else {
-            throw new InboxException('Tipo de conversa inválido.');
+            throw new InboxException('mautic.inbox.ui.invalid_conversation_type_63145f');
         }
         $search = mb_substr(trim((string) ($filters['search'] ?? '')), 0, 100);
         if ('' !== $search) {
@@ -112,7 +115,7 @@ final class InboxQuery
         $assignedToMe = $state->getAssignee()?->getId() === $user->getId();
         return $this->conversation($state) + [
             'contact' => null === $contact ? null : [
-                'id' => $contact->getId(), 'name' => $contact->getName() ?: 'Contato sem nome', 'email' => $contact->getEmail(),
+                'id' => $contact->getId(), 'name' => $contact->getName() ?: $this->translator->trans('mautic.inbox.ui.unnamed_contact_666b99'), 'email' => $contact->getEmail(),
                 'phone' => $contact->getMobile() ?: $contact->getPhone(),
                 'url' => '/s/contacts/view/'.$contact->getId(),
             ],
@@ -121,7 +124,7 @@ final class InboxQuery
             'can_reply' => null === $blockedReason && $assignedToMe,
             'can_take_and_reply' => null === $blockedReason && null === $state->getAssignee(),
             'reply_blocked_reason' => $blockedReason,
-            'reply_hint' => $blockedReason ?? (!$assignedToMe ? (null === $state->getAssignee() ? 'Escreva sua resposta. Ao enviar, você assumirá esta conversa e pausará a automação.' : 'Conversa atribuída a '.$state->getAssignee()->getName().'. Transfira o atendimento para você antes de responder.') : 'Sua resposta será enviada por '.$conversation->getAsset()->getName().'.'),
+            'reply_hint' => $blockedReason ?? (!$assignedToMe ? (null === $state->getAssignee() ? $this->translator->trans('mautic.inbox.ui.write_your_reply_sending_it_will_assign_this_conversation_to_you__52d1da') : $this->translator->trans('mautic.inbox.ui.conversation_assigned_to_name_transfer_it_to_yourself_before_repl_21d227', ['%name%' => $state->getAssignee()->getName()])) : $this->translator->trans('mautic.inbox.ui.your_reply_will_be_sent_by_account_3734ba', ['%account%' => $conversation->getAsset()->getName()])),
         ];
     }
 
@@ -160,10 +163,20 @@ final class InboxQuery
         return ['items' => $items, 'next_cursor' => $hasMore && is_array($oldest) ? $this->encodeTimeCursor(new \DateTimeImmutable($oldest['timestamp']), $oldest['rank'], $oldest['sort']) : null];
     }
 
-    /** @return list<array{id:int,name:string,body:string}> */
+    /** @return list<array{id:int,name:string,body:string,enabled:bool}> */
     public function cannedResponses(): array
     {
-        return array_map(static fn ($r): array => ['id' => (int) $r->getId(), 'name' => $r->getName(), 'body' => $r->getBody()], $this->cannedResponses->findBy(['enabled' => true], ['name' => 'ASC'], 100));
+        $enabledResponses = array_values(array_filter(
+            $this->cannedResponses->findBy(['enabled' => true], ['name' => 'ASC'], 100),
+            static fn (CannedResponse $response): bool => $response->isEnabled(),
+        ));
+
+        return array_map(static fn (CannedResponse $response): array => [
+            'id' => (int) $response->getId(),
+            'name' => $response->getName(),
+            'body' => $response->getBody(),
+            'enabled' => $response->isEnabled(),
+        ], $enabledResponses);
     }
 
     /** @return list<array{id:int,name:string}> */
@@ -172,7 +185,7 @@ final class InboxQuery
         $notices = [];
         foreach ($this->entityManager->getRepository(\MauticPlugin\MauticMetaBundle\Entity\MetaAsset::class)->findBy(['type' => 'facebook_page', 'isPublished' => true]) as $page) {
             if (false === ($page->getSettings()['facebook_reply_enabled'] ?? true)) {
-                $notices[] = $page->getName().': conexão Facebook incompleta. Autorize as permissões de leitura, comentários e Messenger na Meta para concluir a integração.';
+                $notices[] = $this->translator->trans('mautic.inbox.ui.account_incomplete_facebook_connection_authorize_reading_comment__7c9ca6', ['%account%' => $page->getName()]);
             }
         }
         return $notices;
@@ -212,7 +225,7 @@ final class InboxQuery
     /** @return array{conversations:list<array<string,mixed>>,timeline:list<array<string,mixed>>,next_since:string,has_more:bool} */
     public function poll(User $user, string $since, ?ConversationState $selected, ?int $notificationCursor = null): array
     {
-        try { $from = new \DateTimeImmutable($since); } catch (\Throwable) { throw new InboxException('Marcador de atualização inválido.'); }
+        try { $from = new \DateTimeImmutable($since); } catch (\Throwable) { throw new InboxException('mautic.inbox.ui.invalid_update_marker_cedfb7'); }
         if ($from < new \DateTimeImmutable('-24 hours')) { $from = new \DateTimeImmutable('-24 hours'); }
         $until = new \DateTimeImmutable();
         $states = $this->entityManager->createQueryBuilder()->select('s', 'c')->from(ConversationState::class, 's')->join('s.conversation', 'c')
@@ -271,14 +284,14 @@ final class InboxQuery
         $photoHost = is_string($profilePhoto) ? parse_url($profilePhoto, PHP_URL_HOST) : null;
         $profilePhoto = is_string($photoHost) && str_starts_with($profilePhoto, 'https://') && (str_ends_with($photoHost, '.cdninstagram.com') || str_ends_with($photoHost, '.fbcdn.net') || str_ends_with($photoHost, '.fbsbx.com')) ? $profilePhoto : null;
         $public = str_starts_with($c->getRecipient(), 'comment:');
-        $participant = $public ? (string) ($identity['commenterId'] ?? 'Identificação indisponível') : $c->getRecipient();
+        $participant = $public ? (string) ($identity['commenterId'] ?? $this->translator->trans('mautic.inbox.ui.identity_unavailable_4301ba')) : $c->getRecipient();
         $handle = $identity['contact']['profile']['username'] ?? ('instagram' === $c->getChannel() ? ($identity['commenterName'] ?? '') : '');
         $handle = is_string($handle) && preg_match('/^@?[a-zA-Z0-9._]+$/', $handle) && !ctype_digit($handle) ? '@'.ltrim($handle, '@') : null;
         $displayName = $participantName ?: ($contact?->getName() ?: ($handle ?? ''));
         if ('' === $displayName || ctype_digit($displayName)) {
             $displayName = match ($c->getChannel()) {
-                'instagram' => 'Contato do Instagram',
-                'facebook' => 'Contato do Facebook',
+                'instagram' => $this->translator->trans('mautic.inbox.ui.instagram_contact_aded57'),
+                'facebook' => $this->translator->trans('mautic.inbox.ui.facebook_contact_959a01'),
                 default => $participant,
             };
         }
@@ -289,7 +302,7 @@ final class InboxQuery
             'id' => (int) $state->getId(), 'conversation_id' => (int) $c->getId(), 'version' => $state->getVersion(),
             'channel' => $c->getChannel(), 'asset' => ['id' => $c->getAsset()->getId(), 'name' => $c->getAsset()->getName(), 'handle' => $c->getAsset()->getUsername(), 'phone' => $c->getAsset()->getPhoneNumber()],
             'recipient' => $participant, 'contact_name' => $displayName,
-            'conversation_kind' => $public ? ('reel' === ($identity['origin_media']['kind'] ?? null) ? 'Comentário em Reel' : 'Comentário público') : ('facebook' === $c->getChannel() ? 'Messenger' : 'Mensagem privada'),
+            'conversation_kind' => $public ? ('reel' === ($identity['origin_media']['kind'] ?? null) ? $this->translator->trans('mautic.inbox.ui.reel_comment_6f7cab') : $this->translator->trans('mautic.inbox.ui.public_comment_4a1398')) : ('facebook' === $c->getChannel() ? 'Messenger' : $this->translator->trans('mautic.inbox.ui.private_message_e7efc2')),
             'reply_public' => $public && 'facebook' === $c->getChannel(),
             'assignee' => null === $state->getAssignee() ? null : ['id' => $state->getAssignee()->getId(), 'name' => $state->getAssignee()->getName()],
             'lifecycle' => $state->getLifecycle(), 'needs_response' => $state->needsResponse(), 'unread' => $c->getUnreadCount(),
@@ -304,13 +317,22 @@ final class InboxQuery
         if ($entity instanceof MetaMessage) {
             $presented = $this->presentation->present($entity);
             $itemKind = 'comment' === $entity->getMessageType() ? 'comment' : ('outbound' === $entity->getDirection() ? 'automatic' : 'message');
-            return $presented + ['kind' => $itemKind, 'id' => $entity->getId(), 'direction' => $entity->getDirection(), 'status' => $entity->getStatus(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank, 'context' => 'comment' === $entity->getMessageType() ? ['linked' => true] : null];
+            $job = 'outbound' === $entity->getDirection()
+                ? $this->entityManager->getRepository(MetaOutboundJob::class)->findOneBy(['messageLogId' => $entity->getId()])
+                : null;
+            $jobPayload = $job instanceof MetaOutboundJob ? $job->getPayload() : [];
+            $ai = 'inbox_ai' === ($jobPayload['_origin'] ?? null) ? [
+                'agent' => trim((string) ($jobPayload['_ai_agent_name'] ?? '')) ?: 'AI',
+                'key' => (string) ($jobPayload['_ai_agent_key'] ?? ''),
+            ] : null;
+
+            return $presented + ['kind' => $itemKind, 'id' => $entity->getId(), 'direction' => $entity->getDirection(), 'status' => $entity->getStatus(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank, 'context' => 'comment' === $entity->getMessageType() ? ['linked' => true] : null, 'ai' => $ai];
         }
         if ($entity instanceof Note) {
             return ['kind' => 'note', 'id' => $entity->getId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
         }
         if ($entity instanceof OutboundRequest) {
-            return ['kind' => 'outbound', 'id' => $entity->getId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'failure' => $entity->getFailureReason(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
+            return ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'retryable' => 'failed' === $entity->getStatus() && null !== $entity->getJob(), 'failure' => $entity->getFailureReason() && str_starts_with($entity->getFailureReason(), 'mautic.inbox.') ? $this->translator->trans($entity->getFailureReason()) : $entity->getFailureReason(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
         }
         return ['kind' => 'event', 'id' => $entity->getId(), 'event' => $entity->getEventType(), 'author' => $entity->getActor()?->getName(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
     }
@@ -330,12 +352,12 @@ final class InboxQuery
             $related = $public ? $context->getPrivateConversation() : $context->getPublicConversation();
             $relatedState = null === $related ? null : $this->entityManager->getRepository(ConversationState::class)->findOneBy(['conversation' => $related]);
             $payload = $context->getMessage()->getPayload();
-            $title = 'Publicação '.$context->getMediaId();
+            $title = $this->translator->trans('mautic.inbox.ui.post_b172b7').$context->getMediaId();
             foreach ($this->automationRules() as $rule) { if ((string) $rule['media_id'] === $context->getMediaId() && (int) $rule['asset_id'] === $state->getConversation()->getAsset()->getId()) { $title = $rule['campaign']; break; } }
             $image = $payload['origin_media']['image'] ?? null;
             $host = is_string($image) ? parse_url($image, PHP_URL_HOST) : null;
             $image = is_string($host) && str_starts_with($image, 'https://') && (str_ends_with($host, '.cdninstagram.com') || str_ends_with($host, '.fbcdn.net')) ? $image : null;
-            $items[] = ['image' => $image, 'caption' => $payload['origin_media']['caption'] ?? null, 'title' => $payload['origin_media']['caption'] ?? $title, 'media_id' => $context->getMediaId(), 'comment_id' => $context->getCommentId(), 'author' => $payload['commenterName'] ?? $context->getParticipantId(), 'body' => is_string($payload['text'] ?? null) ? mb_substr($payload['text'], 0, 500) : 'Comentário na publicação', 'permalink' => $url, 'related_state_id' => $relatedState?->getId(), 'related_kind' => $public ? 'private' : 'comments'];
+            $items[] = ['image' => $image, 'caption' => $payload['origin_media']['caption'] ?? null, 'title' => $payload['origin_media']['caption'] ?? $title, 'media_id' => $context->getMediaId(), 'comment_id' => $context->getCommentId(), 'author' => $payload['commenterName'] ?? $context->getParticipantId(), 'body' => is_string($payload['text'] ?? null) ? mb_substr($payload['text'], 0, 500) : $this->translator->trans('mautic.inbox.ui.comment_on_the_post_4b4a80'), 'permalink' => $url, 'related_state_id' => $relatedState?->getId(), 'related_kind' => $public ? 'private' : 'comments'];
         }
         return $items;
     }
@@ -359,8 +381,8 @@ final class InboxQuery
     {
         if ('' === $cursor) { return null; }
         $raw = base64_decode(strtr($cursor, '-_', '+/'), true);
-        if (false === $raw || !preg_match('/^(.+)\|(\d+)$/', $raw, $m)) { throw new InboxException('Cursor inválido.'); }
-        try { return [new \DateTimeImmutable($m[1]), (int) $m[2]]; } catch (\Throwable) { throw new InboxException('Cursor inválido.'); }
+        if (false === $raw || !preg_match('/^(.+)\|(\d+)$/', $raw, $m)) { throw new InboxException('mautic.inbox.ui.invalid_cursor_345197'); }
+        try { return [new \DateTimeImmutable($m[1]), (int) $m[2]]; } catch (\Throwable) { throw new InboxException('mautic.inbox.ui.invalid_cursor_345197'); }
     }
     private function encodeTimeCursor(\DateTimeInterface $date, int $rank, int $id): string { return rtrim(strtr(base64_encode($date->format('Y-m-d H:i:s.uP').'|'.$rank.'|'.$id), '+/', '-_'), '='); }
     /** @return array{\DateTimeImmutable,int,int}|null */
@@ -368,8 +390,8 @@ final class InboxQuery
     {
         if (null === $cursor || '' === $cursor) { return null; }
         $raw = base64_decode(strtr($cursor, '-_', '+/'), true);
-        if (false === $raw || !preg_match('/^(.+)\|(\d+)\|(\d+)$/', $raw, $matches)) { throw new InboxException('Cursor inválido.'); }
-        try { return [new \DateTimeImmutable($matches[1]), (int) $matches[2], (int) $matches[3]]; } catch (\Throwable) { throw new InboxException('Cursor inválido.'); }
+        if (false === $raw || !preg_match('/^(.+)\|(\d+)\|(\d+)$/', $raw, $matches)) { throw new InboxException('mautic.inbox.ui.invalid_cursor_345197'); }
+        try { return [new \DateTimeImmutable($matches[1]), (int) $matches[2], (int) $matches[3]]; } catch (\Throwable) { throw new InboxException('mautic.inbox.ui.invalid_cursor_345197'); }
     }
 
     /** @return list<int> */

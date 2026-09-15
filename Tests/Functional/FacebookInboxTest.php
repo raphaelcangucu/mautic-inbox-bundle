@@ -35,7 +35,7 @@ final class FacebookInboxTest extends MauticMysqlTestCase
         $user = $this->em->getRepository(User::class)->findOneBy(['username' => 'admin']);
         $detail = static::getContainer()->get(InboxQuery::class)->detail($state, $user);
         self::assertSame('Maria', $detail['contact_name']);
-        self::assertSame('Comentário em Reel', $detail['conversation_kind']);
+        self::assertSame('Reel comment', $detail['conversation_kind']);
         self::assertTrue($detail['reply_public']);
         self::assertTrue($detail['can_take_and_reply']);
         self::assertSame('1234_99', $detail['origins'][0]['media_id']);

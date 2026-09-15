@@ -15,6 +15,7 @@ use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Application\InboxQuery;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
 use MauticPlugin\MauticInboxBundle\Entity\Draft;
+use MauticPlugin\MauticInboxBundle\Entity\EventLog;
 use MauticPlugin\MauticInboxBundle\Integration\MetaInboxIntegration;
 use MauticPlugin\MauticMetaBundle\Domain\AssetType;
 use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
@@ -35,7 +36,7 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         self::assertSame('Olá Raphael, seu relatório está pronto.', $presenter->present($message)['body']);
         $message->setDirection('inbound')->setMessageType('unsupported')->setPayload(['message' => ['type' => 'unsupported', 'errors' => [['code' => 131051]]]]);
         self::assertStringContainsString('131051', $presenter->present($message)['body']);
-        self::assertStringContainsString('não disponibilizou', $presenter->present($message)['body']);
+        self::assertStringContainsString('did not provide', $presenter->present($message)['body']);
     }
 
     public function testAcceptedPrivateReplyBlocksDuplicateAndKeepsCommentAuthor(): void
@@ -52,7 +53,7 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         $detail = $query->detail($state, $admin);
         self::assertSame('ana.teste', $detail['contact_name']);
         self::assertFalse($detail['can_reply']); self::assertFalse($detail['can_take_and_reply']);
-        self::assertStringContainsString('já recebeu', $detail['reply_blocked_reason']);
+        self::assertStringContainsString('already received', $detail['reply_blocked_reason']);
         $actions = static::getContainer()->get(ConversationActions::class);
         $state = $actions->take($state, $admin, $state->getVersion());
         $this->expectException(InboxException::class);
@@ -65,16 +66,16 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         $conversation = $this->conversation();
         $this->inbound($conversation, 'http-reply-inbound');
         $state = $this->em->getRepository(ConversationState::class)->findOneBy(['conversation' => $conversation]);
-        $crawler = $this->client->request('GET', '/s/atendimento');
+        $crawler = $this->client->request('GET', '/s/inbox');
         $csrf = $crawler->filter('#inbox-app')->attr('data-csrf');
         $headers = ['CONTENT_TYPE' => 'application/json', 'HTTP_X_CSRF_TOKEN' => $csrf];
-        $this->client->request('POST', '/s/atendimento/api/conversas/'.$state->getId().'/assumir', [], [], $headers, json_encode(['version' => $state->getVersion()]));
+        $this->client->request('POST', '/s/inbox/api/conversations/'.$state->getId().'/take', [], [], $headers, json_encode(['version' => $state->getVersion()]));
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true);
         self::assertTrue($data['can_reply']);
         $body = json_encode(['body' => 'Resposta de teste isolado', 'request_id' => 'http_safe_reply_123456789']);
         for ($i = 0; $i < 2; ++$i) {
-            $this->client->request('POST', '/s/atendimento/api/conversas/'.$state->getId().'/responder', [], [], $headers, $body);
+            $this->client->request('POST', '/s/inbox/api/conversations/'.$state->getId().'/reply', [], [], $headers, $body);
             self::assertResponseIsSuccessful();
         }
         $jobs = $this->em->getRepository(MetaOutboundJob::class)->findAll();
@@ -249,6 +250,38 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         self::assertSame('open', $state->getLifecycle());
     }
 
+    public function testFailedReplyRequiresExplicitRetryAndCreatesOneNewIdempotentJob(): void
+    {
+        $conversation = $this->conversation();
+        $this->inbound($conversation, 'offline-retry-message');
+        $state = $this->em->getRepository(ConversationState::class)->findOneBy(['conversation' => $conversation]);
+        $actor = $this->em->getRepository(User::class)->findOneBy(['username' => 'admin']);
+        $actions = static::getContainer()->get(ConversationActions::class);
+        $state = $actions->take($state, $actor, $state->getVersion());
+        $failed = $actions->reply($state, $actor, 'Tente esta mensagem novamente', 'offline-failed-000001');
+        $failed->getJob()->setStatus('failed');
+        static::getContainer()->get(MetaInboxIntegration::class)->outboundJobChanged($failed->getJob());
+
+        self::assertSame('failed', $failed->getStatus());
+        self::assertCount(1, $this->em->getRepository(MetaOutboundJob::class)->findAll(), 'Failure must never enqueue another job automatically.');
+        $timeline = static::getContainer()->get(InboxQuery::class)->timeline($state, null, 40)['items'];
+        $failedItem = current(array_filter($timeline, static fn (array $item): bool => ($item['request_id'] ?? null) === 'offline-failed-000001'));
+        self::assertTrue($failedItem['retryable']);
+
+        $retried = $actions->retry($failed, $actor, 'offline-retry-000002');
+        self::assertNotSame($failed->getId(), $retried->getId());
+        self::assertSame('inbox:offline-retry-000002', $retried->getJob()->getIdempotencyKey());
+        self::assertSame(1, $retried->getJob()->getMaxAttempts(), 'A manual retry must not start an automatic retry loop.');
+        self::assertSame('offline-failed-000001', $retried->getJob()->getPayload()['_retry_of']);
+        self::assertSame($failed->getBody(), $retried->getBody());
+        self::assertCount(2, $this->em->getRepository(MetaOutboundJob::class)->findAll());
+
+        $sameRetry = $actions->retry($failed, $actor, 'offline-retry-000002');
+        self::assertSame($retried->getId(), $sameRetry->getId());
+        self::assertCount(2, $this->em->getRepository(MetaOutboundJob::class)->findAll(), 'Repeating the same retry request id must not create another job.');
+        self::assertSame(1, $this->em->getRepository(EventLog::class)->count(['conversation' => $conversation, 'eventType' => 'reply_retried']));
+    }
+
     public function testReconcileDoesNotCreateGhostPrivateConversationsOrIncrementUnreadOnReplay(): void
     {
         $old = $this->conversation();
@@ -298,6 +331,49 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         self::assertEquals($message->getDateAdded(), $conversation->getLastInboundAt());
         self::assertEquals($message->getDateAdded(), $conversation->getLastMessageAt());
         self::assertSame(1, $this->em->getRepository(ConversationState::class)->count([]));
+    }
+
+    public function testBrazilianWhatsappAliasesAreMergedWithoutLosingMessagesOrState(): void
+    {
+        $primary = $this->conversation();
+        $asset = $primary->getAsset()->setType(AssetType::WhatsAppPhoneNumber)->setSettings(['default_region' => 'BR']);
+        $contact = (new \Mautic\LeadBundle\Entity\Lead())->setFirstname('Alias')->setLastname('Test');
+        $primary->setChannel('whatsapp')->setRecipient('553184326486')->setContact($contact);
+        $duplicate = (new MetaConversation())
+            ->setAsset($asset)
+            ->setChannel('whatsapp')
+            ->setRecipient('5531984326486')
+            ->setContact($contact);
+        $first = (new MetaMessage())->setAsset($asset)->setConversation($primary)->setContact($contact)
+            ->setChannel('whatsapp')->setDirection('inbound')->setMessageType('text')
+            ->setRecipient('553184326486')->setExternalId('legacy-alias')->setPayload(['text' => ['body' => 'Primeira']])->setStatus('received');
+        $second = (new MetaMessage())->setAsset($asset)->setConversation($duplicate)->setContact($contact)
+            ->setChannel('whatsapp')->setDirection('outbound')->setMessageType('template')
+            ->setRecipient('5531984326486')->setExternalId('canonical-alias')->setPayload(['template' => ['name' => 'welcome']])->setStatus('delivered');
+        $primaryState = (new ConversationState())->setConversation($primary)->setLastInboundMessageId(1)->setHumanTakeover(true);
+        $duplicateState = (new ConversationState())->setConversation($duplicate)->setNeedsResponse(false);
+        foreach ([$contact, $asset, $primary, $duplicate, $first, $second, $primaryState, $duplicateState] as $entity) {
+            $this->em->persist($entity);
+        }
+        $this->em->flush();
+        $primaryState->setLastInboundMessageId($first->getId());
+        $this->em->persist($primaryState);
+        $this->em->flush();
+
+        $merger = static::getContainer()->get(\MauticPlugin\MauticInboxBundle\Application\WhatsAppConversationMerger::class);
+        $groups = $merger->duplicateGroups($asset);
+        self::assertCount(1, $groups);
+        self::assertTrue($groups[0]['safe']);
+        $result = $merger->merge($groups[0]['conversation_ids'], $groups[0]['canonical_recipient']);
+
+        self::assertSame($primary->getId(), $result['primary_conversation_id']);
+        self::assertSame(1, $result['messages']);
+        $survivor = $this->em->find(MetaConversation::class, $result['primary_conversation_id']);
+        self::assertSame('5531984326486', $survivor->getRecipient());
+        self::assertSame($contact->getId(), $survivor->getContact()?->getId());
+        self::assertSame(2, $this->em->getRepository(MetaMessage::class)->count(['conversation' => $survivor]));
+        self::assertSame(1, $this->em->getRepository(ConversationState::class)->count(['conversation' => $survivor]));
+        self::assertSame(1, $this->em->getRepository(MetaConversation::class)->count(['asset' => $asset, 'channel' => 'whatsapp']));
     }
 
     public function testTimelinePaginationDoesNotDropMessagesWithSameTimestamp(): void
