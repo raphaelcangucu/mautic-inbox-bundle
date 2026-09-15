@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.14
+
+- Adiciona uma URL compartilhável e estável para cada conversa do atendimento.
+- Atualiza a barra de endereço com History API sem recarregar ou desmontar o Inbox.
+- Mantém a interface montada ao alternar entre conversas e atualiza o histórico sem duplicar a conversa já selecionada.
+- Abre diretamente a conversa indicada após autenticação e verificação das permissões já existentes.
+- Padroniza todas as URLs do plugin em inglês, começando por `/s/inbox`.
+
 ## 1.0.13
 
 - Detecta conversas WhatsApp equivalentes quando a Meta alterna números móveis brasileiros com ou sem o nono dígito.

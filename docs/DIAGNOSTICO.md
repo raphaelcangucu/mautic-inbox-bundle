@@ -17,7 +17,7 @@
 
 ## SSE e infraestrutura
 
-Inspecione `/s/atendimento/api/stream` nas ferramentas de rede do navegador autenticado. Deve usar `text/event-stream`, emitir eventos/heartbeats e reconectar. O prefixo pode variar pela instalação. Proxies não devem acumular todo o conteúdo do stream antes de entregá-lo. O fallback permite atualização mesmo quando SSE falha, mas com maior latência.
+Inspecione `/s/inbox/api/stream` nas ferramentas de rede do navegador autenticado. Deve usar `text/event-stream`, emitir eventos/heartbeats e reconectar. O prefixo pode variar pela instalação. Proxies não devem acumular todo o conteúdo do stream antes de entregá-lo. O fallback permite atualização mesmo quando SSE falha, mas com maior latência.
 
 ## Perfil, mídia e limites de canal
 

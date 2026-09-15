@@ -1,6 +1,6 @@
 # Agentes de atendimento com Pi
 
-A configuração fica em `/s/atendimento/ia`, acessível a administradores. O atendimento permite atribuir explicitamente uma conversa a um agente. Não há atribuição automática de todos os contatos.
+A configuração fica em `/s/inbox/ai`, acessível a administradores. O atendimento permite atribuir explicitamente uma conversa a um agente. Não há atribuição automática de todos os contatos.
 
 ## Dependências
 

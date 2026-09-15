@@ -9,6 +9,7 @@ Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, In
 - Envio imediato com idempotência, reenvio explícito de falhas e acompanhamento dos estados reais da Meta.
 - Imagens, áudios, vídeos, documentos e figurinhas do WhatsApp por proxy autenticado, sem expor tokens ou URLs temporárias da Meta ao navegador.
 - Atualização em tempo real por SSE, com recuperação por polling e preservação do editor.
+- URL compartilhável para cada conversa, com troca instantânea sem recarregar a página.
 - Agentes de IA com contexto versionado, fontes controladas, indicação visual de autoria e execução e retomada humana segura.
 - Sessões de IA sem teto de mensagens. O contador é somente telemetria e pode ser reiniciado pela interface.
 
@@ -72,7 +73,7 @@ As leituras da caixa também acordam um lote pequeno de conversas vencidas, ent�
 
 ## Agentes de IA
 
-A administração fica em `/s/atendimento/ia`. Antes de atribuir conversas, instale e valide o runtime Pi, confira os modelos realmente disponíveis para a autenticação Codex do servidor, publique os documentos e libere explicitamente as contas e os canais de cada agente.
+A administração fica em `/s/inbox/ai`. Antes de atribuir conversas, instale e valide o runtime Pi, confira os modelos realmente disponíveis para a autenticação Codex do servidor, publique os documentos e libere explicitamente as contas e os canais de cada agente.
 
 ```bash
 php bin/console mautic:inbox:ai:setup --env=prod
@@ -127,6 +128,12 @@ As alterações opcionais no `MauticMetaBundle` podem permanecer: sem este bundl
 - A aba Automação lista regras de comentário já configuradas e abre a campanha correspondente. Ela não edita, publica ou executa campanhas.
 - O vínculo entre comentário e diálogo privado é feito pela identidade externa exata dentro do mesmo ativo. Nenhum contato é unido por nome.
 
+## Links diretos para conversas
+
+Ao selecionar uma conversa, o Inbox atualiza a URL para `/s/inbox/conversations/{id}` usando o histórico do navegador, sem desmontar a interface. O link pode ser compartilhado com outro usuário do Mautic; ao abri-lo, o destinatário precisa estar autenticado e possuir a permissão **Atendimento / Conversas**.
+
+O identificador do link representa o estado persistido da conversa no Inbox. Ele não contém telefone, nome, token ou outro dado pessoal e continua válido após atribuições, mensagens novas, resolução e reabertura.
+
 ## Compatibilidade e versão
 
-A versão `1.0.13` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.13.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+A versão `1.0.14` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.13.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).

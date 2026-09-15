@@ -66,16 +66,16 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         $conversation = $this->conversation();
         $this->inbound($conversation, 'http-reply-inbound');
         $state = $this->em->getRepository(ConversationState::class)->findOneBy(['conversation' => $conversation]);
-        $crawler = $this->client->request('GET', '/s/atendimento');
+        $crawler = $this->client->request('GET', '/s/inbox');
         $csrf = $crawler->filter('#inbox-app')->attr('data-csrf');
         $headers = ['CONTENT_TYPE' => 'application/json', 'HTTP_X_CSRF_TOKEN' => $csrf];
-        $this->client->request('POST', '/s/atendimento/api/conversas/'.$state->getId().'/assumir', [], [], $headers, json_encode(['version' => $state->getVersion()]));
+        $this->client->request('POST', '/s/inbox/api/conversations/'.$state->getId().'/take', [], [], $headers, json_encode(['version' => $state->getVersion()]));
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true);
         self::assertTrue($data['can_reply']);
         $body = json_encode(['body' => 'Resposta de teste isolado', 'request_id' => 'http_safe_reply_123456789']);
         for ($i = 0; $i < 2; ++$i) {
-            $this->client->request('POST', '/s/atendimento/api/conversas/'.$state->getId().'/responder', [], [], $headers, $body);
+            $this->client->request('POST', '/s/inbox/api/conversations/'.$state->getId().'/reply', [], [], $headers, $body);
             self::assertResponseIsSuccessful();
         }
         $jobs = $this->em->getRepository(MetaOutboundJob::class)->findAll();

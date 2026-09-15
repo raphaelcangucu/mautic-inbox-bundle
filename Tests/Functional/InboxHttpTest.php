@@ -12,35 +12,52 @@ final class InboxHttpTest extends MauticMysqlTestCase
 {
     public function testNativePageAndListRenderForAuthorizedAgent(): void
     {
-        $crawler = $this->client->request('GET', '/s/atendimento');
+        $crawler = $this->client->request('GET', '/s/inbox');
         self::assertResponseIsSuccessful();
         self::assertCount(1, $crawler->filter('#inbox-app'));
         self::assertNotEmpty($crawler->filter('#inbox-app')->attr('data-csrf'));
-        self::assertSame('/s/atendimento/api/envios/0/reenviar', $crawler->filter('#inbox-app')->attr('data-retry-url'));
+        self::assertSame('/s/inbox', $crawler->filter('#inbox-app')->attr('data-index-url'));
+        self::assertSame('/s/inbox/conversations/0', $crawler->filter('#inbox-app')->attr('data-conversation-url'));
+        self::assertSame('0', $crawler->filter('#inbox-app')->attr('data-initial-state-id'));
+        self::assertSame('/s/inbox/api/outbound/0/retry', $crawler->filter('#inbox-app')->attr('data-retry-url'));
         self::assertCount(1, $crawler->filter('.inbox-settings-tab'));
         self::assertCount(1, $crawler->filter('#inbox-settings #inbox-sound'));
         self::assertCount(0, $crawler->filter('.inbox-toolbar #inbox-sound'));
         self::assertCount(1, $crawler->filter('#inbox-settings #inbox-canned-form'));
-        $this->client->request('GET', '/s/atendimento/api/conversas?queue=all');
+        $this->client->request('GET', '/s/inbox/api/conversations?queue=all');
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertArrayHasKey('items', $data);
         self::assertArrayHasKey('counts', $data);
     }
 
+    public function testConversationPermalinkRendersTheSameWorkspaceWithAnInitialSelection(): void
+    {
+        $crawler = $this->client->request('GET', '/s/inbox/conversations/42');
+        self::assertResponseIsSuccessful();
+        self::assertSame('42', $crawler->filter('#inbox-app')->attr('data-initial-state-id'));
+        self::assertSame('/s/inbox/conversations/0', $crawler->filter('#inbox-app')->attr('data-conversation-url'));
+
+        $this->client->xmlHttpRequest('GET', '/s/inbox/conversations/42');
+        self::assertResponseIsSuccessful();
+        $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
+        self::assertSame('/s/inbox/conversations/42', $data['route']);
+        self::assertStringContainsString('data-initial-state-id="42"', $data['newContent']);
+    }
+
     public function testNativeAjaxNavigationReturnsMauticEnvelope(): void
     {
-        $this->client->xmlHttpRequest('GET', '/s/atendimento');
+        $this->client->xmlHttpRequest('GET', '/s/inbox');
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertSame('inbox', $data['mauticContent']);
-        self::assertSame('/s/atendimento', $data['route']);
+        self::assertSame('/s/inbox', $data['route']);
         self::assertStringContainsString('id="inbox-app"', $data['newContent']);
     }
 
     public function testSseEndpointRequiresTheSameInboxPermission(): void
     {
-        $this->client->request('GET', '/s/atendimento/api/stream?once=1');
+        $this->client->request('GET', '/s/inbox/api/stream?once=1');
         self::assertResponseIsSuccessful();
         self::assertResponseHeaderSame('Content-Type', 'text/event-stream; charset=UTF-8');
     }
@@ -49,23 +66,23 @@ final class InboxHttpTest extends MauticMysqlTestCase
     {
         $sales = $this->em->getRepository(User::class)->findOneBy(['username' => 'sales']);
         $this->loginUser($sales);
-        $this->client->request('GET', '/s/atendimento/api/stream?once=1');
+        $this->client->request('GET', '/s/inbox/api/stream?once=1');
         self::assertResponseStatusCodeSame(403);
     }
 
     public function testMutationRejectsMissingCsrfBeforeLookingUpConversation(): void
     {
-        $this->client->request('POST', '/s/atendimento/api/conversas/999999/nota', [], [], ['CONTENT_TYPE' => 'application/json'], '{"body":"Must not be saved"}');
+        $this->client->request('POST', '/s/inbox/api/conversations/999999/note', [], [], ['CONTENT_TYPE' => 'application/json'], '{"body":"Must not be saved"}');
         self::assertResponseStatusCodeSame(403);
     }
 
     public function testCannedResponsesCanBeCreatedEditedAndSafelyRemovedFromSettings(): void
     {
-        $crawler = $this->client->request('GET', '/s/atendimento');
+        $crawler = $this->client->request('GET', '/s/inbox');
         $csrf = $crawler->filter('#inbox-app')->attr('data-csrf');
         $headers = ['CONTENT_TYPE' => 'application/json', 'HTTP_X_CSRF_TOKEN' => $csrf];
 
-        $this->client->request('POST', '/s/atendimento/api/respostas-prontas', [], [], $headers, json_encode([
+        $this->client->request('POST', '/s/inbox/api/canned-responses', [], [], $headers, json_encode([
             'name' => 'Saudação do relatório',
             'body' => 'Olá! Seu relatório está pronto.',
         ], JSON_THROW_ON_ERROR));
@@ -75,7 +92,7 @@ final class InboxHttpTest extends MauticMysqlTestCase
         self::assertIsArray($item);
         self::assertTrue($item['enabled']);
 
-        $this->client->request('PUT', '/s/atendimento/api/respostas-prontas/'.$item['id'], [], [], $headers, json_encode([
+        $this->client->request('PUT', '/s/inbox/api/canned-responses/'.$item['id'], [], [], $headers, json_encode([
             'name' => 'Relatório disponível',
             'body' => 'Olá! O relatório já está disponível para consulta.',
         ], JSON_THROW_ON_ERROR));
@@ -83,7 +100,7 @@ final class InboxHttpTest extends MauticMysqlTestCase
         $updated = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertSame('Olá! O relatório já está disponível para consulta.', current(array_filter($updated['items'], static fn (array $response): bool => $item['id'] === $response['id']))['body']);
 
-        $this->client->request('DELETE', '/s/atendimento/api/respostas-prontas/'.$item['id'], [], [], $headers, '{}');
+        $this->client->request('DELETE', '/s/inbox/api/canned-responses/'.$item['id'], [], [], $headers, '{}');
         self::assertResponseIsSuccessful();
         $deleted = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
         self::assertSame([], array_values(array_filter($deleted['items'], static fn (array $response): bool => $item['id'] === $response['id'])));
@@ -98,7 +115,9 @@ final class InboxHttpTest extends MauticMysqlTestCase
     {
         $sales = $this->em->getRepository(User::class)->findOneBy(['username' => 'sales']);
         $this->loginUser($sales);
-        $this->client->request('GET', '/s/atendimento/api/conversas?queue=all');
+        $this->client->request('GET', '/s/inbox/api/conversations?queue=all');
+        self::assertResponseStatusCodeSame(403);
+        $this->client->request('GET', '/s/inbox/conversations/42');
         self::assertResponseStatusCodeSame(403);
     }
 }

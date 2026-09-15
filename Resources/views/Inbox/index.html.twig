@@ -4,7 +4,7 @@
 {% block headerTitle %}{{ 'mautic.inbox.ui.support_inbox_fff9ea'|trans }}{% endblock %}
 
 {% block content %}
-{{ includeStylesheet('plugins/MauticInboxBundle/Assets/css/inbox.css?inbox=20260915-unlimited-media1') }}
+{{ includeStylesheet('plugins/MauticInboxBundle/Assets/css/inbox.css?inbox=20260915-history1') }}
 {% set uiTranslations = {'mautic.inbox.ai.ai_assign':'mautic.inbox.ai.ai_assign'|trans,'mautic.inbox.ai.choose':'mautic.inbox.ai.choose'|trans,'mautic.inbox.ai.not_allowed':'mautic.inbox.ai.not_allowed'|trans,'mautic.inbox.ai.none_available':'mautic.inbox.ai.none_available'|trans,'mautic.inbox.ai.read_only':'mautic.inbox.ai.read_only'|trans,'mautic.inbox.ai.validate_first':'mautic.inbox.ai.validate_first'|trans,'mautic.inbox.ai.reset':'mautic.inbox.ai.reset'|trans,'mautic.inbox.ai.reset_success':'mautic.inbox.ai.reset_success'|trans,'mautic.inbox.ai.unlimited':'mautic.inbox.ai.unlimited'|trans,'mautic.inbox.ui.media_retry':'mautic.inbox.ui.media_retry'|trans,
 'mautic.inbox.template.header':'mautic.inbox.template.header'|trans,'mautic.inbox.template.body':'mautic.inbox.template.body'|trans,'mautic.inbox.template.invalid_recipient':'mautic.inbox.template.invalid_recipient'|trans,
 'mautic.inbox.template.choose':'mautic.inbox.template.choose'|trans,'mautic.inbox.template.title':'mautic.inbox.template.title'|trans,'mautic.inbox.template.select':'mautic.inbox.template.select'|trans,'mautic.inbox.template.loading':'mautic.inbox.template.loading'|trans,'mautic.inbox.template.empty':'mautic.inbox.template.empty'|trans,'mautic.inbox.template.send':'mautic.inbox.template.send'|trans,'mautic.inbox.template.unsupported':'mautic.inbox.template.unsupported'|trans,'mautic.inbox.template.variable':'mautic.inbox.template.variable'|trans,'mautic.inbox.template.close':'mautic.inbox.template.close'|trans,'mautic.inbox.template.sending':'mautic.inbox.template.sending'|trans,'mautic.inbox.template.queued':'mautic.inbox.template.queued'|trans,'mautic.inbox.template.whatsapp_only':'mautic.inbox.template.whatsapp_only'|trans,'mautic.inbox.template.account_unverified':'mautic.inbox.template.account_unverified'|trans,'mautic.inbox.template.unavailable':'mautic.inbox.template.unavailable'|trans,'mautic.inbox.template.variables_required':'mautic.inbox.template.variables_required'|trans,'mautic.inbox.template.consent_required':'mautic.inbox.template.consent_required'|trans,'mautic.inbox.template.confirm':'mautic.inbox.template.confirm'|trans,
@@ -104,6 +104,9 @@
 'mautic.inbox.ui.save_response_8d37d6': 'mautic.inbox.ui.save_response_8d37d6'|trans
 } %}
 <div id="inbox-app" data-ai-url="{{ path('mautic_inbox_ai_available', {stateId:0}) }}" data-locale="{{ app.request.locale|e('html_attr') }}" data-translations="{{ uiTranslations|json_encode|e('html_attr') }}" class="inbox-app"
+     data-index-url="{{ path('mautic_inbox_index') }}"
+     data-conversation-url="{{ path('mautic_inbox_conversation', {stateId: 0}) }}"
+     data-initial-state-id="{{ initialStateId|default(0) }}"
      data-stream-url="{{ path('mautic_inbox_stream') }}"
      data-list-url="{{ path('mautic_inbox_list') }}"
      data-detail-url="{{ path('mautic_inbox_detail', {stateId: 0}) }}"
@@ -242,5 +245,5 @@
         {% endif %}
     </section>
 </div>
-{{ includeScript('plugins/MauticInboxBundle/Assets/js/inbox.js?inbox=20260915-unlimited-media2', 'inboxOnLoad', 'inboxOnLoad') }}
+{{ includeScript('plugins/MauticInboxBundle/Assets/js/inbox.js?inbox=20260915-history1', 'inboxOnLoad', 'inboxOnLoad') }}
 {% endblock %}

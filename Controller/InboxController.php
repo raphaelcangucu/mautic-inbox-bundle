@@ -29,21 +29,26 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class InboxController extends CommonController
 {
-    public function index(CorePermissions $permissions, UserHelper $users, InboxQuery $query): Response
+    public function index(CorePermissions $permissions, UserHelper $users, InboxQuery $query, ?int $stateId = null): Response
     {
         $this->grant($permissions, 'view');
         $user = $this->user($users);
+        $stateId = null !== $stateId && $stateId > 0 ? $stateId : null;
+        $route = null !== $stateId
+            ? $this->generateUrl('mautic_inbox_conversation', ['stateId' => $stateId])
+            : $this->generateUrl('mautic_inbox_index');
 
         return $this->delegateView([
             'contentTemplate' => '@MauticInbox/Inbox/index.html.twig',
-            'passthroughVars' => ['mauticContent' => 'inbox', 'route' => $this->generateUrl('mautic_inbox_index')],
+            'passthroughVars' => ['mauticContent' => 'inbox', 'route' => $route],
             'viewParameters' => [
-            'currentUserId' => $user->getId(),
-            'users' => $query->users(),
-            'cannedResponses' => $query->cannedResponses(),
-            'automationRules' => $query->automationRules(),
-            'channelNotices' => $query->channelNotices(),
-            'canManageCannedResponses' => $permissions->isGranted('inbox:templates:edit'),
+                'currentUserId' => $user->getId(),
+                'initialStateId' => $stateId,
+                'users' => $query->users(),
+                'cannedResponses' => $query->cannedResponses(),
+                'automationRules' => $query->automationRules(),
+                'channelNotices' => $query->channelNotices(),
+                'canManageCannedResponses' => $permissions->isGranted('inbox:templates:edit'),
             ],
         ]);
     }

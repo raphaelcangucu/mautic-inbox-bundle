@@ -29,7 +29,7 @@ final class TranslationTest extends MauticMysqlTestCase
         $session->start();
         $session->set('_locale', $locale);
         $session->save();
-        $crawler = $this->client->request('GET', '/s/atendimento');
+        $crawler = $this->client->request('GET', '/s/inbox');
         self::assertResponseIsSuccessful();
         $app = $crawler->filter('#inbox-app');
         self::assertSame($locale, $app->attr('data-locale'));
@@ -41,7 +41,7 @@ final class TranslationTest extends MauticMysqlTestCase
         self::assertResponseIsSuccessful();
         self::assertStringContainsString($connections, $crawler->filter('.meta-ui')->text());
         self::assertStringNotContainsString('mautic.meta.ui.', $crawler->filter('.meta-ui')->text());
-        $this->client->request('GET', '/s/atendimento/api/conversas?queue=invalid');
+        $this->client->request('GET', '/s/inbox/api/conversations?queue=invalid');
         self::assertResponseStatusCodeSame(422);
         self::assertSame($error, json_decode($this->client->getResponse()->getContent(), true)['error']);
     }

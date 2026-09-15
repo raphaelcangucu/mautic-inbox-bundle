@@ -70,7 +70,7 @@ final class WhatsAppTemplatesTest extends MauticMysqlTestCase
     {
         $this->client->disableReboot();
         [$service,$state,$actor,$template]=$this->fixture();
-        $this->client->request('GET','/s/atendimento/api/conversas/'.$state->getId().'/modelos');
+        $this->client->request('GET','/s/inbox/api/conversations/'.$state->getId().'/templates');
         self::assertResponseIsSuccessful();
         $data=json_decode($this->client->getResponse()->getContent(),true);
         self::assertNull($data['blocked_reason']);
