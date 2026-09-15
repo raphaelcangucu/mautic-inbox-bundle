@@ -14,7 +14,7 @@ Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, In
 
 ## Instalação
 
-Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.10.4 ou compatível instalado. Em uma instalação DDEV:
+Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.13.0 ou compatível instalado. Em uma instalação DDEV:
 
 ```bash
 ddev start
@@ -47,6 +47,18 @@ ddev exec php bin/console mautic:inbox:reconcile --asset-id=12 --limit=500 --app
 ```
 
 O comando também separa cada comentário público por conta, mídia e comentário. A conversa privada posterior fica vinculada ao contexto do comentário, sem copiar nem mesclar o contato por nome.
+
+Se uma instalação antiga recebeu o mesmo celular brasileiro com e sem o nono dígito, revise e consolide as conversas equivalentes:
+
+```bash
+# prévia, sem escrita
+ddev exec php bin/console mautic:inbox:deduplicate-whatsapp --asset-id=13
+
+# aplica somente grupos seguros do ativo informado
+ddev exec php bin/console mautic:inbox:deduplicate-whatsapp --asset-id=13 --apply
+```
+
+A união mantém uma conversa canônica, todo o histórico e o estado do atendimento. Grupos associados a contatos diferentes são exibidos como conflito e nunca são alterados automaticamente. A prevenção de novas duplicidades depende do `MauticMetaBundle` 0.13.0 ou superior.
 
 Processe os envios Meta, as conversas atribuídas à IA e as conversas adiadas a cada minuto:
 
@@ -117,4 +129,4 @@ As alterações opcionais no `MauticMetaBundle` podem permanecer: sem este bundl
 
 ## Compatibilidade e versão
 
-A versão `1.0.12` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.10.4`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+A versão `1.0.13` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.13.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).

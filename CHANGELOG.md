@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.0.13
+
+- Detecta conversas WhatsApp equivalentes quando a Meta alterna números móveis brasileiros com ou sem o nono dígito.
+- Adiciona uma prévia segura e um comando explícito para consolidar duplicidades existentes.
+- Preserva mensagens, eventos, filas, rascunhos, notas, contato vinculado, tomada humana e sessão do agente de IA durante a união.
+- Bloqueia automaticamente grupos com contatos conflitantes e executa cada união em uma única transação.
+
 ## 1.0.12
 
 - Remove o teto de respostas dos agentes de IA; o contador passa a ser apenas telemetria.

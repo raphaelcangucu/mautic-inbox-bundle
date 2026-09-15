@@ -333,6 +333,49 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         self::assertSame(1, $this->em->getRepository(ConversationState::class)->count([]));
     }
 
+    public function testBrazilianWhatsappAliasesAreMergedWithoutLosingMessagesOrState(): void
+    {
+        $primary = $this->conversation();
+        $asset = $primary->getAsset()->setType(AssetType::WhatsAppPhoneNumber)->setSettings(['default_region' => 'BR']);
+        $contact = (new \Mautic\LeadBundle\Entity\Lead())->setFirstname('Alias')->setLastname('Test');
+        $primary->setChannel('whatsapp')->setRecipient('553184326486')->setContact($contact);
+        $duplicate = (new MetaConversation())
+            ->setAsset($asset)
+            ->setChannel('whatsapp')
+            ->setRecipient('5531984326486')
+            ->setContact($contact);
+        $first = (new MetaMessage())->setAsset($asset)->setConversation($primary)->setContact($contact)
+            ->setChannel('whatsapp')->setDirection('inbound')->setMessageType('text')
+            ->setRecipient('553184326486')->setExternalId('legacy-alias')->setPayload(['text' => ['body' => 'Primeira']])->setStatus('received');
+        $second = (new MetaMessage())->setAsset($asset)->setConversation($duplicate)->setContact($contact)
+            ->setChannel('whatsapp')->setDirection('outbound')->setMessageType('template')
+            ->setRecipient('5531984326486')->setExternalId('canonical-alias')->setPayload(['template' => ['name' => 'welcome']])->setStatus('delivered');
+        $primaryState = (new ConversationState())->setConversation($primary)->setLastInboundMessageId(1)->setHumanTakeover(true);
+        $duplicateState = (new ConversationState())->setConversation($duplicate)->setNeedsResponse(false);
+        foreach ([$contact, $asset, $primary, $duplicate, $first, $second, $primaryState, $duplicateState] as $entity) {
+            $this->em->persist($entity);
+        }
+        $this->em->flush();
+        $primaryState->setLastInboundMessageId($first->getId());
+        $this->em->persist($primaryState);
+        $this->em->flush();
+
+        $merger = static::getContainer()->get(\MauticPlugin\MauticInboxBundle\Application\WhatsAppConversationMerger::class);
+        $groups = $merger->duplicateGroups($asset);
+        self::assertCount(1, $groups);
+        self::assertTrue($groups[0]['safe']);
+        $result = $merger->merge($groups[0]['conversation_ids'], $groups[0]['canonical_recipient']);
+
+        self::assertSame($primary->getId(), $result['primary_conversation_id']);
+        self::assertSame(1, $result['messages']);
+        $survivor = $this->em->find(MetaConversation::class, $result['primary_conversation_id']);
+        self::assertSame('5531984326486', $survivor->getRecipient());
+        self::assertSame($contact->getId(), $survivor->getContact()?->getId());
+        self::assertSame(2, $this->em->getRepository(MetaMessage::class)->count(['conversation' => $survivor]));
+        self::assertSame(1, $this->em->getRepository(ConversationState::class)->count(['conversation' => $survivor]));
+        self::assertSame(1, $this->em->getRepository(MetaConversation::class)->count(['asset' => $asset, 'channel' => 'whatsapp']));
+    }
+
     public function testTimelinePaginationDoesNotDropMessagesWithSameTimestamp(): void
     {
         $conversation = $this->conversation();
