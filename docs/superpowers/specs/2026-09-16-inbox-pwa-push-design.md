@@ -197,6 +197,10 @@ quem revisa.
 - `500`, `503` e timeout reenfileiram, consumindo tentativa.
 - **Reentrega:** três tentativas, em 1, 5 e 15 minutos. Esgotadas, a entrega é descartada com
   log — a mensagem continua no inbox, que é a fonte da verdade; só o aviso se perde.
+- **Validade absoluta:** entrega mais velha que o próprio `TTL` é descartada, tenha ou não
+  consumido as três tentativas. Sem isso, um endpoint permanentemente limitado devolveria `429`
+  para sempre sem nunca esgotar tentativa, e a linha viveria na fila indefinidamente. Um aviso
+  que o próprio spec considera sem valor depois de uma hora não deve sobreviver a ela.
 - **Aposentadoria do aparelho:** dez falhas consecutivas sem nenhum sucesso viram `ativo = false`.
   O registro não é apagado, para que a tela de ajustes possa mostrar o que aconteceu e a pessoa
   reinscrever com um toque. **A `PushAudience` só devolve aparelhos ativos**, e a reinscrição
@@ -243,8 +247,8 @@ remontado, mais a asserção de que o `aud` acompanha a origem do endpoint e que
 de que o `429` não consome tentativa.
 
 **Funcional, em banco descartável.** As rotas de inscrição sob sessão, permissão e CSRF;
-isolamento entre usuários; manifest e service worker respondendo 200 sem sessão, com
-`Content-Type` correto.
+isolamento entre usuários; reinscrição reativando aparelho aposentado; manifest e service worker
+respondendo 200 sem sessão, com `Content-Type` correto.
 
 **JavaScript.** Handlers do service worker num escopo falso: push válido, payload corrompido,
 clique com e sem janela aberta, supressão com a conversa visível.
