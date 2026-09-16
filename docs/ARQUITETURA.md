@@ -53,7 +53,9 @@ As permissões atuais são por papel, não por ativo. A API de apresentação n�
 
 ## Interface e atualização
 
-`Controller/InboxController.php` atende rotas internas autenticadas declaradas em `Config/config.php`. `InboxQuery` monta a apresentação; `ConversationActions` aplica transições; `MessagePresentation` prepara anexos. Twig, CSS e JavaScript estão em `Resources/views` e `Assets`.
+`Controller/InboxController.php` atende rotas internas autenticadas declaradas em `Config/config.php`. `InboxQuery` monta a apresentação; `ConversationActions` aplica transições; `MessagePresentation` prepara anexos. Os componentes Svelte 5 ficam em `Frontend`, enquanto Twig fornece os dados iniciais e os pontos de montagem. O build do Vite gera um único bundle IIFE em `Assets/dist/inbox-app.js`, usado tanto pelo Inbox quanto pelo workspace de IA. Os estilos permanecem em `Assets/css`.
+
+O bundle registra os callbacks esperados pelo carregamento AJAX do Mautic, monta cada tela uma única vez e desmonta componentes cujo ponto de montagem foi removido. Assim, navegações internas não acumulam listeners, conexões SSE ou timers.
 
 O SSE sinaliza alterações; o navegador busca o conteúdo pela API interna. O stream dura aproximadamente 15 segundos, libera a sessão e usa heartbeats, com reconexão e fallback silencioso. Não é um servidor WebSocket dedicado: cada conexão de stream ocupa capacidade do servidor PHP enquanto está aberta. Dimensione workers e proxy conforme a quantidade de atendentes.
 

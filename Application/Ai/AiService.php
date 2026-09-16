@@ -22,6 +22,7 @@ final class AiService {
   return ['allowed'=>null===$reason,'reason'=>$reason];
  }
  public function allowed(ConversationState $state,array $agent): bool{return $this->availability($state,$agent)['allowed'];}
+ public function effectiveLimit(array $agent): int{return AiStore::effectiveLimit($this->store->config(),$agent);}
  public function assign(ConversationState $state,User $actor,string $key,int $version): void {
   $agent=$this->store->get('agent',$key);if(!$agent||!$this->allowed($state,$agent))throw new InboxException('mautic.inbox.ai.not_allowed',409);
   $health=$this->store->get('health','pi');if(empty($health['validated']))throw new InboxException('mautic.inbox.ai.validate_first',409);
@@ -30,7 +31,7 @@ final class AiService {
    $previous=$this->store->get('assignment',(string)$state->getId());
    if(($previous['transfers']??0)>=1&&($previous['agent']??$key)!==$key)throw new InboxException('mautic.inbox.ai.transfer_limit',409);
    $snapshot=($previous['agent']??null)===$key&&isset($previous['context'])?$previous['context']:$this->store->context($agent);
-   $this->store->put('assignment',(string)$state->getId(),['agent'=>$key,'name'=>$agent['name'],'actor'=>$actor->getId(),'nonce'=>bin2hex(random_bytes(16)),'status'=>'active','count'=>$previous['count']??0,'offtopic'=>$previous['offtopic']??0,'transfers'=>($previous['transfers']??0)+(!empty($previous['agent'])&&$previous['agent']!==$key?1:0),'context'=>$snapshot,'limit'=>0,'assigned_at'=>gmdate(DATE_ATOM)]);
+   $this->store->put('assignment',(string)$state->getId(),['agent'=>$key,'name'=>$agent['name'],'actor'=>$actor->getId(),'nonce'=>bin2hex(random_bytes(16)),'status'=>'active','count'=>$previous['count']??0,'offtopic'=>$previous['offtopic']??0,'transfers'=>($previous['transfers']??0)+(!empty($previous['agent'])&&$previous['agent']!==$key?1:0),'context'=>$snapshot,'limit'=>$this->effectiveLimit($agent),'assigned_at'=>gmdate(DATE_ATOM)]);
    $state->setAssignee(null)->setHumanTakeover(true)->setLifecycle('open')->setNeedsResponse(true)->setVersion($state->getVersion()+1);$this->em->persist($state);$this->em->persist((new EventLog())->setConversation($state->getConversation())->setActor($actor)->setEventType('ai_assigned')->setDetails(['agent'=>$agent['name']]));$this->em->flush();
   });
  }
@@ -39,7 +40,7 @@ final class AiService {
    $this->em->refresh($state);if($state->getVersion()!==$version)throw new InboxException('mautic.inbox.ai.conflict',409);
    $assignment=$this->store->get('assignment',(string)$state->getId());if(!$assignment)throw new InboxException('mautic.inbox.ai.not_assigned',409);$wasQueued=in_array($assignment['status']??'', ['queued','finishing'],true);
    $this->cancelPendingRuns((int)$state->getId());
-   $assignment['nonce']=bin2hex(random_bytes(16));$assignment['status']='active';$assignment['count']=0;$assignment['offtopic']=0;$assignment['limit']=0;$assignment['reset_at']=gmdate(DATE_ATOM);$assignment['reset_by']=$actor->getId();
+   $agent=$this->store->get('agent',$assignment['agent']??'');$assignment['nonce']=bin2hex(random_bytes(16));$assignment['status']='active';$assignment['count']=0;$assignment['offtopic']=0;$assignment['limit']=$this->effectiveLimit($agent);$assignment['reset_at']=gmdate(DATE_ATOM);$assignment['reset_by']=$actor->getId();
    unset($assignment['reason'],$assignment['finish_action'],$assignment['finish_reason']);
    $this->store->put('assignment',(string)$state->getId(),$assignment);
    $state->setAssignee(null)->setHumanTakeover(true)->setLifecycle('open')->setNeedsResponse($state->needsResponse()||$wasQueued)->setVersion($state->getVersion()+1);$this->em->persist($state);
@@ -70,7 +71,7 @@ final class AiService {
    $run=$this->store->get('run',$runKey);$job=$this->jobForRun($state,['key'=>$runKey]+$run);
    if(!$job||$job->getMessageLogId()||'completed'===$job->getStatus())throw new InboxException('mautic.inbox.ai.reply_already_sent',409);
    if(!in_array($job->getStatus(),['pending','retry','failed','blocked','cancelled'],true))throw new InboxException('mautic.inbox.ai.reply_busy',409);
-   $nonce=bin2hex(random_bytes(16));$assignment['nonce']=$nonce;$assignment['status']='queued';unset($assignment['reason'],$assignment['finish_action'],$assignment['finish_reason']);$this->store->put('assignment',(string)$state->getId(),$assignment);
+   $nonce=bin2hex(random_bytes(16));$limit=$this->effectiveLimit($agent);$limitReached=$limit>0&&(int)($assignment['count']??0)>=$limit;$assignment['nonce']=$nonce;$assignment['limit']=$limit;$assignment['status']=$limitReached?'finishing':'queued';unset($assignment['reason'],$assignment['finish_action'],$assignment['finish_reason']);if($limitReached){$assignment['finish_action']='human';$assignment['finish_reason']='limit';}$this->store->put('assignment',(string)$state->getId(),$assignment);
    $payload=$job->getPayload();$payload['_ai_nonce']=$nonce;$job->setPayload($payload)->setStatus('pending')->setAttempts(0)->setAvailableAt(new \DateTimeImmutable())->setLockedAt(null)->setCompletedAt(null)->setLastError(null);
    $run['status']='queued';$run['nonce']=$nonce;$run['retried_at']=gmdate(DATE_ATOM);$run['retried_by']=$actor->getId();unset($run['reason'],$run['error'],$run['failed_at']);$this->store->put('run',$runKey,$run);
    $state->setLifecycle('open')->setVersion($state->getVersion()+1);$this->em->persist($job);$this->em->persist($state);$this->em->persist((new EventLog())->setConversation($state->getConversation())->setActor($actor)->setEventType('ai_reply_retried')->setDetails(['run_key'=>$runKey,'job_id'=>$job->getId()]));$this->em->flush();return $job;
@@ -92,5 +93,5 @@ final class AiService {
  private function cancelPendingRuns(int $stateId): void {
   foreach($this->store->all('run')as$run){if((int)($run['state']??0)!==$stateId||in_array($run['status']??'', ['sent','completed','cancelled','forced'],true))continue;$key=(string)$run['key'];unset($run['key'],$run['revision']);$run['status']='cancelled';$run['cancelled_at']=gmdate(DATE_ATOM);$this->store->put('run',$key,$run);}
  }
- public function saveAgent(array $p): void {$key=(string)($p['key']??'');if(!preg_match('/^[a-z0-9_-]{1,80}$/',$key))$key=bin2hex(random_bytes(8));$name=trim((string)($p['name']??''));if(!$name||mb_strlen($name)>100)throw new InboxException('mautic.inbox.ai.document_invalid');$this->store->put('agent',$key,['name'=>$name,'profile'=>in_array($p['profile']??'', ['macro-support','macro-sports'],true)?$p['profile']:'macro-support','enabled'=>!empty($p['enabled']),'limit'=>0,'documents'=>array_values(array_filter((array)($p['documents']??[]),'is_string')),'permissions'=>array_values(array_filter((array)($p['permissions']??[]),'is_string'))],(int)($p['revision']??0));}
+ public function saveAgent(array $p): void {$key=(string)($p['key']??'');if(!preg_match('/^[a-z0-9_-]{1,80}$/',$key))$key=bin2hex(random_bytes(8));$name=trim((string)($p['name']??''));if(!$name||mb_strlen($name)>100)throw new InboxException('mautic.inbox.ai.document_invalid');$this->store->put('agent',$key,['name'=>$name,'profile'=>in_array($p['profile']??'', ['macro-support','macro-sports'],true)?$p['profile']:'macro-support','enabled'=>!empty($p['enabled']),'limit'=>AiStore::normalizeLimit($p['limit']??0),'limit_configured'=>true,'documents'=>array_values(array_filter((array)($p['documents']??[]),'is_string')),'permissions'=>array_values(array_filter((array)($p['permissions']??[]),'is_string'))],(int)($p['revision']??0));}
 }

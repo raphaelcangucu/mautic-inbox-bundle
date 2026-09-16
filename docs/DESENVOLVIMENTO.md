@@ -9,13 +9,13 @@ ddev exec php bin/phpunit -c app/phpunit.xml.dist plugins/MauticInboxBundle/Test
 ddev exec php bin/console lint:twig plugins/MauticInboxBundle/Resources/views
 ```
 
-Os testes JavaScript dependem de Node.js e `linkedom`. É possível instalar a dependência em um diretório temporário, sem alterar as dependências de produção:
+O frontend Svelte usa as dependências de desenvolvimento declaradas em `package.json`. Instale a árvore reproduzível do lockfile e execute as verificações estáticas, o build e os testes de comportamento:
 
 ```bash
-npm install --prefix /tmp/mautic-inbox-js-tests linkedom
-NODE_PATH=/tmp/mautic-inbox-js-tests/node_modules node plugins/MauticInboxBundle/Tests/JavaScript/message-format.test.cjs
-NODE_PATH=/tmp/mautic-inbox-js-tests/node_modules node plugins/MauticInboxBundle/Tests/JavaScript/notifications.test.cjs
-node --check plugins/MauticInboxBundle/Assets/js/inbox.js
+npm --prefix plugins/MauticInboxBundle ci
+npm --prefix plugins/MauticInboxBundle run check
+npm --prefix plugins/MauticInboxBundle run build
+npm --prefix plugins/MauticInboxBundle test
 ```
 
 ## Validação herdada da implementação
@@ -31,6 +31,6 @@ Vídeos têm controles e fallback implementados, mas não se afirma validação 
 
 Código extraído de [mautic@1664d19a406ef64f026700f617cb69f6d9fc19e2](https://github.com/raphaelcangucu/mautic/commit/1664d19a406ef64f026700f617cb69f6d9fc19e2), diretório `plugins/MauticInboxBundle`, tag `inbox-v1.0.0`.
 
-O repositório independente passa a usar tags `vX.Y.Z`. A primeira é `v1.0.1`, com o mesmo código de comportamento, documentação ampliada, nome Composer próprio e requisito correto do Meta Bundle. A referência compatível do conector é [v0.12.0](https://github.com/raphaelcangucu/mautic-meta-bundle/tree/v0.12.0).
+O repositório independente usa tags `vX.Y.Z`. A primeira foi `v1.0.1`, com o mesmo código de comportamento, documentação ampliada e nome Composer próprio. A linha `v1.1.x` requer o Meta Bundle [v0.14.0](https://github.com/raphaelcangucu/mautic-meta-bundle/tree/v0.14.0) ou outra versão compatível com `^0.14.0`.
 
 Mudanças no contrato `InboxIntegrationInterface` exigem revisão coordenada dos dois plugins. Antes de publicar outra versão, execute os testes relevantes na instalação Mautic e confira a compatibilidade declarada no Composer. Credenciais e dados reais nunca devem entrar no repositório.

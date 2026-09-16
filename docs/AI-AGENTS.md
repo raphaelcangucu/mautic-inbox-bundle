@@ -41,9 +41,9 @@ CMS: GET em `/api/v1/blog`, artigo por slug, `/api/v1/market-predictions/search`
 
 ## Continuidade e falhas
 
-Não existe limite de respostas por conversa. O contador exibido é somente telemetria e nunca pausa, transfere ou encerra o agente. O botão de reinício gera uma nova sessão segura, zera contador e reincidência fora do escopo e invalida gerações ou envios antigos. Permite-se uma troca entre agentes por sessão para evitar alternância acidental.
+O limite de respostas é configurável em dois níveis: global e por agente. `0` significa ilimitado e é o padrão. Se ambos forem positivos, o menor valor limita a conversa. A verificação acontece antes de chamar o modelo; ao atingir o teto, a última resposta permitida segue normalmente e a atribuição pausa para a equipe continuar. Transferir mantém a contagem. O botão de reinício gera uma nova sessão segura, zera contador e reincidência fora do escopo e invalida gerações ou envios antigos. Permite-se uma troca entre agentes por sessão para evitar alternância acidental.
 
-Cada geração continua limitada a três turnos de modelo e 65 segundos; a saída tem até 900 caracteres. Não há repetição automática de uma geração ou envio de IA que falhou. A ausência de teto de mensagens não elimina custo: documentos, histórico e consultas também consomem tokens.
+Cada geração continua limitada a três turnos de modelo e 65 segundos; a saída tem até 900 caracteres. Não há repetição automática de uma geração ou envio de IA que falhou. Mesmo com `0`, documentos, histórico e consultas consomem tokens.
 
 A retomada humana invalida a geração e a resposta ainda na fila. Antes do envio, o conector verifica novamente atribuição, permissões e a mensagem mais recente sob o mesmo bloqueio da retomada humana. Falhas pausam o agente e devolvem a necessidade de resposta à equipe. As restrições de janela do canal e consentimento continuam aplicáveis; IA não dispara templates automaticamente fora da janela. Instagram usa resposta privada ao comentário; Facebook usa resposta pública.
 
@@ -51,4 +51,4 @@ Desativar globalmente ou por agente impede os próximos envios. Nenhuma configur
 
 ## Validação
 
-Testes funcionais verificam publicação de documentos/conflito de edição, interseção de permissões, contador sem teto, reinício seguro, deduplicação, retomada humana, falha de entrega, consulta ao funil e proteção de comentários públicos. Testes Node verificam filtragem dos dados públicos do CMS. A validação real do Pi/CMS é isolada e não envia mensagens a clientes.
+Testes funcionais verificam publicação de documentos/conflito de edição, interseção de permissões, limite efetivo e pausa segura, reinício, deduplicação, retomada humana, falha de entrega, consulta ao funil e proteção de comentários públicos. Testes Node verificam a tela administrativa e a filtragem dos dados públicos do CMS. A validação real do Pi/CMS é isolada e não envia mensagens a clientes.

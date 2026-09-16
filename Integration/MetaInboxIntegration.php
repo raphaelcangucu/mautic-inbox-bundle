@@ -140,7 +140,7 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
         if (!$state) throw new \DomainException('Automation paused: conversation missing.');
         return $this->withLocks($this->lockKeys($state->getConversation()->getAsset(),$state->getConversation()->getRecipient()),function()use($state,$job,$p,$operation){
             $this->entityManager->refresh($state);$store=new \MauticPlugin\MauticInboxBundle\Application\Ai\AiStore($this->entityManager);
-            $a=$store->get('assignment',(string)$state->getId());$g=$store->config();$agent=$store->get('agent',$a['agent']??'');
+            $a=$store->get('assignment',(string)$state->getId());$g=$store->config();$agent=$store->get('agent',$a['agent']??'');$limit=\MauticPlugin\MauticInboxBundle\Application\Ai\AiStore::effectiveLimit($g,$agent);$a['limit']=$limit;
             $permission=$state->getConversation()->getAsset()->getId().':'.(str_starts_with($state->getConversation()->getRecipient(),'comment:')?'comment':'message');
             // A newer inbound message does not invalidate a reply that was already
             // generated. The reply keeps its place in the queue and the newer
@@ -149,8 +149,9 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
             $result=$operation();$a['status']=($a['status']==='finishing')?'paused':'active';$a['reason']=$a['status']==='paused'?($a['finish_reason']??'human'):null;
             $runKey=$state->getId().':'.(int)($p['_ai_inbound']??0);$run=$store->get('run',$runKey);
             if($run){$run['status']='sent';$run['completed_at']=gmdate(DATE_ATOM);$store->put('run',$runKey,$run);}
+            if($a['status']==='active'&&$limit>0&&(int)($a['count']??0)>=$limit){$a['status']='paused';$a['reason']='limit';}
             $newerInbound=(int)$state->getLastInboundMessageId()!==(int)($p['_ai_inbound']??0);
-            if($newerInbound){$a['status']='active';$a['reason']=null;unset($a['finish_action'],$a['finish_reason']);$state->setLifecycle('open')->setNeedsResponse(true);}
+            if($newerInbound){if($limit>0&&(int)($a['count']??0)>=$limit){$a['status']='paused';$a['reason']='limit';}else{$a['status']='active';$a['reason']=null;}unset($a['finish_action'],$a['finish_reason']);$state->setLifecycle('open')->setNeedsResponse(true);}
             elseif($a['status']==='paused') {if(($a['finish_action']??'')==='close')$state->setLifecycle('resolved')->setNeedsResponse(false);else $state->setNeedsResponse(true);}else{$state->setNeedsResponse(false);}
             $store->put('assignment',(string)$state->getId(),$a);$state->setVersion($state->getVersion()+1);$this->entityManager->persist($state);$this->entityManager->flush();return $result;
         });
