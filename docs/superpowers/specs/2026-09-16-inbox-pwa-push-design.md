@@ -221,6 +221,11 @@ quem revisa.
   inscrições existentes.
 - O manifest e o service worker são públicos de propósito, para que a revalidação em segundo
   plano não esbarre em redirecionamento de login. Nenhum dos dois expõe dado algum.
+- **A instância está atrás da Cloudflare.** O `/inbox-sw.js` precisa responder com
+  `Cache-Control: no-cache` explícito. Um service worker retido na borda é a falha clássica
+  desta arquitetura: o navegador pede a versão nova, a Cloudflare devolve a antiga, e a equipe
+  fica presa numa versão que ninguém consegue atualizar — sem erro visível em lugar nenhum.
+  O mesmo vale para o manifest. O bundle versionado por query string pode ser cacheado à vontade.
 - Nome e texto do cliente trafegam cifrados; o serviço de push transporta sem conseguir ler.
 
 ## Testes
@@ -257,9 +262,66 @@ clique com e sem janela aberta, supressão com a conversa visível.
 
 A regra do `AGENTS.md` vale: nada de teste com banco contra instalação implantada.
 
+## Teste de ponta a ponta
+
+Os testes acima provam as peças. Nenhum deles prova a cadeia: manifest válido, service worker
+registrado no escopo certo, inscrição gravada, push assinado aceito pelo serviço, notificação
+exibida no aparelho e toque abrindo a conversa. Essa cadeia só quebra em integração, e é onde
+Web Push costuma falhar.
+
+### O que precisa ser provado
+
+| # | Asserção |
+|---|---|
+| 1 | O manifest é servido, é válido e o navegador reconhece o app como instalável |
+| 2 | O service worker registra no escopo `/s/`, ativa e sobrevive a recarga |
+| 3 | A inscrição grava um `PushDevice` com `p256dh` e `auth` que decifram de volta |
+| 4 | Uma mensagem recebida produz notificação no aparelho, com o app fechado |
+| 5 | O toque abre a conversa certa e reaproveita a janela existente |
+| 6 | Com a conversa visível, a notificação é suprimida e o SSE atualiza a tela |
+| 7 | Cancelar a inscrição e aposentar o aparelho interrompem a entrega |
+
+### Como o cenário é disparado
+
+Em instância de teste, com banco descartável — **nunca em produção**, pela regra do `AGENTS.md`.
+O gatilho não depende da Meta: um `POST` no webhook com assinatura válida, montado pelo próprio
+teste, percorre o caminho real de ponta a ponta. `mautic:inbox:push:test --user=X` cobre o
+caminho de push isolado quando se quer separar um defeito de entrega de um defeito de fluxo.
+
+### Superfícies
+
+**Chrome de desktop — automatizável, é o portão de CI.** Cobre 1, 2, 3, 5, 6 e 7 e **entrega
+real**, porque o Chrome de desktop usa o mesmo FCM do celular. Roda em Chrome com interface, não
+em `--headless` antigo, que não registra push; a permissão de notificação é concedida por CDP
+(`Browser.grantPermissions`) em vez de clique manual. É este o conjunto que precisa passar antes
+de qualquer release.
+
+**Android, emulador com imagem `google_apis_playstore` — semiautomatizável.** É a única imagem
+que traz Play Services e, portanto, a única que registra no FCM; imagens `google_apis` puras ou
+AOSP falham na inscrição, e a falha parece bug do código. Cobre o que o desktop não prova:
+instalação de verdade pelo banner, entrega **com o Chrome fechado**, e o comportamento do
+`notificationclick` no Android. Dirigível por `adb` para abrir URL, conceder permissão e ler a
+sombra de notificações.
+
+**iPhone — manual, sem alternativa.** O Simulador do iOS não implementa Web Push; não existe
+caminho automatizado. O iPhone entra como checklist manual de release: instalar pela tela de
+início no Safari, permitir no toque explícito, fechar o app, receber, tocar e cair na conversa.
+Quatro itens, feitos à mão, uma vez por release.
+
+### Critério de aprovação
+
+As sete asserções verdes no Chrome de desktop e no emulador Android, e o checklist do iPhone
+assinado. Falha em qualquer superfície reprova a release — inclusive o iPhone, que é metade da
+equipe e a plataforma com mais restrições.
+
 ## Entrega
 
-- HTTPS já existe, requisito absoluto para service worker.
+- HTTPS já existe e foi verificado: certificado válido da Google Trust Services para
+  `on-forge.com`, o que satisfaz o contexto seguro que o service worker exige.
+- O `try_files` do nginx já encaminha caminho desconhecido ao front controller, então as rotas
+  públicas na raiz funcionam sem tocar na configuração do servidor. Verificado.
+- O PHP-FPM que serve o site é o 8.4. O cron mistura `php` e `php8.4`; vale uniformizar antes,
+  para que o worker e a web não rodem em versões diferentes.
 - Release nova em `releases/`, com troca do symlink `current`.
 - Bundle e service worker compilados no desenvolvimento e versionados no plugin.
 - Ícones de 192px, 512px e *maskable* de verdade, senão o Android recorta sobre o conteúdo.
