@@ -332,14 +332,18 @@ equipe e a plataforma com mais restrições.
 
 O trabalho é coeso, mas grande para um plano só. A ordem que isola o risco:
 
-1. `WebPushCrypto` e `VapidKeys`, contra os vetores da RFC. É a parte mais arriscada e a
-   única testável sozinha, sem banco, sem rota e sem navegador.
-2. `PushDevice`, `PushController` e a inscrição no frontend. O portão aqui é a ida e volta da
-   inscrição — registro gravado com `p256dh` e `auth` válidos, e cancelamento apagando o
-   registro certo. Ainda não há envio, então `push:test` não serve de verificação nesta fase.
-3. `PushAudience`, `PushPayload`, `PushDispatcher` e a fila de reentrega. É aqui que
-   `mautic:inbox:push:test` passa a fechar o ciclo de ponta a ponta.
-4. Shell, navegação inferior, service worker e guia de instalação.
+1. `Ec`, `Hkdf`, `WebPushCrypto` e `VapidKeys`, contra os vetores da RFC 8291. É a parte mais
+   arriscada e a única testável inteiramente sozinha: sem banco, sem rota, sem navegador e sem
+   nenhuma dependência do Mautic.
+2. `PushDevice`, `PushController`, **um service worker mínimo**, a inscrição na tela de ajustes
+   do `/s/inbox` que já existe, o envio síncrono e o `mautic:inbox:push:test`. O service worker
+   entra aqui, e não na fase 4, por uma razão dura: sem ele não existe inscrição, e sem
+   inscrição nenhuma fase seguinte tem o que verificar. Portão: uma notificação de teste chega
+   num navegador real. É a primeira fatia vertical que funciona de ponta a ponta.
+3. `PushAudience`, `PushPayload`, o gancho no `persistInbound` com despacho em `kernel.terminate`
+   e a fila de reentrega. Portão: uma mensagem recebida de verdade notifica a pessoa certa.
+4. Shell instalável, navegação inferior, guia de instalação, deep link e supressão. Portão: a
+   matriz de ponta a ponta nas três superfícies.
 
 ## Pendências conhecidas, anteriores a este trabalho
 
