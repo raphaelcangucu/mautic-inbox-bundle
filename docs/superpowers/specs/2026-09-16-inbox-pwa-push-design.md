@@ -74,13 +74,13 @@ duplicar a interface nem criar um segundo caminho de autenticação para o Mauti
 
 | Unidade | Papel |
 |---|---|
-| `Entity/PushDevice` | Um registro por aparelho: usuário, endpoint, `p256dh`, `auth`, user agent, última entrega, falhas |
+| `Entity/PushDevice` | Um registro por aparelho: usuário, endpoint, `p256dh`, `auth`, user agent, última entrega, falhas consecutivas, ativo |
 | `Entity/PushDelivery` | Fila de reentrega: aparelho, payload, tentativas, próxima tentativa |
 | `Application/Push/PushAudience` | A regra de quem recebe, isolada e testável sem banco |
 | `Application/Push/PushPayload` | Monta e trunca o texto claro em 3993 octetos (ver *Orçamento de tamanho*) |
 | `Application/Push/PushDispatcher` | Envia, classifica o erro, decide entre apagar, reenfileirar e descartar |
 | `Application/Push/WebPushCrypto` | VAPID e RFC 8291 sobre `ext-openssl` |
-| `Application/Push/VapidKeys` | Lê e grava o par, com a privada criptografada |
+| `Application/Push/VapidKeys` | Lê e grava o par: privada em PEM criptografado, pública em base64url cru |
 | `Controller/PushController` | Inscrição, cancelamento e chave pública, sob sessão, permissão e CSRF |
 | `Controller/PwaShellController` | `/s/inbox/app`, `/s/inbox/app/conversations/{id}`, `/s/inbox/app/ai` |
 | `Controller/PwaAssetController` | `/inbox-manifest.webmanifest` e `/inbox-sw.js`, públicos |
@@ -123,8 +123,11 @@ resolver esta parte, o resto da seção não roda:
   `openssl_pkey_get_details()['ec']['x'|'y']`, e **cada coordenada precisa ser preenchida
   com zeros à esquerda até 32 octetos** — a mesma armadilha do byte inicial zero que já
   vale para `R` e `S`, e que aqui produz erro silencioso em vez de falha visível.
-- **Releitura.** A `VapidKeys` guarda o escalar privado; recarregá-lo exige reconstruir um
-  `ECPrivateKey` DER antes de entregar ao OpenSSL.
+- **Releitura.** A `VapidKeys` guarda a chave privada em **PEM**, criptografado, e não o
+  escalar cru. Isso dispensa reconstruir um `ECPrivateKey` DER e evita a mesma armadilha de
+  preenchimento que ela traria — a RFC 5915 exige o escalar em exatamente 32 octetos, e
+  `openssl_pkey_get_details()['ec']['d']` devolve menos quando há zero à esquerda. Só o lado
+  público precisa mesmo da forma crua, para o `k=` e para o `key_info`.
 
 ### VAPID (RFC 8292) — identidade do servidor
 
@@ -148,7 +151,7 @@ implementações ingênuas erram. Vai no cabeçalho
 6. `CEK = HKDF-Expand(PRK, "Content-Encoding: aes128gcm" || 0x00, 16)`.
 7. `NONCE = HKDF-Expand(PRK, "Content-Encoding: nonce" || 0x00, 12)`.
 8. Registro: payload, delimitador `0x02`, enchimento; AES-128-GCM.
-9. Corpo: `salt(16) || rs(4, big-endian) || tamanho_da_chave(1) || chave_efêmera(65) || cifra`.
+9. Corpo: `salt(16) || rs(4, big-endian, valor 4096) || tamanho_da_chave(1) || chave_efêmera(65) || cifra`.
 
 Cabeçalhos: `Content-Encoding: aes128gcm`, `Content-Type: application/octet-stream`,
 `TTL: 3600` e `Urgency: high`.
@@ -165,10 +168,11 @@ Com o enquadramento do item 9, o custo fixo é de 103 octetos: 86 de cabeçalho 
 GCM. O teto do texto claro é portanto **3993 octetos**, e é esse o número que a `PushPayload`
 aplica. Truncar em 4096 gera corpos de até 4199 octetos e devolve `413` do serviço de push.
 
-**Verificação.** A RFC 8291, seção 5, publica vetor de teste com entrada e saída
-conhecidas. `WebPushCrypto` aceita `salt` e chave efêmera injetados exatamente para que
-o teste reproduza o vetor byte a byte. A implementação passa ou não passa — não fica no
-julgamento de quem revisa.
+### Verificação
+
+A RFC 8291, seção 5, publica vetor de teste com entrada e saída conhecidas. A `WebPushCrypto` aceita `salt` e chave efêmera injetados exatamente para que o teste
+reproduza o vetor byte a byte. A implementação passa ou não passa — não fica no julgamento de
+quem revisa.
 
 ## Fluxo de uma mensagem
 
@@ -189,12 +193,14 @@ julgamento de quem revisa.
 - `404` e `410` apagam o aparelho: a inscrição morreu com a desinstalação.
 - `413` é defeito nosso, não do aparelho. A entrega é descartada e registrada como erro —
   reenfileirar um corpo grande demais só repete a falha.
-- `429` respeita o `Retry-After`; `500`, `503` e timeout reenfileiram.
+- `429` respeita o `Retry-After` e **não consome tentativa**: é instrução do serviço, não falha nossa.
+- `500`, `503` e timeout reenfileiram, consumindo tentativa.
 - **Reentrega:** três tentativas, em 1, 5 e 15 minutos. Esgotadas, a entrega é descartada com
   log — a mensagem continua no inbox, que é a fonte da verdade; só o aviso se perde.
-- **Aposentadoria do aparelho:** dez falhas consecutivas sem nenhum sucesso desativam o
-  registro. Ele não é apagado, para que a tela de ajustes possa mostrar o que aconteceu e a
-  pessoa reinscrever com um toque.
+- **Aposentadoria do aparelho:** dez falhas consecutivas sem nenhum sucesso viram `ativo = false`.
+  O registro não é apagado, para que a tela de ajustes possa mostrar o que aconteceu e a pessoa
+  reinscrever com um toque. **A `PushAudience` só devolve aparelhos ativos**, e a reinscrição
+  reativa o registro — sem isso, um aparelho aposentado seguiria recebendo envio para sempre.
 - A fila de reentrega é drenada por `mautic:inbox:wake`, que já roda a cada minuto. Nenhum cron novo.
 - Sessão expirada: o Mautic guarda o destino e devolve à conversa certa depois do login.
 - Permissão negada é definitiva; a tela de ajustes mostra o estado real e não insiste.
@@ -215,8 +221,9 @@ julgamento de quem revisa.
 
 ## Testes
 
-**Sem banco.** `PushAudience` nas cinco situações: dono, fila sem dono, conversa alheia,
-usuário sem permissão, usuário desativado. `PushPayload` truncando em 4 KB sem partir emoji
+**Sem banco.** `PushAudience` nas seis situações: dono, fila sem dono, conversa alheia,
+usuário sem permissão, usuário desativado, aparelho aposentado. `PushPayload` truncando no teto
+de 3993 octetos sem partir emoji
 nem caractere acentuado, e montando título para contato sem nome e corpo para mensagem só
 com mídia. O caso de borda que trava a regressão: um texto claro de 3993 octetos passa e um de
 3994 é truncado. Curva de reentrega — 1, 5, 15 e descarte — e aposentadoria na décima falha.
@@ -232,7 +239,8 @@ remontado, mais a asserção de que o `aud` acompanha a origem do endpoint e que
 `mailto:` ou `https:` é recusado antes do envio.
 
 **`PushDispatcher` com cliente falso.** Cada resposta vira uma decisão verificável:
-`201`, `404`, `410`, `413`, `429` com `Retry-After`, `500`, timeout.
+`201`, `202`, `404`, `410`, `413`, `429` com `Retry-After`, `500`, timeout — mais a asserção
+de que o `429` não consome tentativa.
 
 **Funcional, em banco descartável.** As rotas de inscrição sob sessão, permissão e CSRF;
 isolamento entre usuários; manifest e service worker respondendo 200 sem sessão, com
@@ -260,8 +268,11 @@ O trabalho é coeso, mas grande para um plano só. A ordem que isola o risco:
 
 1. `WebPushCrypto` e `VapidKeys`, contra os vetores da RFC. É a parte mais arriscada e a
    única testável sozinha, sem banco, sem rota e sem navegador.
-2. `PushDevice`, `PushController` e a inscrição no frontend. Verificável com `push:test`.
-3. `PushAudience`, `PushPayload`, `PushDispatcher` e a fila de reentrega.
+2. `PushDevice`, `PushController` e a inscrição no frontend. O portão aqui é a ida e volta da
+   inscrição — registro gravado com `p256dh` e `auth` válidos, e cancelamento apagando o
+   registro certo. Ainda não há envio, então `push:test` não serve de verificação nesta fase.
+3. `PushAudience`, `PushPayload`, `PushDispatcher` e a fila de reentrega. É aqui que
+   `mautic:inbox:push:test` passa a fechar o ciclo de ponta a ponta.
 4. Shell, navegação inferior, service worker e guia de instalação.
 
 ## Pendências conhecidas, anteriores a este trabalho
