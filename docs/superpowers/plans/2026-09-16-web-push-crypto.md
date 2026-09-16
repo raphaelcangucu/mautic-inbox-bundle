@@ -67,7 +67,9 @@ TARGET="${1:-plugins/MauticInboxBundle/Tests/Unit}"
 
 # Guarda real: pergunta ao servidor para onde current aponta e recusa se for o mesmo lugar.
 # Comparar com um literal fixo nao protegeria nada, porque BENCH tambem e literal.
-CURRENT="$(ssh "$HOST" 'readlink <release em producao>')"
+# readlink -f canonicaliza: um symlink relativo faria a comparacao nunca casar, e a guarda
+# passaria a mentir em silencio — que e exatamente o que ela existe para evitar.
+CURRENT="$(ssh "$HOST" 'readlink -f <release em producao>')"
 if [[ "$BENCH" == "$CURRENT" ]]; then
   echo "RECUSADO: o banco de provas e a release que atende producao." >&2
   exit 1
@@ -86,10 +88,12 @@ ssh "$HOST" "cd $BENCH && php8.4 bin/phpunit -c app/phpunit.xml.dist $TARGET --t
 
 ```bash
 chmod +x bin/dev-test.sh
-ssh $INBOX_TEST_HOST 'ls <release de provas>/bin/phpunit'
+ssh $INBOX_TEST_HOST 'ls <release de provas>/bin/phpunit && php8.4 -v'
 ```
 
-Esperado: o caminho existe. Se não existir, pare e reporte — sem PHPUnit no banco de provas nenhuma tarefa seguinte tem como fechar.
+Esperado: o caminho existe e o PHP 8.4 responde. Confira os dois aqui: toda tarefa seguinte
+depende do `php8.4` pelo nome, e descobrir que ele não está no PATH durante a tarefa 1 produz uma
+falha confusa no lugar de uma falha clara.
 
 - [ ] **Passo 3: Commit**
 
@@ -231,17 +235,6 @@ public function testARawPointBecomesAKeyOpenSslAccepts(): void
     self::assertSame('prime256v1', openssl_pkey_get_details($key)['ec']['curve_name']);
 }
 
-public function testTheWrappingRoundTripsBackToTheSamePoint(): void
-{
-    // Carregar sem erro nao prova que o prefixo DER esta certo: um prefixo errado que ainda
-    // assim parseia passaria no teste acima. A ida e volta e o que fecha.
-    $point = RfcVectors::decode(RfcVectors::UA_PUBLIC);
-
-    $restored = Ec::pointFromKey(openssl_pkey_get_public(Ec::publicPemFromPoint($point)));
-
-    self::assertSame($point, $restored);
-}
-
 public function testAPointThatIsNotUncompressedIsRejected(): void
 {
     $this->expectException(\InvalidArgumentException::class);
@@ -336,6 +329,18 @@ public function testCoordinatesShorterThanThirtyTwoOctetsArePaddedOnTheLeft(): v
     self::assertSame(65, strlen($point));
     self::assertSame("\x04\x00\x11", substr($point, 0, 3));
 }
+
+public function testTheSpkiWrappingRoundTripsBackToTheSamePoint(): void
+{
+    // Fecha o outro lado da tarefa 2: carregar sem erro nao prova que o prefixo DER esta certo,
+    // porque um prefixo errado que ainda assim parseia passaria naquele teste. A ida e volta e
+    // o que fecha, e so da para escrever aqui, onde pointFromKey existe.
+    $point = RfcVectors::decode(RfcVectors::UA_PUBLIC);
+
+    $restored = Ec::pointFromKey(openssl_pkey_get_public(Ec::publicPemFromPoint($point)));
+
+    self::assertSame($point, $restored);
+}
 ```
 
 - [ ] **Passo 2: Rodar e ver falhar**
@@ -372,7 +377,9 @@ Esperado: FAIL com "Call to undefined method".
 
 - [ ] **Passo 4: Rodar e ver passar**
 
-Esperado: PASS. O primeiro teste é a prova real — se o preenchimento estiver errado, o valor não bate com o da RFC.
+Esperado: PASS nos três testes. O primeiro é a prova real do preenchimento — se estiver errado,
+o valor não bate com o publicado na RFC. O terceiro fecha o embrulho DER da tarefa 2, que só
+podia ser verificado aqui, depois que `pointFromKey` passou a existir.
 
 - [ ] **Passo 5: Commit**
 
