@@ -20,6 +20,12 @@
 
 **A armadilha central.** O PHP não aceita ponto de curva elíptica na forma crua em direção nenhuma. Tudo que entra precisa ser embrulhado em DER; tudo que sai precisa ser desembrulhado e preenchido com zeros à esquerda até 32 octetos. Preenchimento esquecido não dá erro — dá resultado errado em silêncio, e só aparece quando o navegador não consegue decifrar a notificação. Três das oito tarefas existem por causa disso.
 
+**Como ler os blocos de teste.** Da tarefa 2 em diante os testes aparecem como métodos soltos,
+para não repetir cabeçalho em dez tarefas. Cada um entra numa classe `final` que estende
+`PHPUnit\Framework\TestCase`, no namespace
+`MauticPlugin\MauticInboxBundle\Tests\Unit\Application\Push`, com os `use` correspondentes —
+o mesmo formato de `Tests/Unit/Entity/CommentContextTest.php`, que já existe no repositório.
+
 **Regra de banco de dados.** Nenhuma tarefa desta fase toca banco. Se você se pegar precisando de banco, parou de seguir o plano.
 
 ---
@@ -59,8 +65,11 @@ HOST="$INBOX_TEST_HOST"
 BENCH="<release de provas>"
 TARGET="${1:-plugins/MauticInboxBundle/Tests/Unit}"
 
-if [[ "$BENCH" == *"tech-provider-20260914"* || "$BENCH" == *"/current"* ]]; then
-  echo "RECUSADO: o banco de provas aponta para producao." >&2
+# Guarda real: pergunta ao servidor para onde current aponta e recusa se for o mesmo lugar.
+# Comparar com um literal fixo nao protegeria nada, porque BENCH tambem e literal.
+CURRENT="$(ssh "$HOST" 'readlink <release em producao>')"
+if [[ "$BENCH" == "$CURRENT" ]]; then
+  echo "RECUSADO: o banco de provas e a release que atende producao." >&2
   exit 1
 fi
 
@@ -68,7 +77,9 @@ rsync -az --delete \
   --exclude='.git/' --exclude='node_modules/' --exclude='docs/' \
   ./ "$HOST:$BENCH/plugins/MauticInboxBundle/"
 
-ssh "$HOST" "cd $BENCH && php bin/phpunit -c app/phpunit.xml.dist $TARGET --testdox"
+# php8.4 explicito: e o que o PHP-FPM do site usa. O `php` do PATH e 8.5, e divergencia de
+# versao entre o teste e a producao e exatamente o tipo de surpresa que nao queremos aqui.
+ssh "$HOST" "cd $BENCH && php8.4 bin/phpunit -c app/phpunit.xml.dist $TARGET --testdox"
 ```
 
 - [ ] **Passo 2: Torná-lo executável e confirmar que o banco de provas responde**
@@ -218,6 +229,17 @@ public function testARawPointBecomesAKeyOpenSslAccepts(): void
 
     self::assertNotFalse($key, 'o ponto cru precisa virar chave publica carregavel');
     self::assertSame('prime256v1', openssl_pkey_get_details($key)['ec']['curve_name']);
+}
+
+public function testTheWrappingRoundTripsBackToTheSamePoint(): void
+{
+    // Carregar sem erro nao prova que o prefixo DER esta certo: um prefixo errado que ainda
+    // assim parseia passaria no teste acima. A ida e volta e o que fecha.
+    $point = RfcVectors::decode(RfcVectors::UA_PUBLIC);
+
+    $restored = Ec::pointFromKey(openssl_pkey_get_public(Ec::publicPemFromPoint($point)));
+
+    self::assertSame($point, $restored);
 }
 
 public function testAPointThatIsNotUncompressedIsRejected(): void
@@ -680,7 +702,14 @@ public function testAPlaintextOverTheCeilingIsRefused(): void
         }
 
         $salt ??= random_bytes(16);
-        $serverPrivatePem ??= VapidKeys::generate()->privatePem();
+        if (16 !== strlen($salt)) {
+            throw new \InvalidArgumentException('O salt do aes128gcm tem exatamente 16 octetos.');
+        }
+
+        // Par efemero, gerado por mensagem. NAO e o par VAPID: aquele identifica o servidor e
+        // vive para sempre; este existe para cifrar uma notificacao e e descartado. Sao a mesma
+        // curva, o que torna a confusao facil e cara.
+        $serverPrivatePem ??= self::ephemeralPem();
 
         $derived = $this->derive($userAgentPoint, $authSecret, $serverPrivatePem, $salt);
 
@@ -698,6 +727,16 @@ public function testAPlaintextOverTheCeilingIsRefused(): void
         }
 
         return $salt.pack('N', self::RECORD_SIZE).chr(65).$derived['serverPoint'].$cipher.$tag;
+    }
+
+    private static function ephemeralPem(): string
+    {
+        $key = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+        if (false === $key || !openssl_pkey_export($key, $pem)) {
+            throw new \RuntimeException('Nao foi possivel gerar o par efemero.');
+        }
+
+        return $pem;
     }
 ```
 
@@ -778,7 +817,9 @@ final class VapidKeys
             throw new \RuntimeException('Nao foi possivel gerar o par VAPID.');
         }
 
-        openssl_pkey_export($key, $pem);
+        if (!openssl_pkey_export($key, $pem)) {
+            throw new \RuntimeException('Nao foi possivel exportar a chave privada VAPID.');
+        }
 
         return new self($pem, self::encode(Ec::pointFromKey($key)));
     }
@@ -883,7 +924,33 @@ public function testASubjectThatIsNotMailtoOrHttpsIsRefused(): void
 }
 ```
 
-O auxiliar `rawSignatureToDer` vive no arquivo de teste — é o caminho inverso do de produção e só existe para verificar.
+O auxiliar `rawSignatureToDer` vive no arquivo de teste — é o caminho inverso do de produção e
+só existe para verificar. **Escreva-o exatamente assim**, porque a versão ingênua esquece o
+`0x00` quando o bit alto do inteiro está ligado, produz um DER malformado e faz o
+`openssl_verify` devolver `0`. Como o ES256 não é determinístico, isso falharia em cerca de três
+execuções em quatro e apareceria como bug intermitente — justamente na área que esta fase existe
+para tornar previsível.
+
+```php
+private static function rawSignatureToDer(string $raw): string
+{
+    $integer = static function (string $value): string {
+        $value = ltrim($value, "\x00");
+        if ('' === $value) {
+            $value = "\x00";
+        }
+        if (ord($value[0]) >= 0x80) {
+            $value = "\x00".$value; // DER assina inteiros: bit alto ligado exige o zero na frente
+        }
+
+        return "\x02".chr(strlen($value)).$value;
+    };
+
+    $body = $integer(substr($raw, 0, 32)).$integer(substr($raw, 32, 32));
+
+    return "\x30".chr(strlen($body)).$body;
+}
+```
 
 - [ ] **Passo 2: Rodar e ver falhar**
 
@@ -972,4 +1039,11 @@ git commit -m "Record the web push cryptography foundation"
 
 ## O que vem depois
 
-A fase 2 do spec consome `WebPushCrypto` e `VapidKeys` para a primeira fatia vertical: `PushDevice`, a API de inscrição, um service worker mínimo e o `mautic:inbox:push:test`. É lá que uma notificação chega num navegador real pela primeira vez. Ela tem plano próprio.
+A fase 2 do spec consome `WebPushCrypto` e `VapidKeys` para a primeira fatia vertical:
+`PushDevice`, a API de inscrição, um service worker mínimo e o `mautic:inbox:push:test`. É lá que
+uma notificação chega num navegador real pela primeira vez. Ela tem plano próprio.
+
+**Uma coisa que esta fase deliberadamente não faz:** o `VapidKeys` daqui é objeto de valor puro,
+sem persistência e sem criptografia em repouso. O spec descreve a chave privada guardada em PEM
+criptografado — isso é responsabilidade da fase 2, junto com o `mautic:inbox:push:setup`. A fase
+2 não deve assumir que já está resolvido.
