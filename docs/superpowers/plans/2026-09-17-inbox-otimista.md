@@ -29,8 +29,21 @@
 npm test                                   # formato, tipos, build, testes JS
 export INBOX_TEST_HOST=<usuario@servidor>
 export INBOX_TEST_BENCH=<release de provas>
-./bin/dev-test.sh plugins/MauticInboxBundle/Tests/Unit   # PHP
+export INBOX_TEST_DATABASE=<banco descartavel>
+./bin/dev-test.sh plugins/MauticInboxBundle/Tests/Unit                       # PHP unitario
+./bin/dev-test.sh plugins/MauticInboxBundle/Tests/Functional/InboxReplyResponseTest.php
 ```
+
+O teste funcional exige o banco descartável provisionado na tarefa 0 de
+`docs/superpowers/plans/2026-09-16-push-first-notification.md`.
+
+**O `npm test` começa pelo `format:check`.** Os trechos deste plano não estão no formato do
+Prettier — rode `npx prettier --plugin=prettier-plugin-svelte --write` no que você criar, antes de
+rodar a suíte, ou o primeiro passo reprova por vírgula.
+
+**Os arquivos de teste ficam fora do `include` do `tsconfig`**, e o `tsx` remove tipos sem checar.
+Erro de tipo num auxiliar de teste **não aparece** no `npm run check`; confie no teste, não no
+compilador, para essa parte.
 
 ---
 
@@ -71,7 +84,7 @@ Em `Frontend/shared/types.ts`, dentro de `TimelineItem`:
 `Frontend/shared/store/types.ts`:
 
 ```ts
-import type { TimelineItem } from "../types";
+import type { Conversation, ConversationSummary, TimelineItem } from "../types";
 
 /**
  * Uma mensagem que o atendente mandou e o servidor ainda nao registrou.
@@ -101,8 +114,16 @@ export interface PendingMessage {
   retryable?: boolean;
 }
 
+/** A lista e cacheada por filtro: duas filtragens sao duas entradas, nao uma sobrescrevendo a outra. */
+export interface ListEntry {
+  readonly key: string;
+  items: ConversationSummary[];
+  cursor: string | null;
+}
+
 export interface InboxState {
-  conversations: Map<number, unknown>;
+  lists: Map<string, ListEntry>;
+  conversations: Map<number, Conversation>;
   timelines: Map<number, TimelineItem[]>;
   pending: Map<number, PendingMessage[]>;
 }
@@ -189,10 +210,10 @@ test("uma nota sem resposta ainda nao tem chave e sobrevive", () => {
   assert.equal(restantes.length, 1);
 });
 
-test("uma pendente que falhou nao e removida por um item qualquer", () => {
+test("uma pendente que falhou E removida pelo item com a mesma chave", () => {
   const falha = pendente({ state: "failed", requestId: "r1" });
-  assert.deepEqual(reconcile([falha], [item({ request_id: "r1" })]), [],
-    "mas SIM pelo item com a mesma chave: se o servidor registrou, a falha era do transporte");
+  // Se o servidor registrou, a falha era do transporte: a mensagem existe e a pendente sai.
+  assert.deepEqual(reconcile([falha], [item({ request_id: "r1" })]), []);
 });
 ```
 
@@ -288,14 +309,55 @@ O sétimo registra uma verdade desconfortável: `/note` grava uma nota nova a ca
 
 Funções puras, sem `fetch`, sem `Date.now()` direto — tempo e identificador entram por parâmetro, para o teste ser determinístico:
 
+Assinaturas **com tipos explícitos** — o `tsconfig` está em `strict`, e parâmetro implícito reprova
+no `npm run check`:
+
 ```ts
-export function startSend(state, { conversationId, mode, body, requestId, localId, now }): InboxState
-export function acceptSend(state, { localId, item, summary }): InboxState
-export function failSend(state, { localId, failure, retryable }): InboxState
-export function beginRetry(state, { localId }): InboxState
+import type { InboxState, PendingMessage } from "./types";
+import type { Conversation, TimelineItem } from "../types";
+
+export function startSend(state: InboxState, acao: {
+  conversationId: number; mode: "reply" | "note"; body: string;
+  requestId?: string; localId: string; now: string;
+}): InboxState
+
+export function acceptSend(state: InboxState, acao: {
+  localId: string; item?: TimelineItem; noteId?: number; summary?: Conversation;
+}): InboxState
+
+export function failSend(state: InboxState, acao: {
+  localId: string; failure: string; retryable: boolean;
+}): InboxState
+
+export function beginRetry(state: InboxState, acao: { localId: string }): InboxState
+
+/**
+ * A porta por onde TODO historico vindo do servidor entra — resposta de envio, poll,
+ * carregamento inicial, qualquer um. E o unico lugar que chama reconcile().
+ */
+export function applyServerItems(state: InboxState, acao: {
+  conversationId: number; items: TimelineItem[];
+}): InboxState
 ```
 
-`acceptSend` remove a pendente e insere o `item` recebido no histórico **preservando o `status` que veio**. Não existe transição para "confirmada": é remoção.
+`acceptSend` remove a pendente e insere o `item` recebido no histórico **preservando o `status` que
+veio**. Não existe transição para "confirmada": é remoção.
+
+### Onde `reconcile` é chamado
+
+Em `applyServerItems`, e **em nenhum outro lugar**. Essa é a razão de ela existir: toda vez que uma
+lista de itens do servidor entra no estado, as pendentes daquela conversa passam pelo filtro.
+
+Sem essa porta única, a função da tarefa 2 vira código morto e o caminho do poll reproduz
+exatamente a duplicata que o desenho existe para impedir — porque o poll atribui o histórico
+direto, sem olhar para as pendentes.
+
+Acrescente aos testes desta tarefa:
+
+```ts
+test("applyServerItems e a unica porta: itens do poll removem a pendente correspondente", ...)
+test("applyServerItems preserva as pendentes que ainda nao tem item correspondente", ...)
+```
 
 - [ ] **Passo 4: Rodar e ver passar**
 
@@ -367,9 +429,38 @@ git commit -m "Send the three opening calls together"
 **Files:**
 - Create: `Frontend/shared/inboxStore.svelte.ts`
 
-Casca fina e sem lógica: `$state` sobre o `InboxState`, e métodos que chamam o reducer e o fetcher. A lógica fica no TS puro porque `$state` é construção de compilador e o `tsx` do pipeline de testes não compila Svelte.
+Este é o módulo que **todo componente vai consumir**, então ele precisa estar escrito aqui e não
+ser inventado na hora. Casca fina e sem lógica: `$state` sobre o `InboxState`, e métodos que
+delegam ao reducer e ao fetcher.
 
-- [ ] **Passo 1: Escrever a casca**
+- [ ] **Passo 1: Escrever a casca, com esta superfície e nenhuma outra**
+
+```ts
+export function criarInboxStore(deps: { csrf: string; urls: Record<string, string> }) {
+  let estado = $state<InboxState>(vazio());
+
+  return {
+    get lists() { return estado.lists; },
+    get conversations() { return estado.conversations; },
+    get timelines() { return estado.timelines; },
+    get pending() { return estado.pending; },
+
+    ensureList(filtro: ListFilter): Promise<void>,
+    ensureConversation(id: number): Promise<void>,
+    ensureTimeline(id: number): Promise<void>,
+    sendReply(id: number, mode: "reply" | "note", body: string): Promise<void>,
+    retryPending(localId: string): Promise<void>,
+    applyPoll(resultado: PollResult): void,
+  };
+}
+```
+
+Seis métodos, exatamente os que o spec nomeia. `applyPoll` desmonta o resultado do poll e chama
+`applyServerItems` por conversa — é assim que o caminho do poll passa a respeitar as pendentes.
+
+A lógica fica no TS puro porque `$state` é construção de compilador e o `tsx` do pipeline de testes
+não compila Svelte. **Se você se pegar escrevendo uma condição aqui, ela pertence ao reducer.**
+
 - [ ] **Passo 2: `npm run check` — 0 erros**
 - [ ] **Passo 3: Commit**
 
@@ -416,10 +507,43 @@ A **ordem importa e é carregada de significado**. O código de hoje cancela a e
 
 Então: insere a pendente e limpa o composer **primeiro** (é o ganho visual), e depois mantém a sequência existente — cancelar debounce, esperar o PUT em voo, `take` se necessário, `reply`.
 
-Na aceitação, limpar o rascunho alcança **três** lugares: `draftCache[id][mode]`, `selected.drafts[mode]` e o debounce pendente.
+Na aceitação, limpar o rascunho alcança **três** lugares: `draftCache[id][mode]`,
+`selected.drafts[mode]` e o debounce pendente.
 
-- [ ] **Passo 2: `npm test`**
-- [ ] **Passo 3: Commit**
+- [ ] **Passo 2: Tratar o `take` que falha**
+
+A linha de hoje é `if (!isNote && selected.can_take_and_reply && !(await take())) return;` — um
+`return` **dentro do `try`**, então o `catch` nunca roda. Com a pendente já inserida e o composer
+já limpo, esse caminho deixaria uma pendente presa em *enviando* para sempre: sem botão de tentar
+de novo, que exige o estado *falhou*, e sem o texto no composer.
+
+Troque o `return` por `failSend` com o motivo da recusa. Teste:
+
+```ts
+test("take recusado marca a pendente como falha, com o texto dentro dela", ...)
+```
+
+- [ ] **Passo 3: Soltar a trava de envio**
+
+A premissa do desenho inteiro é que o botão nunca mais fica preso — é o que permite o ícone da
+tarefa 9 e o que o spec chama de envio concorrente. Três coisas precisam sair juntas:
+
+- A guarda `if (... || sending || ...)` no início do `send()`
+- O `disabled={disabled || ...}` do `Composer.svelte`, que computa a partir de `sending`
+- O `sendAttempts[key]`, que é **um slot único por conversa e modo** — o `request_id` passa a
+  morar em cada pendente
+
+`sendTemplate()` compartilha a mesma flag `sending`, então isto não é uma deleção de uma linha.
+
+- [ ] **Passo 4: Decidir o envio por modelo, explicitamente**
+
+`sendTemplate()` passa o próprio `request_id` e chama `loadTimeline` direto. Ele **não** ganha o
+caminho otimista nesta rodada — modelo tem confirmação e pré-visualização, e o ganho de percepção
+ali é pequeno. Mas ele **passa a entregar seu histórico por `applyServerItems`**, senão reintroduz
+a duplicata por outro caminho.
+
+- [ ] **Passo 5: `npm test`**
+- [ ] **Passo 6: Commit**
 
 ---
 
@@ -428,7 +552,22 @@ Na aceitação, limpar o rascunho alcança **três** lugares: `draftCache[id][mo
 **Files:**
 - Modify: `Frontend/inbox/InboxApp.svelte`
 
-- [ ] **Passo 1: `select()` passa a pedir à store**
+- [ ] **Passo 1: Todos os caminhos que escrevem o histórico passam pela store**
+
+Não é só o `select()`. **Seis** lugares escrevem `timeline` hoje, e deixar cinco de fora faz o
+cache da store divergir do que está na tela:
+
+| Caminho | O que faz hoje |
+|---|---|
+| `select()` | abre a conversa |
+| `refreshSelected()` | o que o poll chama |
+| `loadOlder()` | carrega mensagens anteriores |
+| `sendTemplate()` | recarrega depois do modelo |
+| `retryOutbound()` | recarrega depois da retentativa |
+| `clearSelection()` | esvazia ao sair da conversa |
+
+Todos passam a entregar itens por `applyServerItems`. O `loadOlder` **acrescenta** em vez de
+substituir, e o `clearSelection` não apaga o cache — só deixa de renderizar.
 
 - [ ] **Passo 2: Remover o recarregamento periódico do histórico**
 
@@ -445,8 +584,15 @@ Na aceitação, limpar o rascunho alcança **três** lugares: `draftCache[id][mo
 
 **Files:**
 - Create: `Frontend/inbox/PendingBubble.svelte`
-- Modify: `Frontend/inbox/Timeline.svelte`, `Frontend/inbox/Composer.svelte`, `Frontend/shared/Icon.svelte`, `Translations/pt_BR/messages.ini`, `Translations/en_US/messages.ini`
+- Modify: `Frontend/inbox/Timeline.svelte`, `Frontend/inbox/Composer.svelte`, `Frontend/shared/Icon.svelte`, `Assets/css/inbox.css`, `Translations/pt_BR/messages.ini`, `Translations/en_US/messages.ini`
 - Test: `Tests/JavaScript/pending-bubble.test.mjs`
+
+**O estilo vai no `Assets/css/inbox.css`.** Não existe um único bloco `<style>` sob `Frontend/` —
+todo o visual do plugin mora naquele arquivo. Cuidado: ele está commitado minificado numa linha só,
+então acrescente ao fim e não reformate o que já está lá.
+
+**`Timeline.svelte` já tem uma prop chamada `pending`** — é a resposta pendente da IA. Use outro
+nome para a nova, `pendingMessages`, ou o componente quebra de um jeito confuso.
 
 - [ ] **Passo 1: O componente da pendente**
 
@@ -454,23 +600,34 @@ Componente próprio, **não** o `MessageBubble`. Reaproveitá-lo exigiria moldar
 
 Estado *enviando*: a bolha com opacidade reduzida e um relógio. Estado *falhou*: marcada, com o botão de tentar de novo e o motivo — e o motivo distingue **rede** de **recusa do canal**, porque tentar de novo resolve o primeiro e nunca resolve o segundo.
 
-- [ ] **Passo 2: O ícone**
+- [ ] **Passo 2: Rolar até a mensagem nova**
 
-Em `Icon.svelte`, ao lado dos dezoito que já existem:
+O `afterUpdate` do `Timeline.svelte` rola para o fim observando `items.length`. Uma pendente vive
+em **outra coleção**, então ela não dispara a rolagem — e a bolha otimista pode nascer abaixo da
+dobra, que derruba justamente o ganho que este plano promete. A condição passa a observar as duas.
+
+- [ ] **Passo 3: O ícone**
+
+Em `Icon.svelte`, ao lado dos dezoito que já existem. Note que `.inbox-app svg` usa
+`fill: none; stroke: currentColor`, então o desenho é **contornado**, não sólido — o traçado abaixo
+já assume isso:
 
 ```ts
-    send: "M3 20l18-8L3 4v6l12 2-12 2z",
+    send: "M4 12l16-8-6 8 6 8-16-8z M4 12h10",
 ```
 
-- [ ] **Passo 3: O botão**
+Confira no aparelho: um avião contornado a 18 pixels precisa de traço legível, e é o tipo de coisa
+que só a tela mostra.
+
+- [ ] **Passo 4: O botão**
 
 O rótulo de texto vira ícone. Duas exigências que não são estética:
 
 - **Nome acessível preservado:** o rótulo de hoje vira `aria-label`, e a chave de tradução permanece. Ícone sozinho não diz nada a leitor de tela nem aparece em teste.
 - **Alvo de toque de 44 pixels no mínimo.** O composer é usado com o polegar.
 
-- [ ] **Passo 4: `npm test`**
-- [ ] **Passo 5: Commit**
+- [ ] **Passo 5: `npm test`**
+- [ ] **Passo 6: Commit**
 
 ---
 
