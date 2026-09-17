@@ -50,4 +50,26 @@ final class Ec
 
         return str_pad($coordinate, 32, "\x00", STR_PAD_LEFT);
     }
+
+    public static function signatureToRaw(string $der): string
+    {
+        $offset = 0;
+        if ("\x30" !== ($der[$offset++] ?? '')) {
+            throw new \RuntimeException('Assinatura DER precisa comecar com SEQUENCE.');
+        }
+        $offset++; // comprimento da sequencia, sempre curto para P-256
+
+        $read = static function () use ($der, &$offset): string {
+            if ("\x02" !== ($der[$offset++] ?? '')) {
+                throw new \RuntimeException('Esperado INTEGER na assinatura DER.');
+            }
+            $length = ord($der[$offset++]);
+            $value  = substr($der, $offset, $length);
+            $offset += $length;
+
+            return str_pad(ltrim($value, "\x00"), 32, "\x00", STR_PAD_LEFT);
+        };
+
+        return $read().$read();
+    }
 }

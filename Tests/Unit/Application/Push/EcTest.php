@@ -60,4 +60,29 @@ final class EcTest extends TestCase
 
         self::assertSame($point, $restored);
     }
+
+    public function testADerSignatureBecomesSixtyFourRawOctets(): void
+    {
+        $key = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+        openssl_sign('mensagem', $der, $key, OPENSSL_ALGO_SHA256);
+
+        self::assertSame(64, strlen(Ec::signatureToRaw($der)));
+    }
+
+    public function testIntegersWithALeadingZeroKeepTheirValue(): void
+    {
+        // DER assina inteiros: um valor cujo primeiro bit e 1 ganha um 0x00 na frente.
+        // Removido sem cuidado, R ou S saem com 31 octetos e a assinatura e recusada.
+        $r   = "\x00".str_repeat("\xff", 32);
+        $s   = str_repeat("\x11", 32);
+        $der = "\x30".chr(4 + strlen($r) + strlen($s))
+            ."\x02".chr(strlen($r)).$r
+            ."\x02".chr(strlen($s)).$s;
+
+        $raw = Ec::signatureToRaw($der);
+
+        self::assertSame(64, strlen($raw));
+        self::assertSame(str_repeat("\xff", 32), substr($raw, 0, 32));
+        self::assertSame($s, substr($raw, 32, 32));
+    }
 }
