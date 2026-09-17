@@ -64,4 +64,69 @@ final class WebPushCryptoTest extends TestCase
             RfcVectors::decode(RfcVectors::AUTH_SECRET),
         );
     }
+
+    public function testTheAuthorizationHeaderVerifiesAgainstItsOwnKey(): void
+    {
+        $keys   = \MauticPlugin\MauticInboxBundle\Application\Push\VapidKeys::generate();
+        $header = (new WebPushCrypto())->authorizationHeader(
+            'https://fcm.googleapis.com/fcm/send/abc123',
+            'mailto:suporte@exemplo.com',
+            $keys,
+        );
+
+        self::assertStringStartsWith('vapid t=', $header);
+        self::assertStringContainsString(', k='.$keys->publicKey(), $header);
+
+        [$header64, $claims64, $signature64] = explode('.', substr($header, 8, strpos($header, ', k=') - 8));
+        $claims = json_decode(RfcVectors::decode($claims64), true);
+
+        self::assertSame('https://fcm.googleapis.com', $claims['aud'], 'aud e a origem do endpoint, nao a URL inteira');
+        self::assertSame('mailto:suporte@exemplo.com', $claims['sub']);
+        self::assertGreaterThan(time(), $claims['exp']);
+        self::assertLessThanOrEqual(time() + 86400, $claims['exp']);
+
+        $der = self::rawSignatureToDer(RfcVectors::decode($signature64));
+        self::assertSame(1, openssl_verify(
+            $header64.'.'.$claims64,
+            $der,
+            openssl_pkey_get_public(\MauticPlugin\MauticInboxBundle\Application\Push\Ec::publicPemFromPoint(RfcVectors::decode($keys->publicKey()))),
+            OPENSSL_ALGO_SHA256,
+        ));
+    }
+
+    public function testTwoEndpointsOnDifferentOriginsGetDifferentAudiences(): void
+    {
+        $keys   = \MauticPlugin\MauticInboxBundle\Application\Push\VapidKeys::generate();
+        $crypto = new WebPushCrypto();
+
+        $google  = $crypto->authorizationHeader('https://fcm.googleapis.com/fcm/send/a', 'mailto:a@b.c', $keys);
+        $mozilla = $crypto->authorizationHeader('https://updates.push.services.mozilla.com/wpush/v2/a', 'mailto:a@b.c', $keys);
+
+        self::assertNotSame($google, $mozilla, 'reaproveitar um token entre origens e o erro classico');
+    }
+
+    public function testASubjectThatIsNotMailtoOrHttpsIsRefused(): void
+    {
+        $this->expectException(\InvalidArgumentException::class);
+        (new WebPushCrypto())->authorizationHeader('https://fcm.googleapis.com/fcm/send/a', 'suporte@exemplo.com', \MauticPlugin\MauticInboxBundle\Application\Push\VapidKeys::generate());
+    }
+
+    private static function rawSignatureToDer(string $raw): string
+    {
+        $integer = static function (string $value): string {
+            $value = ltrim($value, "\x00");
+            if ('' === $value) {
+                $value = "\x00";
+            }
+            if (ord($value[0]) >= 0x80) {
+                $value = "\x00".$value; // DER assina inteiros: bit alto ligado exige o zero na frente
+            }
+
+            return "\x02".chr(strlen($value)).$value;
+        };
+
+        $body = $integer(substr($raw, 0, 32)).$integer(substr($raw, 32, 32));
+
+        return "\x30".chr(strlen($body)).$body;
+    }
 }

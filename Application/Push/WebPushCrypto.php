@@ -80,6 +80,33 @@ final class WebPushCrypto
         return $salt.pack('N', self::RECORD_SIZE).chr(65).$derived['serverPoint'].$cipher.$tag;
     }
 
+    public function authorizationHeader(string $endpoint, string $subject, VapidKeys $keys, int $lifetime = 43200): string
+    {
+        if (!str_starts_with($subject, 'mailto:') && !str_starts_with($subject, 'https:')) {
+            throw new \InvalidArgumentException('A RFC 8292 admite apenas mailto: ou https: em sub.');
+        }
+
+        $parts = parse_url($endpoint);
+        if (!isset($parts['scheme'], $parts['host'])) {
+            throw new \InvalidArgumentException('Endpoint sem esquema ou host.');
+        }
+        $audience = $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '');
+
+        $signing = $this->encode('{"typ":"JWT","alg":"ES256"}')
+            .'.'.$this->encode((string) json_encode([
+                'aud' => $audience,
+                'exp' => time() + $lifetime,
+                'sub' => $subject,
+            ], JSON_UNESCAPED_SLASHES));
+
+        $key = openssl_pkey_get_private($keys->privatePem());
+        if (false === $key || !openssl_sign($signing, $der, $key, OPENSSL_ALGO_SHA256)) {
+            throw new \RuntimeException('Falha ao assinar o token VAPID.');
+        }
+
+        return 'vapid t='.$signing.'.'.$this->encode(Ec::signatureToRaw($der)).', k='.$keys->publicKey();
+    }
+
     private static function ephemeralPem(): string
     {
         $key = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
@@ -88,5 +115,10 @@ final class WebPushCrypto
         }
 
         return $pem;
+    }
+
+    private function encode(string $raw): string
+    {
+        return rtrim(strtr(base64_encode($raw), '+/', '-_'), '=');
     }
 }
