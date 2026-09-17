@@ -9,7 +9,15 @@
 <title>Macro Zap</title>
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="icon" href="{{ path('mautic_inbox_icon', {name: '192'}) }}" sizes="192x192" type="image/png">
-{{ includeStylesheet('plugins/MauticInboxBundle/Assets/css/inbox.css?app=1') }}
+{# includeStylesheet apenas ENFILEIRA; quem emite e outputSystemStylesheets, que o layout do
+   Mautic chama e este shell autonomo precisa chamar por conta propria. Sem isso a pagina sai
+   sem estilo nenhum: icone SVG no tamanho natural, avatar como circulo gigante.
+   O libraries.css e o app.css entram junto porque o inbox.css foi escrito para herdar deles. #}
+{{ outputSystemStylesheets() }}
+{# Emitido direto, e nao por includeStylesheet: aquele helper apenas enfileira, e a funcao de
+   saida do Mautic nao devolve o CSS de plugin — comprovado inspecionando document.styleSheets
+   no aparelho, onde libraries.css e app.css apareciam e o inbox.css nao. #}
+<link rel="stylesheet" href="{{ asset('plugins/MauticInboxBundle/Assets/css/inbox.css') }}?app=3">
 <style>
   /* O shell nao carrega o chrome do Mautic, entao o basico mora aqui. */
   html, body { height: 100%; margin: 0; background: #f6f7fb; }
