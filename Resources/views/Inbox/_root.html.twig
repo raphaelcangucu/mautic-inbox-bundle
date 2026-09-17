@@ -77,8 +77,15 @@
    menu lateral, e repeti-lo aqui seria um segundo caminho para o mesmo lugar. #}
 <div id="inbox-app" data-standalone="{{ standalone|default(false) ? 1 : 0 }}" data-ai-page-url="{{ path('mautic_inbox_ai') }}" data-ai-url="{{ path('mautic_inbox_ai_available', {stateId:0}) }}" data-locale="{{ app.request.locale|e('html_attr') }}" data-translations="{{ uiTranslations|json_encode|e('html_attr') }}" class="inbox-app"
      data-ai-retry-url="{{ path('mautic_inbox_ai_retry', {stateId:0}) }}"
-     data-index-url="{{ path('mautic_inbox_index') }}"
-     data-conversation-url="{{ path('mautic_inbox_conversation', {stateId: 0}) }}"
+    
+     {# No shell, a navegacao precisa escrever as rotas DO SHELL. Com as do Mautic, abrir uma
+        conversa trocava a URL para /s/inbox/conversations/N — e ai recarregar, ou puxar para
+        atualizar, tirava o atendente do app e o deixava na pagina do Mautic, com o menu e a
+        engrenagem em volta. Dentro de um app instalado nao ha barra de endereco para voltar. #}
+     data-index-url="{{ path(standalone|default(false) ? 'mautic_inbox_app' : 'mautic_inbox_index') }}"
+     data-conversation-url="{{ standalone|default(false)
+        ? path('mautic_inbox_app_conversation', {stateId: 0})
+        : path('mautic_inbox_conversation', {stateId: 0}) }}"
      data-initial-state-id="{{ initialStateId|default(0) }}"
      data-stream-url="{{ path('mautic_inbox_stream') }}"
      data-list-url="{{ path('mautic_inbox_list') }}"
