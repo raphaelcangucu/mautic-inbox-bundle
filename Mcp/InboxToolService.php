@@ -60,7 +60,7 @@ final class InboxToolService
             'take' => $this->inbox->take($id,$request,$this->permissions,$this->users,$this->states,$this->actions,$this->query),
             'resolve','reopen','transfer','unassign','snooze','read' => $this->inbox->state($id,$request,$this->permissions,$this->users,$this->states,$this->actions,$this->query,$this->em,$this->conversations),
             'note' => $this->inbox->note($id,$request,$this->permissions,$this->users,$this->states,$this->actions),
-            'reply' => $this->inbox->reply($id,$request,$this->permissions,$this->users,$this->states,$this->actions),
+            'reply' => $this->inbox->reply($id,$request,$this->permissions,$this->users,$this->states,$this->actions,$this->query),
             'assign_ai' => $this->ai->assign($id,$request,$this->users,$this->permissions,$this->states,$this->agents),
             default => throw new \InvalidArgumentException('Unsupported inbox action.'),
         };

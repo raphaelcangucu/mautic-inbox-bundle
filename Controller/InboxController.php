@@ -185,13 +185,18 @@ final class InboxController extends CommonController
         });
     }
 
-    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions): JsonResponse
+    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query): JsonResponse
     {
         $this->grantMutation($request, $permissions, 'create');
-        return $this->respond(function () use ($stateId, $request, $users, $states, $actions): array {
+        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query): array {
             $payload = $this->payload($request);
-            $outbound = $actions->reply($this->requireState($states, $stateId), $this->user($users), (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null);
-            return ['request_id' => $outbound->getRequestId(), 'status' => $outbound->getStatus()];
+            $state = $this->requireState($states, $stateId);
+            $outbound = $actions->reply($state, $this->user($users), (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null);
+
+            // O envio devolve o que acabou de criar porque senao ele custa mais duas idas ao
+            // servidor: uma para o historico mostrar a mensagem e outra para a lista nao ficar
+            // velha. `request_id` e `status` continuam saindo iguais para quem ja os lia.
+            return ['request_id' => $outbound->getRequestId(), 'status' => $outbound->getStatus(), 'item' => $query->outboundItem($outbound), 'summary' => $query->summary($state)];
         }, Response::HTTP_ACCEPTED);
     }
 
