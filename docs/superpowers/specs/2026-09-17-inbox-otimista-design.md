@@ -106,8 +106,30 @@ esqueleto também no cabeçalho, e `detalhe` e `histórico` saem em paralelo com
 1. No toque, a store já tem o resumo daquela conversa, porque veio na lista. Cabeçalho e moldura
    do chat aparecem no mesmo quadro, sem rede.
 2. Se o histórico está em `timelines`, renderiza inteiro. Zero requisição.
-3. Se não está, mostra esqueleto no lugar das mensagens e dispara `detalhe` e `histórico`
-   **em paralelo**. ~780 ms em vez de 1540.
+3. Se não está, mostra esqueleto no lugar das mensagens e dispara as chamadas **em paralelo**.
+
+### A abertura são três chamadas, não duas
+
+O código de hoje faz `detalhe` e, **depois** dele, `Promise.all([histórico, ia])`. O estado de IA
+está no caminho crítico da abertura, e o meu texto anterior o ignorava — o ganho de ~780 ms só
+existe se ele entrar no paralelo também.
+
+A store passa a disparar **`detalhe`, `histórico` e `ia` juntos**. O `ia` sai do caminho crítico:
+a conversa renderiza sem esperar por ele, e o painel de IA preenche quando chegar.
+
+Isso não conflita com "qualquer mudança no workspace de IA" estar fora de escopo: o workspace em
+`/s/inbox/ai` não é tocado. O que muda é **quando** o inbox busca o estado de IA de uma conversa,
+não o que ele faz com ele.
+
+O POST de leitura que hoje sai sem espera continua saindo sem espera, fora do caminho crítico.
+
+### Quando a conversa não existe mais
+
+Numa abertura fria, `detalhe` pode responder 404 ou 403 — link antigo, conversa apagada, permissão
+que mudou. Nesse caso o esqueleto **não pode ficar girando para sempre**: ele dá lugar à mensagem
+de erro que o componente já sabe mostrar, e a store não guarda nada no cache. Uma conversa aberta
+por link direto e não presente na lista **não** é inserida na lista em cache — ela existe em
+`conversations` e `timelines`, e a lista continua sendo o que o filtro atual devolveu.
 
 ### Enviar uma mensagem
 
@@ -155,11 +177,23 @@ Com o botão livre, o atendente pode disparar um segundo envio com o primeiro ai
 pendente carrega o próprio `request_id` — o slot único por conversa e modo que existe hoje não
 serve mais. As pendentes aparecem na ordem em que foram criadas.
 
-### Modo nota e modelo
+### Modo nota: a exceção, dita por inteiro
 
-`sendReply` cobre resposta e nota, mas elas confirmam diferente: a nota não tem `request_id` e o
-endpoint devolve `{id, saved}`, sem item de histórico. Envio por modelo passa pelo mesmo `reply` e
-recebe a nova resposta. As três variações precisam estar no plano.
+A regra do `request_id` **não alcança a nota**, e isso precisa estar escrito em vez de subentendido.
+O item de histórico de uma nota é `{kind: 'note', id, body, author, timestamp}` — sem
+`request_id`, porque o servidor nunca atribui um. Sem chave, a nota real chega ao lado de uma
+pendente que diz "enviando" e fica ali até a conversa sair do cache.
+
+A nota reconcilia por **`kind: 'note'` mais o `id` que o próprio `/note` devolve**. Mas a
+propriedade que torna a regra da resposta segura **não vale aqui**: na resposta, quem gera a chave
+é o cliente, então a ordem de chegada não importa; na nota, a chave só existe depois que a resposta
+dela volta. **Resposta de nota perdida deixa uma pendente que nunca reconcilia.**
+
+E a nota **não tem idempotência**: o servidor grava uma nova a cada chamada, sem comparar nada.
+Tentar de novo uma nota cria uma segunda nota. O dano é interno — nota não vai para o cliente —,
+mas o plano não pode supor o contrário.
+
+Envio por modelo passa pelo mesmo `reply` e recebe a nova resposta, então segue a regra da resposta.
 
 ### Conflito no `take`
 
@@ -177,11 +211,14 @@ de hoje continua recebendo os mesmos.
 
 ## Bordas e falhas
 
-- Uma pendente tem três estados e só três: *enviando*, *confirmada*, *falhou*. Não existe estado
-  ambíguo, e é isso que permite a interface ser honesta sem precisar de julgamento.
+- **Uma pendente tem dois estados: *enviando* e *falhou*.** Não existe estado "confirmada": quando
+  o servidor aceita, a pendente **deixa de existir** e um item de histórico toma o lugar dela,
+  carregando o status que o servidor deu. Escrever um terceiro estado produz exatamente o objeto
+  que este desenho proíbe — uma pendente capaz de se desenhar como enviada.
 - Tentar de novo **reusa o mesmo `request_id`**. É o que impede a duplicata no caso mais
   traiçoeiro: o servidor processou, a resposta se perdeu, e o atendente toca em tentar de novo.
-- Atualização do SSE durante um envio: servidor ganha nas confirmadas, pendentes seguem no fim.
+- Pendentes aparecem **depois** das confirmadas na tela. Isso é regra de **ordem de exibição**, e
+  não de reconciliação: quem decide se uma pendente sumiu é a chave, nunca a posição.
 - **A ordem de limpeza do rascunho fica como está.** A primeira versão deste documento propunha
   invertê-la, e estava errada. O `replyLocked` apaga o rascunho no servidor dentro da transação de
   envio, e o código de hoje protege isso cancelando a escrita debounced e esperando a que estiver
@@ -211,8 +248,11 @@ pipeline atual, que não roda o compilador Svelte. Por isso a lógica vive em **
 - Confirmar tira a pendente e põe a confirmada, sem buscar nada.
 - Falhar mantém a pendente e a marca.
 - Tentar de novo reusa o mesmo `request_id` — o teste que impede a duplicata.
-- **Um item de histórico com o mesmo `request_id` faz a pendente sumir**, venha ele da resposta do
-  envio, de um poll ou do recarregamento periódico. Este é o teste da duplicata na tela.
+- **Um item de histórico com o mesmo `request_id` faz a pendente sumir**, seja qual for a origem
+  daquele item. O teste entrega o item à store diretamente, sem depender de qual caminho o trouxe —
+  assim ele continua válido depois que o recarregamento periódico deixar de existir.
+- **Uma pendente de nota reconcilia por `kind` e `id`**, e uma resposta de nota perdida deixa uma
+  pendente órfã. O teste registra o comportamento em vez de fingir que ele não acontece.
 - Um `status` de `failed` ou `uncertain` numa resposta 202 **não** vira mensagem enviada.
 - Dois envios seguidos na mesma conversa produzem duas pendentes com `request_id` distintos.
 - Abrir conversa em cache faz zero requisição.
@@ -233,10 +273,18 @@ depois, um quadro para ambos, com as confirmações chegando atrás.
 Hoje o componente recarrega o histórico a cada 2 segundos e o estado de IA a cada 1,5 s. Sozinhos,
 eles derrubam o objetivo 1: nenhuma conversa fica sem requisição por muito tempo.
 
-O plano precisa decidir explicitamente o que fazer com eles. A direção proposta é que o
-recarregamento periódico do histórico deixe de existir e o SSE com o poll passe a ser o único
-gatilho de atualização — o que também devolve bateria e dados ao aparelho da equipe. Se algum
-comportamento depender daquele intervalo, isso tem que aparecer antes de removê-lo.
+**O recarregamento periódico do histórico deixa de existir**, e o SSE com o poll passa a ser o
+gatilho único. Isso é seguro, e não é suposição: o token de versão que o SSE publica inclui a soma
+dos `status` de todas as entidades que têm esse campo, incluindo `OutboundRequest` e `MetaMessage`.
+Uma entrega que muda de `pending` para `failed` **move o token e dispara o poll sozinha**. Remover
+o intervalo não cega a interface para uma falha de entrega — só para de perguntar a cada dois
+segundos por algo que o servidor já avisa.
+
+O intervalo de 1,5 s do estado de IA some pelo mesmo motivo e pelo mesmo mecanismo. O painel passa
+a ser atualizado pelo poll, como o resto.
+
+Os dois juntos devolvem bateria e dados ao aparelho da equipe, que é o tipo de ganho que ninguém
+pede mas todo mundo sente no fim do dia.
 
 ## Entrega
 
