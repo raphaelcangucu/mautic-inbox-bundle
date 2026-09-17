@@ -94,6 +94,9 @@
 .inbox-tabs button,.inbox-tabs .inbox-tabs-link{display:flex;align-items:center;flex:1 1 0;min-width:0;min-height:52px;flex-direction:column;justify-content:center;gap:3px;padding:7px 2px;border-radius:0;font-size:10px;font-weight:550;text-decoration:none;color:#79808c}
 .inbox-tabs button.active,.inbox-tabs .inbox-tabs-link:hover{background:transparent;box-shadow:none;color:var(--ib-accent)}
 .inbox-tabs svg{width:21px;height:21px}
+/* Nenhum rotulo pode quebrar em duas linhas: a barra tem altura fixa e o que passa dela
+   transborda por cima do que estiver embaixo. Aconteceu com "Agentes e contexto". */
+.inbox-tabs button,.inbox-tabs .inbox-tabs-link{white-space:nowrap;overflow:hidden}
 /* No desktop o engrenagem e so icone; aqui ele ganha rotulo como os vizinhos, sem outro elemento. */
 .inbox-tabs .inbox-settings-tab{width:auto;padding-left:2px!important;padding-right:2px!important}
 .inbox-tabs .inbox-settings-tab .sr-only{position:static;width:auto;height:auto;margin:0;padding:0;clip:auto;clip-path:none;overflow:visible;white-space:normal}
