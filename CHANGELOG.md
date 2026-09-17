@@ -1,5 +1,10 @@
 # Changelog
 
+## Nao lancado
+
+- Adiciona a fundacao criptografica do Web Push sobre ext-openssl, sem dependencia de Composer.
+- Verifica a cifra de conteudo contra os vetores publicados na RFC 8291.
+
 ## 1.1.1
 
 - Adiciona limite global e por agente para respostas de IA em cada conversa.
