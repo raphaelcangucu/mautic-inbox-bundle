@@ -274,19 +274,24 @@ test("the timeline scrolls for a pending too, and stays inert until it is given 
 });
 
 test("the send button is a paper plane that still says its name", async () => {
-  const [composer, icon, css, twig, english, portuguese] = await Promise.all([
-    read("Frontend/inbox/Composer.svelte"),
-    read("Frontend/shared/Icon.svelte"),
-    read("Assets/css/inbox.css"),
-    read("Resources/views/Inbox/_root.html.twig"),
-    read("Translations/en_US/messages.ini"),
-    read("Translations/pt_BR/messages.ini"),
-  ]);
+  const [composer, pendingBubble, icon, css, twig, english, portuguese] =
+    await Promise.all([
+      read("Frontend/inbox/Composer.svelte"),
+      read("Frontend/inbox/PendingBubble.svelte"),
+      read("Frontend/shared/Icon.svelte"),
+      read("Assets/css/inbox.css"),
+      read("Resources/views/Inbox/_root.html.twig"),
+      read("Translations/en_US/messages.ini"),
+      read("Translations/pt_BR/messages.ini"),
+    ]);
   assert.match(composer, /id="inbox-send"/);
   assert.match(composer, /aria-label=\{sendLabel\}/);
   assert.match(composer, /<Icon name="send" \/>/);
+  // O botao nomeia a ACAO. Ele nao diz mais "enviando": desde que o envio virou otimista nao ha
+  // trava, o composer fica livre no instante do toque, e quem carrega o estado do envio e a
+  // bolha. Um botao dizendo "enviando" enquanto o atendente ja digita a proxima mensagem
+  // estaria falando da mensagem errada.
   for (const key of [
-    "mautic.inbox.ui.sending_5e91dc",
     "mautic.inbox.ui.add_note_344d88",
     "mautic.inbox.ui.assign_to_me_and_send_509661",
     "mautic.inbox.ui.send_reply_c50a43",
@@ -296,6 +301,14 @@ test("the send button is a paper plane that still says its name", async () => {
       `o icone nao pode custar a chave de traducao ${key}`,
     );
   }
+  assert.ok(
+    !composer.includes("mautic.inbox.ui.sending_5e91dc"),
+    "o composer nao volta a ter trava de envio",
+  );
+  assert.ok(
+    pendingBubble.includes("mautic.inbox.ui.sending_5e91dc"),
+    "e a bolha que diz que a mensagem esta saindo",
+  );
   // O aviao aponta para cima e para a direita, com a ponta em 21,5. Espelhado, o botao de
   // enviar passa a parecer um botao de voltar.
   assert.match(icon, /send: "M21 5L3 11l7 3 3 7z M21 5l-11 9"/);

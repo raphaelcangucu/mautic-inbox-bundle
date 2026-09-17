@@ -113,6 +113,9 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
       data-poll-url="https://mautic.test/inbox/api/updates"
       data-state-url="https://mautic.test/inbox/api/conversations/0/state"
       data-draft-url="https://mautic.test/inbox/api/conversations/0/draft"
+      data-take-url="https://mautic.test/inbox/api/conversations/0/take"
+      data-reply-url="https://mautic.test/inbox/api/conversations/0/reply"
+      data-note-url="https://mautic.test/inbox/api/conversations/0/note"
       data-ai-url="https://mautic.test/inbox/api/conversations/0/ai"
       data-stream-url=""
       data-csrf="csrf-token"
@@ -147,6 +150,29 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
       status,
       headers: { "Content-Type": "application/json" },
     });
+  // O envio fica pendurado ate o teste soltar. Sem isto nao da para distinguir "a bolha
+  // aparece na hora" de "a bolha aparece quando o servidor responde", que e a mudanca inteira.
+  let soltarEnvio = () => {};
+  const respostaDoEnvio = () =>
+    new Promise((ok) => {
+      soltarEnvio = () =>
+        ok(
+          response({
+            request_id: "req-1",
+            status: "pending",
+            item: {
+              id: 92,
+              kind: "outbound",
+              direction: "outbound",
+              body: "Resposta confirmada pelo servidor",
+              status: "pending",
+              request_id: "req-1",
+              timestamp: "2026-09-17T12:05:00Z",
+            },
+          }),
+        );
+    });
+
   const fetch = async (input, options = {}) => {
     const url = String(input);
     requests.push([url, options.method || "GET", new Headers(options.headers)]);
@@ -157,7 +183,18 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
         notifications: [],
       });
     if (/\/conversations\/11\/history/.test(url))
-      return response({ items: [], next_cursor: null });
+      return response({
+        items: [
+          {
+            id: 91,
+            kind: "message",
+            direction: "inbound",
+            body: "Mensagem que precisa chegar a tela",
+            timestamp: "2026-09-17T12:00:00Z",
+          },
+        ],
+        next_cursor: null,
+      });
     if (/\/conversations\/11\/ai/.test(url))
       return response({
         agents: [],
@@ -166,6 +203,14 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
         pending_reply: null,
         version: 2,
       });
+    // A conversa do teste tem can_take_and_reply, entao o envio passa pelo take antes de sair.
+    // Sem esta rota o stub devolvia {} e o componente trocava a conversa por um objeto vazio.
+    if (/\/conversations\/11\/take/.test(url))
+      return response({
+        ...conversation,
+        assignee: { id: 7, name: "Operator" },
+      });
+    if (/\/conversations\/11\/reply/.test(url)) return respostaDoEnvio();
     if (/\/conversations\/11\/state/.test(url)) return response(conversation);
     if (/\/conversations\/11$/.test(url)) return response(conversation);
     if (url.includes("/api/conversations?"))
@@ -263,6 +308,22 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
   await tick();
   assert.equal(location.pathname, "/inbox/conversations/11");
   assert.ok(root.classList.contains("has-selection"));
+  // O historico agora e LIDO da store em vez de escrito numa variavel do componente, e esta
+  // afirmacao e o que prova que aquele caminho chega ao DOM. Sem ela a store poderia guardar
+  // tudo certo e a tela ficar em branco, com a suite verde — que foi exatamente o estado em
+  // que este teste passou por um tempo, afirmando so o nome do contato.
+  //
+  // A espera e por prazo, e nao por um numero de ticks: a abertura dispara varias idas e
+  // contar voltas do laco daria um teste que passa ou falha conforme o dia.
+  for (let volta = 0; volta < 200; volta += 1) {
+    if (/Mensagem que precisa chegar a tela/.test(root.textContent)) break;
+    await tick();
+  }
+  assert.match(
+    root.textContent,
+    /Mensagem que precisa chegar a tela/,
+    "o historico da store precisa ser renderizado, e nao so guardado",
+  );
   assert.ok(requests.some(([url]) => /\/conversations\/11\/history/.test(url)));
   assert.ok(
     requests.some(
@@ -299,6 +360,75 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
   const composer = root.querySelector("#inbox-composer-text");
   composer.value = "Rascunho ainda no debounce";
   composer.dispatchEvent(new window.Event("input", { bubbles: true }));
+
+  // O envio otimista, que e a razao de tudo isto existir: a bolha na tela e o composer vazio
+  // enquanto o servidor ainda nem respondeu.
+  composer.value = "Mensagem otimista";
+  composer.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await tick();
+  console.log(
+    "ANTES DO CLIQUE",
+    JSON.stringify({
+      valor: root.querySelector("#inbox-composer-text").value,
+      desabilitado: root.querySelector("#inbox-send").disabled,
+    }),
+  );
+  root
+    .querySelector("#inbox-send")
+    .dispatchEvent(new window.Event("click", { bubbles: true }));
+  await tick();
+
+  console.log(
+    "DEBUG",
+    JSON.stringify({
+      temSend: !!root.querySelector("#inbox-send"),
+      desabilitado: root.querySelector("#inbox-send")?.disabled,
+      valorComposer: root.querySelector("#inbox-composer-text")?.value,
+      temTimeline: !!root.querySelector(".inbox-timeline"),
+      pedidosReply: requests.filter(([u]) => /reply/.test(u)).length,
+    }),
+  );
+  assert.ok(
+    root.querySelector(".inbox-pending"),
+    "com o /reply ainda pendurado, a mensagem ja precisa estar na conversa",
+  );
+  assert.match(root.textContent, /Mensagem otimista/);
+  assert.equal(
+    root.querySelector("#inbox-composer-text").value,
+    "",
+    "e o composer esvazia junto, senao o atendente manda duas vezes",
+  );
+  // A trava saiu. O botao esta desabilitado agora porque o campo ficou vazio — e nao porque um
+  // envio esta em voo. Escrever de novo, com o primeiro /reply ainda pendurado, e o que
+  // distingue as duas coisas.
+  const campo = root.querySelector("#inbox-composer-text");
+  campo.value = "E outra por cima";
+  campo.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await tick();
+  assert.equal(
+    root.querySelector("#inbox-send").disabled,
+    false,
+    "com um envio em voo o botao continua disponivel: e a premissa do desenho",
+  );
+  campo.value = "";
+  campo.dispatchEvent(new window.Event("input", { bubbles: true }));
+  await tick();
+
+  soltarEnvio();
+  for (let volta = 0; volta < 200; volta += 1) {
+    if (/Resposta confirmada pelo servidor/.test(root.textContent)) break;
+    await tick();
+  }
+  assert.match(
+    root.textContent,
+    /Resposta confirmada pelo servidor/,
+    "o item que o servidor devolveu entra no historico",
+  );
+  assert.equal(
+    root.querySelector(".inbox-pending"),
+    null,
+    "e a pendente SAI — ficar seria a mensagem duas vezes na tela",
+  );
 
   root.remove();
   await tick();

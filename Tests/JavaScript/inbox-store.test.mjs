@@ -187,3 +187,70 @@ test("tentar de novo reenvia com a mesma chave, e o aceite tira a pendente", asy
     await limpar();
   }
 });
+
+test("take recusado marca a pendente como falha, com o texto dentro dela", async () => {
+  const { modulo, limpar } = await compilarStore();
+  try {
+    const chamadas = [];
+    const store = modulo.criarInboxStore({
+      csrf: "csrf-token",
+      urls: URLS,
+      buscar: async (url) => {
+        chamadas.push(url);
+        return {};
+      },
+    });
+
+    await store.sendReply(7, "reply", "Ja estou verificando", async () => {
+      throw Object.assign(new Error("Conversa ja assumida por outro"), {
+        status: 409,
+      });
+    });
+
+    const pendentes = store.pending.get(7);
+    assert.equal(
+      pendentes.length,
+      1,
+      "a pendente FICA — sumir levaria o texto",
+    );
+    assert.equal(
+      pendentes[0].state,
+      "failed",
+      "e nao pode ficar presa em enviando: sem failed nao ha botao de tentar de novo",
+    );
+    assert.equal(pendentes[0].body, "Ja estou verificando");
+    assert.equal(pendentes[0].failure, "Conversa ja assumida por outro");
+    assert.deepEqual(chamadas, [], "e a mensagem nao chegou a ser despachada");
+  } finally {
+    await limpar();
+  }
+});
+
+test("a pendente aparece antes de o preparo terminar", async () => {
+  const { modulo, limpar } = await compilarStore();
+  try {
+    const store = modulo.criarInboxStore({
+      csrf: "csrf-token",
+      urls: URLS,
+      buscar: async () => ({}),
+    });
+
+    let liberar;
+    const preparo = new Promise((ok) => (liberar = ok));
+    // Nao esperamos o envio: o ganho inteiro do desenho e a bolha existir ANTES disto acabar.
+    const envio = store.sendReply(7, "reply", "Oi", () => preparo);
+    await Promise.resolve();
+
+    assert.equal(
+      store.pending.get(7)?.length,
+      1,
+      "com o take ainda em voo, a mensagem ja precisa estar na tela",
+    );
+    assert.equal(store.pending.get(7)[0].state, "sending");
+
+    liberar();
+    await envio;
+  } finally {
+    await limpar();
+  }
+});

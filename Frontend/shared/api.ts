@@ -37,8 +37,17 @@ export async function jsonRequest<T>(
     /* error below has a stable fallback */
   }
   if (!response.ok)
+    // O codigo entra na mensagem quando o servidor nao mandou um erro proprio. Sobre HTTP/2 nao
+    // existe texto de status, entao o que sobrava era "Request failed" — uma frase que nao
+    // distingue sessao expirada de permissao negada de defeito no servidor, e que obriga quem
+    // esta olhando a tela a abrir o log para saber qualquer coisa.
     throw new RequestError(
-      String(data.error || fallback || response.statusText || "Request failed"),
+      String(
+        data.error ||
+          fallback ||
+          response.statusText ||
+          `HTTP ${response.status}`,
+      ),
       response.status,
     );
   return data as T;

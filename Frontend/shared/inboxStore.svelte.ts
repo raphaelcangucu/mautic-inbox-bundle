@@ -150,6 +150,42 @@ export function criarInboxStore(deps: DependenciasDaStore) {
     },
 
     /**
+     * As passagens abaixo nao sao metodos novos no sentido de regra: cada uma entrega ao
+     * reducer ou ao fetcher exatamente o que recebeu.
+     *
+     * O desenho pedia seis metodos, e a contagem era um jeito de dizer "nenhuma decisao mora
+     * aqui". Essa parte continua valendo — nao ha uma condicao nestas linhas. O que a
+     * contagem nao previa e que o componente tem sete caminhos que escrevem historico e sete
+     * que escrevem a conversa, e sem uma porta para eles a alternativa seria cada um mexer no
+     * estado por fora, que e precisamente o que a porta unica existe para impedir.
+     */
+
+    /** As tres chamadas de abertura, juntas. */
+    abrir(id: number) {
+      return fetcher.abrirConversa(id);
+    },
+
+    /** Verdadeiro enquanto a abertura daquela conversa esta em voo: e o esqueleto girando. */
+    carregando(id: number): boolean {
+      return fetcher.carregando(id);
+    },
+
+    /** A porta unica do historico. Os sete caminhos entram por aqui, cada um com seu modo. */
+    aplicarItens(acao: {
+      conversationId: number;
+      items: TimelineItem[];
+      mode: "replace" | "merge" | "prepend";
+      cursor?: string | null;
+    }): void {
+      gravar(applyServerItems(estado, acao));
+    },
+
+    /** O detalhe que voltou de um take, de uma transicao ou do proprio envio. */
+    guardarConversa(conversa: Conversation): void {
+      fetcher.guardarConversa(conversa);
+    },
+
+    /**
      * A pendente aparece no mesmo quadro do toque; o servidor confirma depois. O instante e a
      * chave nascem aqui porque o reducer e puro e nao gera nenhum dos dois.
      */
@@ -157,6 +193,17 @@ export function criarInboxStore(deps: DependenciasDaStore) {
       conversationId: number,
       mode: "reply" | "note",
       body: string,
+      /**
+       * O que precisa dar certo antes de a mensagem sair — hoje, assumir a conversa e esperar
+       * a escrita de rascunho em voo. Roda DEPOIS da pendente aparecer, porque o ganho visual
+       * e justamente nao esperar por ele; se lancar, a pendente ja nasce marcada como falha,
+       * com o texto do atendente dentro e o botao de tentar de novo.
+       *
+       * Fica no chamador, e nao aqui, porque depende de rascunho e de selecao — coisas do
+       * componente. O que a store garante e que nenhum caminho deixe uma pendente presa em
+       * "enviando".
+       */
+      preparar?: () => Promise<void>,
     ): Promise<void> {
       const localId = requestId();
       // Nota nao recebe chave. O servidor nao guarda request_id de nota e grava uma nova a
@@ -173,6 +220,21 @@ export function criarInboxStore(deps: DependenciasDaStore) {
           now: new Date().toISOString(),
         }),
       );
+
+      if (undefined !== preparar) {
+        try {
+          await preparar();
+        } catch (erro) {
+          gravar(
+            failSend(estado, {
+              localId,
+              failure: mensagemDe(erro),
+              retryable: retentavel(erro),
+            }),
+          );
+          return;
+        }
+      }
 
       await despachar({
         conversationId,

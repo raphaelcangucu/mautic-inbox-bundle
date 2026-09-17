@@ -1,6 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import { comoApp, puxarParaAtualizar } from "../shared/pullToRefresh";
+  import { criarInboxStore } from "../shared/inboxStore.svelte";
+  import { umPorVez } from "../shared/umPorVez";
   import Icon from "../shared/Icon.svelte";
   import Avatar from "./Avatar.svelte";
   import ConversationList from "./ConversationList.svelte";
@@ -10,6 +12,7 @@
   import Composer from "./Composer.svelte";
   import SettingsView from "./SettingsView.svelte";
   import * as push from "../shared/push";
+  import type { PendingMessage } from "../shared/store/types";
   import type { PushUiState } from "../shared/types";
   import AutomationView from "./AutomationView.svelte";
   import { inboxBootstrap, translator } from "../shared/bootstrap";
@@ -49,14 +52,45 @@
   let listLoading = true;
   let listError = "";
   let selected: Conversation | null = null;
+
+  /**
+   * O estado do inbox mora na store, e nao em variaveis soltas do componente. Os sete caminhos
+   * que escreviam historico e os sete que escreviam a conversa entram todos por ela — e e por
+   * isso que reabrir uma conversa passa a custar zero requisicao.
+   */
+  const loja = criarInboxStore({ csrf, urls: config.urls });
+  /** Um take em voo por conversa. Ver umPorVez.ts: sem isto, dois envios seguidos dao 409. */
+  const filaDeTake = umPorVez<void>();
+
   let timeline: TimelineItem[] = [];
   let older: string | null = null;
+  let pendentes: PendingMessage[] = [];
+
+  /**
+   * Copia da store para o que a tela le. Chamada depois de cada escrita, de proposito.
+   *
+   * O caminho automatico nao existe aqui: este componente esta na sintaxe antiga, onde um `$:`
+   * recompoe a partir das variaveis que o COMPILADOR enxerga, e nao dos sinais lidos em tempo
+   * de execucao. Escrito como `$: timeline = loja.timelines.get(...)`, ele rodava uma vez na
+   * selecao — com o historico ainda vazio — e nunca mais. O teste que monta o componente pegou
+   * isso: a store guardava a mensagem e a tela ficava em branco.
+   *
+   * Converter as 1022 linhas para runes resolveria sozinho, e e mudanca para outro dia: seria
+   * reescrever a tela que a equipe usa todo dia para ganhar o que estas tres atribuicoes ja
+   * garantem.
+   */
+  function sincronizar(): void {
+    const entrada = selected ? loja.timelines.get(selected.id) : undefined;
+    timeline = entrada?.items ?? [];
+    older = entrada?.older ?? null;
+    pendentes = selected ? (loja.pending.get(selected.id) ?? []) : [];
+  }
   let selectionRevision = 0;
   let listRevision = 0;
   let searchTimer: number | undefined;
   let mode = "reply",
     composerBody = "",
-    sending = false,
+    enviandoModelo = false,
     feedback = "",
     feedbackError = false,
     feedbackTimer: number | undefined,
@@ -100,7 +134,6 @@
     { id: number; mode: string; body: string }
   > = {};
   const draftWrites: Partial<Record<string, Promise<unknown>>> = {};
-  const sendAttempts: Record<string, { body: string; id: string }> = {};
   const retryAttempts: Record<number, string> = {};
   let templateAttempt: { signature: string; id: string } | null = null;
   const api = <T,>(url: string, options: RequestInit = {}) =>
@@ -150,10 +183,11 @@
   }
   function clearSelection(update = true): void {
     ++selectionRevision;
+    // O cache da conversa NAO e apagado: sair dela e parar de renderizar, e e justamente o que
+    // faz a proxima abertura nao custar rede nenhuma.
     selected = null;
-    timeline = [];
-    older = null;
     ai = null;
+    sincronizar();
     root.classList.remove("has-selection");
     if (update) history?.clear(false);
   }
@@ -165,8 +199,10 @@
     try {
       const detail = await api<Conversation>(url("detail", id));
       if (revision !== selectionRevision) return;
+      loja.guardarConversa(detail);
       detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
       selected = detail;
+      sincronizar();
       root.classList.add("has-selection");
       if (update) history?.open(id, false);
       older = null;
@@ -206,8 +242,13 @@
       selected?.id !== id
     )
       return;
-    timeline = data.items;
-    older = data.next_cursor;
+    loja.aplicarItens({
+      conversationId: id,
+      items: data.items,
+      mode: "replace",
+      cursor: data.next_cursor,
+    });
+    sincronizar();
   }
   async function loadOlder(): Promise<void> {
     if (!selected || !older) return;
@@ -219,8 +260,13 @@
       next_cursor: string | null;
     }>(`${url("timeline", id)}?limit=100&before=${encodeURIComponent(before)}`);
     if (revision !== selectionRevision || selected?.id !== id) return;
-    timeline = [...data.items, ...timeline];
-    older = data.next_cursor;
+    loja.aplicarItens({
+      conversationId: id,
+      items: data.items,
+      mode: "prepend",
+      cursor: data.next_cursor,
+    });
+    sincronizar();
   }
   async function refreshSelected(): Promise<void> {
     if (!selected) return;
@@ -228,12 +274,19 @@
       revision = selectionRevision;
     const detail = await api<Conversation>(url("detail", id));
     if (revision !== selectionRevision || selected?.id !== id) return;
+    loja.guardarConversa(detail);
     detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
     selected = detail;
     await Promise.all([loadTimeline(id, revision), loadAi(id, false)]);
   }
-  async function take(): Promise<boolean> {
-    if (!selected) return false;
+  /**
+   * Assume a conversa. LANCA quando o servidor recusa, em vez de devolver falso.
+   *
+   * O motivo importa: o envio otimista escreve a recusa dentro da pendente, e e ele que o
+   * atendente le para saber se adianta tentar de novo. Um booleano nao carrega motivo.
+   */
+  async function take(): Promise<void> {
+    if (!selected) throw new Error(t("mautic.inbox.ui.conversation_b70a33"));
     const id = selected.id;
     const revision = selectionRevision;
     const version = selected.version;
@@ -242,13 +295,25 @@
         method: "POST",
         body: JSON.stringify({ version }),
       });
+      // O detalhe pos-tomada precisa entrar no cache. Sem isto, reabrir do cache traz a
+      // version anterior — e version velha e o que produz 409 na proxima tomada ou transicao.
+      loja.guardarConversa(detail);
       detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
       if (revision === selectionRevision && selected?.id === id)
         selected = detail;
       await Promise.all([loadList(false, true), loadAi(id, true)]);
-      return true;
     } catch (error) {
       showError((error as Error).message);
+      throw error;
+    }
+  }
+
+  /** Para os chamadores que so precisam do sim ou nao. O erro ja foi mostrado pelo take. */
+  async function takeDeuCerto(): Promise<boolean> {
+    try {
+      await take();
+      return true;
+    } catch {
       return false;
     }
   }
@@ -265,6 +330,7 @@
           body: JSON.stringify({ action, version: selected.version, ...extra }),
         });
       if (revision !== selectionRevision) return;
+      loja.guardarConversa(detail);
       detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
       selected = detail;
       await Promise.all([
@@ -416,48 +482,75 @@
       }
     }, 700);
   }
+  /**
+   * O envio otimista.
+   *
+   * A ordem e carregada de significado. A pendente entra e o composer esvazia PRIMEIRO — e o
+   * ganho inteiro do desenho. So depois vem a sequencia que ja existia: cancelar o debounce do
+   * rascunho, esperar o PUT em voo, assumir a conversa se preciso, e so entao despachar.
+   *
+   * Esperar o PUT antes do despacho nao e zelo: o servidor apaga o rascunho dentro da
+   * transacao de envio, e um PUT atrasado pousando depois recria o texto ja enviado. O
+   * atendente manda de novo, com identificador novo, e a mensagem sai duas vezes.
+   *
+   * Nao ha mais trava. Dois envios seguidos criam duas pendentes, e e o `filaDeTake` que
+   * impede que eles disputem a mesma versao da conversa no take.
+   */
   async function send(): Promise<void> {
-    if (!selected || sending || !composerBody.trim()) return;
+    if (!selected || !composerBody.trim()) return;
     const text = composerBody.trim(),
       id = selected.id,
       sendMode = mode,
       isNote = sendMode === "note",
-      key = `${id}:${sendMode}`;
-    const payload: Record<string, string> = { body: text };
-    if (!isNote && (!sendAttempts[key] || sendAttempts[key].body !== text))
-      sendAttempts[key] = { body: text, id: requestId() };
-    if (!isNote) payload.request_id = sendAttempts[key].id;
+      key = `${id}:${sendMode}`,
+      precisaAssumir = !isNote && Boolean(selected.can_take_and_reply);
+
     clearTimeout(draftTimers[key]);
     delete draftPending[key];
-    sending = true;
     feedback = "";
-    try {
-      if (!isNote && selected.can_take_and_reply && !(await take())) return;
-      const pendingDraft = draftWrites[key];
-      if (pendingDraft) await pendingDraft.catch(() => undefined);
-      await api(url(isNote ? "note" : "reply", id), {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      delete sendAttempts[key];
-      draftCache[id] = draftCache[id] || {};
-      if ((draftCache[id][sendMode] || "").trim() === text)
-        draftCache[id][sendMode] = "";
-      if (selected?.id === id) {
-        selected.drafts = selected.drafts || {};
-        if ((selected.drafts[sendMode] || "").trim() === text)
-          selected.drafts[sendMode] = "";
-        if (mode === sendMode && composerBody.trim() === text)
-          composerBody = "";
-        await loadTimeline(id, selectionRevision);
-      }
-      await loadList(false, true);
-    } catch (error) {
-      showError((error as Error).message);
-    } finally {
-      sending = false;
-    }
+
+    // O rascunho e limpo junto com a bolha aparecendo, nos tres lugares em que ele vive. Se o
+    // envio falhar, o texto nao se perde: ele esta dentro da pendente, e e de la que a
+    // retentativa sai.
+    draftCache[id] = draftCache[id] || {};
+    if ((draftCache[id][sendMode] || "").trim() === text)
+      draftCache[id][sendMode] = "";
+    if (selected.drafts && (selected.drafts[sendMode] || "").trim() === text)
+      selected.drafts[sendMode] = "";
+    if (mode === sendMode && composerBody.trim() === text) composerBody = "";
+
+    const envio = loja.sendReply(
+      id,
+      isNote ? "note" : "reply",
+      text,
+      async () => {
+        if (precisaAssumir) await filaDeTake(id, () => take());
+        const pendingDraft = draftWrites[key];
+        if (pendingDraft) await pendingDraft.catch(() => undefined);
+      },
+    );
+
+    // A pendente ja esta no estado neste ponto: `sendReply` a insere antes do primeiro await.
+    sincronizar();
+    await envio;
+    sincronizar();
+    await loadList(false, true);
   }
+
+  /**
+   * Tentar de novo a partir da bolha. O texto e a chave saem da propria pendente — reusar o
+   * `requestId` e o que impede a duplicata quando o servidor ja processou e so o retorno se
+   * perdeu. Uma nota nao tem chave para reusar, e por isso tentar de novo grava outra nota.
+   */
+  async function reenviarPendente(mensagem: PendingMessage): Promise<void> {
+    feedback = "";
+    const tentativa = loja.retryPending(mensagem.localId);
+    sincronizar();
+    await tentativa;
+    sincronizar();
+    await loadList(false, true);
+  }
+
   async function retryOutbound(item: TimelineItem): Promise<void> {
     if (!selected || !item.retryable || retryBusy.has(item.id)) return;
     const id = selected.id;
@@ -465,7 +558,7 @@
     retryBusy = new Set(retryBusy).add(item.id);
     try {
       feedback = "";
-      if (selected.can_take_and_reply && !(await take())) return;
+      if (selected.can_take_and_reply && !(await takeDeuCerto())) return;
       await api(url("retry", item.id), {
         method: "POST",
         body: JSON.stringify({ request_id: retryAttempts[item.id] }),
@@ -505,17 +598,21 @@
     template: WhatsAppTemplate,
     variables: Record<string, string>,
   ): Promise<boolean> {
-    if (!selected || sending || !confirm(t("mautic.inbox.template.confirm")))
+    if (
+      !selected ||
+      enviandoModelo ||
+      !confirm(t("mautic.inbox.template.confirm"))
+    )
       return false;
     const id = selected.id,
       payload = { template_id: template.id, variables },
       signature = JSON.stringify([id, template.id, variables]);
     if (!templateAttempt || templateAttempt.signature !== signature)
       templateAttempt = { signature, id: requestId() };
-    sending = true;
+    enviandoModelo = true;
     templateError = "";
     try {
-      if (!selected.assignee && !(await take())) return false;
+      if (!selected.assignee && !(await takeDeuCerto())) return false;
       await api(url("reply", id), {
         method: "POST",
         body: JSON.stringify({ ...payload, request_id: templateAttempt.id }),
@@ -531,7 +628,7 @@
       templateError = (error as Error).message;
       return false;
     } finally {
-      sending = false;
+      enviandoModelo = false;
     }
   }
   async function saveCanned(item: {
@@ -715,13 +812,16 @@
     if (initial > 0) void select(initial, false);
     void poll();
     timers.push(
+      // O intervalo do historico saiu. Nao e suposicao: o token de versao que o SSE publica
+      // soma os status de OutboundRequest e MetaMessage, entao uma entrega que muda de pending
+      // para failed move o token e dispara o poll sozinha.
+      //
+      // O da IA FICA. O mesmo raciocinio nao transfere: AiRecord nao tem campo de status e nao
+      // esta entre as seis classes do token. Tirar este faria o atendente parar de ser avisado
+      // de que ha resposta de IA esperando aprovacao.
       window.setInterval(() => {
         if (selected && !document.hidden) void loadAi(selected.id, false);
       }, 1500),
-      window.setInterval(() => {
-        if (selected && !document.hidden)
-          void loadTimeline(selected.id, selectionRevision);
-      }, 2000),
     );
     if (window.EventSource && config.urls.stream) {
       stream = new EventSource(config.urls.stream);
@@ -994,7 +1094,7 @@
               {#if !selected.assignee}<button
                   id="inbox-take"
                   class="btn btn-primary btn-sm"
-                  on:click={() => void take()}
+                  on:click={() => void takeDeuCerto()}
                   >{t("mautic.inbox.ui.assign_to_me_96f796")}</button
                 >{/if}{#if selected.lifecycle !== "resolved"}<button
                   id="inbox-resolve"
@@ -1027,6 +1127,8 @@
               onOlder={loadOlder}
               retry={(item) => void retryOutbound(item)}
               {retryBusy}
+              pendingMessages={pendentes}
+              onRetryPending={(mensagem) => void reenviarPendente(mensagem)}
               pending={ai?.pending_reply || null}
               aiCanAssign={Boolean(ai?.can_assign)}
               aiRetryBusy={aiRetryBusy || aiMutationBusy}
@@ -1060,7 +1162,6 @@
             currentUser={config.currentUser}
             bind:mode
             bind:body={composerBody}
-            {sending}
             {feedback}
             {feedbackError}
             {draftState}

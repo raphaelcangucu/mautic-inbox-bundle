@@ -9,7 +9,6 @@
   export let currentUser: number;
   export let mode = "reply";
   export let body = "";
-  export let sending = false;
   export let feedback = "";
   export let feedbackError = false;
   export let draftState = "";
@@ -59,13 +58,11 @@
    * O aviao nao diz nada a leitor de tela nem a um teste, entao o rotulo que estava escrito no
    * botao continua existindo — como nome acessivel, e com as mesmas chaves de traducao.
    */
-  $: sendLabel = sending
-    ? t("mautic.inbox.ui.sending_5e91dc")
-    : note
-      ? t("mautic.inbox.ui.add_note_344d88")
-      : selected.can_take_and_reply
-        ? t("mautic.inbox.ui.assign_to_me_and_send_509661")
-        : t("mautic.inbox.ui.send_reply_c50a43");
+  $: sendLabel = note
+    ? t("mautic.inbox.ui.add_note_344d88")
+    : selected.can_take_and_reply
+      ? t("mautic.inbox.ui.assign_to_me_and_send_509661")
+      : t("mautic.inbox.ui.send_reply_c50a43");
   $: publicReply = Boolean(selected.reply_public);
   $: selectedTemplate = templates.find(
     (item) => String(item.id) === templateId,
@@ -77,7 +74,6 @@
         ? 2000
         : 4000;
   $: disabled =
-    sending ||
     (!note && !selected.can_reply && !selected.can_take_and_reply) ||
     selected.lifecycle === "resolved";
   $: preview = selectedTemplate
@@ -91,7 +87,6 @@
         .join("\n\n")
     : "";
   $: templateDisabled =
-    sending ||
     templateSending ||
     Boolean(templateBlocked) ||
     !selectedTemplate ||
