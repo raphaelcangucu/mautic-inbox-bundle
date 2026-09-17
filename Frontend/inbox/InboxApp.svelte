@@ -635,13 +635,15 @@
       }, 20000);
   }
   /**
-   * Quanto do alto da tela nao pertence ao inbox.
+   * As duas bordas da moldura: quanto do alto da tela nao pertence ao inbox, e quanto o menu de
+   * rodape ocupa embaixo.
    *
-   * O CSS do celular precisa saber onde o app comeca para calcular a altura da area de trabalho,
-   * e nao tem como descobrir sozinho: em /s/inbox o Mautic desenha uma faixa propria acima, e no
-   * shell instalavel nao ha faixa nenhuma. Calcular por 100dvh, como estava, dava 60 pixels a
-   * mais — e era exatamente a altura em que o botao de enviar ficava atras do menu fixo,
-   * medido no aparelho: enviar ocupava de 665 a 709, e o menu comecava em 660.
+   * Nenhuma das duas o CSS descobre sozinho. Em cima, /s/inbox tem uma faixa do Mautic acima do
+   * app e o shell instalavel nao tem nenhuma. Embaixo, a altura do menu depende da fonte do
+   * aparelho e de quantos itens ele mostra. Numero fixo errou as duas vezes, e as duas vezes o
+   * erro apareceu como conteudo escondido atras do menu: no iPhone o botao de enviar inteiro,
+   * de 665 a 709 contra um menu que comecava em 660; no Android dez pixels, com o menu medindo
+   * 69 onde o CSS dizia 58.
    */
   /** Quanto o indicador de atualizar desceu. Zero quer dizer escondido. */
   let puxada = 0;
@@ -649,18 +651,27 @@
   let puxadaDispose: (() => void) | null = null;
   const LIMITE_DA_PUXADA = 72;
 
-  function medirTopo(): void {
+  function medirMoldura(): void {
     root.style.setProperty(
       "--ib-app-top",
       `${Math.max(0, Math.round(root.getBoundingClientRect().top + window.scrollY))}px`,
     );
+
+    const menu = root.querySelector<HTMLElement>(".inbox-tabs");
+    // So quando o menu esta destacado embaixo. No desktop ele e uma faixa dentro da barra de
+    // cima, ja contada pela coluna, e descontar a altura dele de novo encolheria a tela a toa.
+    if (menu && "fixed" === window.getComputedStyle(menu).position) {
+      root.style.setProperty("--ib-bottom-nav", `${menu.offsetHeight}px`);
+    } else {
+      root.style.removeProperty("--ib-bottom-nav");
+    }
   }
 
   onMount(() => {
     root.dataset.svelteInboxMounted = "1";
-    medirTopo();
-    window.addEventListener("resize", medirTopo);
-    window.addEventListener("orientationchange", medirTopo);
+    medirMoldura();
+    window.addEventListener("resize", medirMoldura);
+    window.addEventListener("orientationchange", medirMoldura);
 
     // So dentro do app instalado: no navegador o Android ja tem o gesto nativo e o Safari tem o
     // botao, e dois puxoes concorrendo no mesmo dedo e pior que nenhum.
@@ -748,9 +759,10 @@
   });
   onDestroy(() => {
     puxadaDispose?.();
-    window.removeEventListener("resize", medirTopo);
-    window.removeEventListener("orientationchange", medirTopo);
+    window.removeEventListener("resize", medirMoldura);
+    window.removeEventListener("orientationchange", medirMoldura);
     root.style.removeProperty("--ib-app-top");
+    root.style.removeProperty("--ib-bottom-nav");
     root.classList.remove("has-selection");
     root.removeAttribute("data-svelte-inbox-mounted");
     delete root.dataset.feedbackSource;
