@@ -78,7 +78,7 @@ const URLS_PADRAO: UrlsDoFetcher = {
   state: "/s/inbox/api/conversations/0/state",
 };
 
-const estadoVazio = (): InboxState => ({
+export const estadoVazio = (): InboxState => ({
   lists: new Map(),
   conversations: new Map(),
   timelines: new Map(),
@@ -411,6 +411,10 @@ export function criar(opcoes: OpcoesDoFetcher = {}) {
 
   return {
     abrirConversa,
+    // Exposto porque o poll traz resumos prontos: quem os recebe precisa guarda-los pela
+    // MESMA regra que o detalhe usa, incluindo a de nao inventar linha em lista cacheada.
+    // Reescrever essa regra do lado de fora seria uma segunda versao dela.
+    guardarConversa,
     ensureConversation,
     ensureTimeline,
     ensureAi,

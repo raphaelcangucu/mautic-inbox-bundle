@@ -79,6 +79,24 @@ function acharPendente(
   return null;
 }
 
+/**
+ * A pendente inteira, pelo localId.
+ *
+ * Tentar de novo precisa do texto, do modo e da chave — e a acao de retentativa so carrega o
+ * localId. Sem esta porta, quem orquestra o reenvio varreria o mapa de pendentes por fora e
+ * manteria uma segunda copia desta busca.
+ */
+export function findPending(
+  state: InboxState,
+  localId: string,
+): PendingMessage | undefined {
+  const achada = acharPendente(state, localId);
+
+  return null === achada
+    ? undefined
+    : state.pending.get(achada.conversationId)?.[achada.indice];
+}
+
 /** Aplica uma transformacao a uma pendente, sem tocar na lista original. */
 function trocarPendente(
   state: InboxState,
