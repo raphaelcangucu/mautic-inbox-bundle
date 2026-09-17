@@ -84,7 +84,7 @@ Em `Frontend/shared/types.ts`, dentro de `TimelineItem`:
 `Frontend/shared/store/types.ts`:
 
 ```ts
-import type { Conversation, ConversationSummary, TimelineItem } from "../types";
+import type { Conversation, TimelineItem } from "../types";
 
 /**
  * Uma mensagem que o atendente mandou e o servidor ainda nao registrou.
@@ -114,11 +114,30 @@ export interface PendingMessage {
   retryable?: boolean;
 }
 
-/** A lista e cacheada por filtro: duas filtragens sao duas entradas, nao uma sobrescrevendo a outra. */
+/**
+ * A lista e cacheada por FILTRO, e o cursor mora DENTRO da entrada.
+ *
+ * O cursor nao pode entrar na chave: paginar viraria uma entrada nova por pagina e o
+ * "carregar mais" pararia de funcionar, porque a pagina 2 nao encontraria a 1.
+ */
 export interface ListEntry {
   readonly key: string;
-  items: ConversationSummary[];
+  items: Conversation[];
   cursor: string | null;
+}
+
+/** O conjunto que compoe a chave. Sem cursor, de proposito. */
+export interface ListFilter {
+  queue: string; kind: string; lifecycle: string;
+  channel: string; search: string; needsResponse: boolean;
+}
+
+/** O que o poll devolve, e que hoje o cliente joga fora. */
+export interface PollResult {
+  version: string;
+  conversations?: Conversation[];
+  timeline?: TimelineItem[];
+  selectedId?: number;
 }
 
 export interface InboxState {
@@ -410,7 +429,9 @@ Afirmar **duas** seria um falso positivo: uma implementação que dispara `detal
 
 `abrirConversa(id)` dispara `detalhe`, `histórico` e `ia` **juntos**. A conversa renderiza sem esperar o `ia`; o painel de IA preenche quando chegar. O POST de leitura continua saindo sem espera, fora do caminho crítico.
 
-`ensureList(filtro)` usa o conjunto de filtros — fila, tipo, ciclo de vida, canal, busca, precisa-resposta — mais o cursor como **chave de cache**. Duas filtragens diferentes são duas entradas, não uma sobrescrevendo a outra.
+`ensureList(filtro)` usa **só o conjunto de filtros** — fila, tipo, ciclo de vida, canal, busca,
+precisa-resposta — como chave. O cursor **não entra na chave**: ele vive dentro da entrada, porque
+paginar criaria uma entrada nova por página e o "carregar mais" deixaria de encontrar a anterior.
 
 Numa abertura fria, `detalhe` pode responder 404 ou 403: o esqueleto dá lugar à mensagem de erro que o componente já mostra, nada entra no cache, e a conversa **não** é inserida na lista em cache.
 
@@ -455,8 +476,28 @@ export function criarInboxStore(deps: { csrf: string; urls: Record<string, strin
 }
 ```
 
+O bloco acima é um **contrato**, não TypeScript compilável — declare as assinaturas na forma que o
+Svelte aceitar. `ListFilter` e `PollResult` vêm da tarefa 1.
+
 Seis métodos, exatamente os que o spec nomeia. `applyPoll` desmonta o resultado do poll e chama
 `applyServerItems` por conversa — é assim que o caminho do poll passa a respeitar as pendentes.
+
+### Duas idas a menos por tique, de graça
+
+O `poll()` do servidor **já devolve** `conversations` — os resumos que mudaram — e `timeline` — os
+itens novos da conversa selecionada. O cliente de hoje **joga os dois fora** e busca tudo de novo
+com `loadList` e `refreshSelected`: duas idas extras a cada tique.
+
+`applyPoll` passa a consumir o que já veio. Com o SSE disparando um poll por mudança, isso é a
+diferença entre três idas e uma, em cada atualização.
+
+**Uma ressalva que muda o código:** o `timeline` do poll é **incremental** e só da conversa
+selecionada. Então `applyServerItems` precisa **mesclar** por id, e não substituir, quando a origem
+for o poll. Um teste para isso:
+
+```ts
+test("itens incrementais do poll mesclam, nao substituem o historico", ...)
+```
 
 A lógica fica no TS puro porque `$state` é construção de compilador e o `tsx` do pipeline de testes
 não compila Svelte. **Se você se pegar escrevendo uma condição aqui, ela pertence ao reducer.**
@@ -523,6 +564,19 @@ Troque o `return` por `failSend` com o motivo da recusa. Teste:
 test("take recusado marca a pendente como falha, com o texto dentro dela", ...)
 ```
 
+**E cuidado com a corrida que a própria mudança cria.** O `take()` envia a `version` lida no
+momento da chamada. Sem a trava de envio, dois envios disparados dentro da mesma ida de 750 ms leem
+a **mesma** versão: o primeiro a incrementa, o segundo leva 409 — e, com o passo acima, marcaria a
+segunda pendente como falha **embora a conversa tenha sido tomada com sucesso**.
+
+A janela é estreita, mas envios em sequência rápida são justamente a premissa desta mudança. A
+solução é **um `take` em voo por conversa**: o segundo envio espera o primeiro terminar em vez de
+disparar o seu. Teste:
+
+```ts
+test("dois envios numa conversa nao assumida disparam um unico take", ...)
+```
+
 - [ ] **Passo 3: Soltar a trava de envio**
 
 A premissa do desenho inteiro é que o botão nunca mais fica preso — é o que permite o ícone da
@@ -530,8 +584,15 @@ tarefa 9 e o que o spec chama de envio concorrente. Três coisas precisam sair j
 
 - A guarda `if (... || sending || ...)` no início do `send()`
 - O `disabled={disabled || ...}` do `Composer.svelte`, que computa a partir de `sending`
+- **O rótulo do botão**, que hoje lê `{sending ? ... : ...}` no `Composer.svelte`, e o `{sending}`
+  passado pelo `InboxApp.svelte`
 - O `sendAttempts[key]`, que é **um slot único por conversa e modo** — o `request_id` passa a
   morar em cada pendente
+
+O rótulo entra **nesta tarefa**, não na 9. Remover a prop aqui e trocar o rótulo lá deixaria o
+`npm run check` reprovando no meio, entre duas tarefas — e o passo de teste desta tarefa falharia
+por uma mudança que ainda não aconteceu. A tarefa 9 cuida do ícone e do alvo de toque; o texto sai
+junto com a trava que o alimentava.
 
 `sendTemplate()` compartilha a mesma flag `sending`, então isto não é uma deleção de uma linha.
 
@@ -554,7 +615,7 @@ a duplicata por outro caminho.
 
 - [ ] **Passo 1: Todos os caminhos que escrevem o histórico passam pela store**
 
-Não é só o `select()`. **Seis** lugares escrevem `timeline` hoje, e deixar cinco de fora faz o
+Não é só o `select()`. **Sete** lugares escrevem `timeline` hoje, e deixar cinco de fora faz o
 cache da store divergir do que está na tela:
 
 | Caminho | O que faz hoje |
@@ -564,19 +625,37 @@ cache da store divergir do que está na tela:
 | `loadOlder()` | carrega mensagens anteriores |
 | `sendTemplate()` | recarrega depois do modelo |
 | `retryOutbound()` | recarrega depois da retentativa |
+| `mutate()` | soneca, resolver, reabrir |
 | `clearSelection()` | esvazia ao sair da conversa |
 
 Todos passam a entregar itens por `applyServerItems`. O `loadOlder` **acrescenta** em vez de
 substituir, e o `clearSelection` não apaga o cache — só deixa de renderizar.
 
-- [ ] **Passo 2: Remover o recarregamento periódico do histórico**
+- [ ] **Passo 2: A conversa selecionada também precisa voltar para a store**
+
+Esta é a **mesma armadilha do histórico, em outro lugar**, e é fácil não ver. Sete caminhos
+escrevem `selected`, e dois deles produzem um sintoma concreto e feio:
+
+| Caminho | Sintoma se não voltar à store |
+|---|---|
+| `take()` | substitui `selected` com o detalhe pós-tomada; o cache guarda o **anterior** |
+| `mutate()` | idem, depois de soneca ou resolução |
+| `refreshSelected()`, `select()`, `loadAi()`, `draftInput()`, `clearSelection()` | cache envelhece em silêncio |
+
+O `take()` é o pior: o cache fica com a `version` antiga da conversa. Reabrir do cache — que é o
+objetivo 1, zero requisição — renderiza `assignee` e `can_reply` velhos, e **`version` velha é o
+que produz 409 na próxima tomada ou transição**. O ganho de velocidade viraria uma fonte de erro.
+
+Todos escrevem em `conversations` pela store. `rows` idem, pela entrada de lista do filtro atual.
+
+- [ ] **Passo 3: Remover o recarregamento periódico do histórico**
 
 É seguro, e não é suposição: o token de versão que o SSE publica soma os `status` de `OutboundRequest` e `MetaMessage`. Uma entrega que muda de `pending` para `failed` move o token e dispara o poll sozinha.
 
 **O intervalo de 1,5 s do estado de IA FICA.** O mesmo raciocínio não transfere: o `AiRecord` não tem campo de status e não está entre as seis classes do token. Removê-lo faria o atendente parar de ser avisado de que há resposta de IA esperando aprovação — e pareceria funcionar em teste, porque algumas transições movem o token por acidente.
 
-- [ ] **Passo 3: `npm test`**
-- [ ] **Passo 4: Commit**
+- [ ] **Passo 4: `npm test`**
+- [ ] **Passo 5: Commit**
 
 ---
 
