@@ -32,15 +32,13 @@
   let segmentId = "";
 
   onMount(async () => {
-    // TEMPORARIO: o caminho entra na mensagem de erro enquanto investigo um 404 que o roteador
-    // do servidor diz que nao deveria acontecer. Sai assim que a causa estiver achada.
-    const caminho = `${endpoint(optionsUrl, stateId)}?email=${encodeURIComponent(email)}`;
     try {
-      dados = await jsonRequest<Opcoes>(caminho, csrf);
+      dados = await jsonRequest<Opcoes>(
+        `${endpoint(optionsUrl, stateId)}?email=${encodeURIComponent(email)}`,
+        csrf,
+      );
     } catch (problema) {
-      const dito =
-        problema instanceof Error ? problema.message : String(problema);
-      erro = `${dito} — ${caminho || "(url vazia)"}`;
+      erro = problema instanceof Error ? problema.message : String(problema);
     }
   });
 
