@@ -83,21 +83,74 @@
    ja conhecem de aplicativo de mensagem: icone em cima, rotulo embaixo, alvo grande de polegar.
    Um elemento so no DOM — duplicar o menu significaria duplicar o estado de "aba ativa", que e
    a maneira mais facil de as duas copias discordarem.
-   Limitado ao .inbox-shell de proposito: em /s/inbox o Mautic ja poe a propria barra em volta, e
-   fixar uma segunda por cima dela e mudanca que ninguem pediu e que o time nao esta vendo agora. */
+   Vale no app instalado E no navegador: no celular o Mautic nao desenha barra propria em volta
+   do inbox, entao nao ha com o que competir embaixo. */
 @media(max-width:760px){
 .inbox-shell{padding-bottom:0}
-.inbox-shell .inbox-app{--ib-bottom-nav:calc(58px + env(safe-area-inset-bottom,0px));margin:0 0 var(--ib-bottom-nav)}
+.inbox-app{--ib-bottom-nav:calc(58px + env(safe-area-inset-bottom,0px));margin:0 0 var(--ib-bottom-nav)}
 /* Sem as abas dentro dela, a barra de cima volta a ser uma linha so e devolve altura ao chat. */
-.inbox-shell .inbox-toolbar{flex-direction:row;align-items:center;min-height:0;padding:10px 14px}
-.inbox-shell .inbox-tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;width:auto;gap:0;padding:0 0 env(safe-area-inset-bottom,0px);border-top:1px solid var(--ib-border);border-radius:0;background:#fff;box-shadow:0 -2px 10px #1e26340f}
-.inbox-shell .inbox-tabs button,.inbox-shell .inbox-tabs .inbox-tabs-link{display:flex;align-items:center;flex:1 1 0;min-width:0;min-height:52px;flex-direction:column;justify-content:center;gap:3px;padding:7px 2px;border-radius:0;font-size:10px;font-weight:550;text-decoration:none;color:#79808c}
-.inbox-shell .inbox-tabs button.active,.inbox-shell .inbox-tabs .inbox-tabs-link:hover{background:transparent;box-shadow:none;color:var(--ib-accent)}
-.inbox-shell .inbox-tabs svg{width:21px;height:21px}
+.inbox-toolbar{flex-direction:row;align-items:center;min-height:0;padding:10px 14px}
+.inbox-tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;width:auto;gap:0;padding:0 0 env(safe-area-inset-bottom,0px);border-top:1px solid var(--ib-border);border-radius:0;background:#fff;box-shadow:0 -2px 10px #1e26340f}
+.inbox-tabs button,.inbox-tabs .inbox-tabs-link{display:flex;align-items:center;flex:1 1 0;min-width:0;min-height:52px;flex-direction:column;justify-content:center;gap:3px;padding:7px 2px;border-radius:0;font-size:10px;font-weight:550;text-decoration:none;color:#79808c}
+.inbox-tabs button.active,.inbox-tabs .inbox-tabs-link:hover{background:transparent;box-shadow:none;color:var(--ib-accent)}
+.inbox-tabs svg{width:21px;height:21px}
 /* No desktop o engrenagem e so icone; aqui ele ganha rotulo como os vizinhos, sem outro elemento. */
-.inbox-shell .inbox-tabs .inbox-settings-tab{width:auto;padding-left:2px!important;padding-right:2px!important}
-.inbox-shell .inbox-tabs .inbox-settings-tab .sr-only{position:static;width:auto;height:auto;margin:0;padding:0;clip:auto;clip-path:none;overflow:visible;white-space:normal}
+.inbox-tabs .inbox-settings-tab{width:auto;padding-left:2px!important;padding-right:2px!important}
+.inbox-tabs .inbox-settings-tab .sr-only{position:static;width:auto;height:auto;margin:0;padding:0;clip:auto;clip-path:none;overflow:visible;white-space:normal}
 /* A conta da altura desconta as duas barras e os dois entalhes, senao o compositor fica atras
    do menu — que e exatamente onde o polegar vai bater. */
-.inbox-shell .inbox-workspace{height:calc(100dvh - 60px - env(safe-area-inset-top,0px) - var(--ib-bottom-nav));min-height:280px}
+.inbox-workspace{height:calc(100dvh - 60px - env(safe-area-inset-top,0px) - var(--ib-bottom-nav));min-height:280px}
+}
+
+/* A conversa no celular, no formato de aplicativo de mensagem.
+   O que ocupava a tela antes: um cabecalho de 100px com os botoes numa linha propria, o aviso de
+   canal em bloco, e a linha de rodape de rascunho. Somados, sobrava pouco para as mensagens — que
+   e a unica coisa pela qual alguem abre a conversa. */
+@media(max-width:760px){
+/* Cabecalho: uma linha so — voltar, foto, nome, e as acoes a direita. */
+.inbox-thread #inbox-selected{grid-template-rows:auto minmax(100px,1fr) auto}
+.inbox-thread-header{display:flex;align-items:center;gap:9px;padding:7px 10px}
+.inbox-thread-header .inbox-avatar{display:flex;width:34px;height:34px;border-radius:50%;font-size:12px}
+.inbox-thread-identity{flex:1 1 auto;min-width:0}
+.inbox-thread-identity h3{font-size:14px;margin:0}
+.inbox-thread-identity p{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-thread-header .inbox-actions{grid-column:auto;width:auto;margin-left:auto;gap:5px;flex-shrink:0}
+.inbox-thread-header .inbox-actions .btn{padding:7px 10px;font-size:11px;border-radius:15px;box-shadow:none}
+.inbox-contact-panel.open{top:50px}
+.inbox-timeline{padding:12px 12px 18px;gap:9px}
+.inbox-message{max-width:82%;padding:9px 12px;line-height:1.5}
+.inbox-message p{margin:0 0 4px}
+
+/* Compositor: linha unica com o campo arredondado e o aviao redondo do lado, como no WhatsApp.
+   display:contents no rodape dissolve aquele agrupamento e deixa as ferramentas, o campo e o botao
+   virarem irmaos na mesma linha, sem precisar remexer a arvore do componente. */
+.inbox-composer{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:0;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));border-radius:0;border-width:1px 0 0;box-shadow:none}
+.inbox-composer-top{flex:1 0 100%;padding:0 0 2px}
+.inbox-reply-hint{flex:1 0 100%;margin:0}
+/* O aviso longo de canal so aparece quando ha um impedimento real. Repetir "escreva sua resposta"
+   acima do campo de escrever custava um terco da tela. */
+.inbox-reply-hint:not(.blocked){display:none}
+#inbox-feedback{flex:1 0 100%}
+.inbox-template-panel{flex:1 0 100%}
+.inbox-composer-footer{display:contents}
+.inbox-composer-tools{order:1;flex:none;position:relative;width:40px;height:40px;justify-content:center;gap:0}
+.inbox-composer-tools svg{width:19px;height:19px}
+/* O seletor invisivel cobre o raio: tocar no icone abre a lista nativa, e ele continua sendo um
+   select de verdade para o leitor de tela e para o teste. */
+.inbox-composer-tools select{position:absolute;inset:0;width:100%;max-width:none;opacity:0;padding:0}
+.inbox-composer textarea{order:2;flex:1 1 auto;width:auto;min-width:0;min-height:42px;max-height:120px;padding:10px 15px;border-radius:21px;background:#f3f4f7;resize:none;line-height:1.45}
+#inbox-send{order:3;border-radius:50%}
+/* "Rascunho salvo" e "Ctrl+Enter para enviar" nao dizem nada a quem esta com o polegar na tela. */
+.inbox-editor-status{display:none}
+/* Dentro da conversa, o cabecalho do produto nao ajuda: o nome do contato ja esta logo abaixo e o
+   menu agora mora no rodape. Escondendo-o, a lista de mensagens ganha os 70px que ele ocupava.
+   A barra em si continua no fluxo porque o menu e filho dela — display:none nela levaria o menu
+   junto, por mais fixo que ele seja. */
+.inbox-app.has-selection .inbox-toolbar{min-height:0;padding:0;border-bottom:0}
+.inbox-app.has-selection .inbox-product-heading{display:none}
+.inbox-app.has-selection .inbox-workspace{height:calc(100dvh - env(safe-area-inset-top,0px) - var(--ib-bottom-nav))}
+/* Acoes discretas: o nome do contato vem antes delas na disputa por largura. */
+.inbox-thread-header .inbox-actions .btn{padding:6px 9px;font-size:10.5px;letter-spacing:-.1px}
+.inbox-thread-header .inbox-actions .btn-primary{background:transparent!important;border-color:#d7dbe8!important;color:var(--ib-accent)!important}
+.inbox-composer textarea{height:42px}
 }

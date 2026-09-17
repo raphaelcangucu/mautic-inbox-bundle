@@ -28,6 +28,25 @@
     values: Record<string, string>,
   ) => Promise<boolean>;
   let menuValue = "";
+  let campo: HTMLTextAreaElement | null = null;
+  const consulta =
+    "undefined" === typeof window
+      ? null
+      : window.matchMedia("(max-width: 760px)");
+  /**
+   * Reativo, e nao lido uma vez: o mesmo componente atende telefone e desktop, e girar o aparelho
+   * ou arrastar a janela atravessa o limite sem recarregar nada.
+   */
+  let estreita = Boolean(consulta?.matches);
+  consulta?.addEventListener("change", (evento) => {
+    estreita = evento.matches;
+  });
+  const estreito = (): boolean => estreita;
+  function ajustarAltura(): void {
+    if (!campo || !estreito()) return;
+    campo.style.height = "auto";
+    campo.style.height = `${Math.min(campo.scrollHeight, 120)}px`;
+  }
   let templateOpen = false;
   let templateId = "";
   let values: Record<string, string> = {};
@@ -80,6 +99,7 @@
     ) ||
     selected.lifecycle === "resolved" ||
     Boolean(selected.assignee && selected.assignee.id !== currentUser);
+  $: if (campo && "" === body) ajustarAltura();
   $: if (selected.id !== owner) {
     owner = selected.id;
     closeTemplate();
@@ -240,16 +260,26 @@
   </div>
   <textarea
     id="inbox-composer-text"
+    bind:this={campo}
     bind:value={body}
     maxlength={maximum}
     rows="3"
-    placeholder={note
-      ? t("mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89")
-      : publicReply
-        ? t("mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01")
-        : t("mautic.inbox.ui.write_a_private_reply_394bc1")}
+    placeholder={estreita
+      ? t(
+          note
+            ? "mautic.inbox.ui.note_placeholder_short"
+            : "mautic.inbox.ui.message_placeholder_short",
+        )
+      : note
+        ? t("mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89")
+        : publicReply
+          ? t("mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01")
+          : t("mautic.inbox.ui.write_a_private_reply_394bc1")}
     aria-label={t("mautic.inbox.ui.reply_text_680d6f")}
-    on:input={onInput}
+    on:input={() => {
+      ajustarAltura();
+      onInput();
+    }}
     on:keydown={(event) => {
       if (
         (event.metaKey || event.ctrlKey) &&

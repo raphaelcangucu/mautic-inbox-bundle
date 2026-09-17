@@ -27,7 +27,18 @@ class PwaShellController extends CommonController
 
         $user = $users->getUser();
 
+        // A versao vem da data dos proprios arquivos compilados. Sem isto o shell pedia o bundle
+        // com uma etiqueta fixa, e um app ja instalado ficava preso na versao que baixou na
+        // primeira visita: dentro dele nao ha barra de endereco nem recarregar forcado, entao o
+        // atendente nao teria como sair daquele estado sem reinstalar.
+        $dist    = __DIR__.'/../Assets';
+        $version = (string) max(
+            (int) @filemtime($dist.'/dist/inbox-app.js'),
+            (int) @filemtime($dist.'/css/inbox.css')
+        );
+
         return $this->render('@MauticInbox/App/shell.html.twig', [
+            'assetVersion'             => $version,
             'currentUserId'            => $user->getId(),
             'initialStateId'           => null !== $stateId && $stateId > 0 ? $stateId : null,
             'users'                    => $query->users(),
