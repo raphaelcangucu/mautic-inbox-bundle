@@ -212,3 +212,11 @@ export interface AiData {
     cms?: { configured?: boolean; url?: string };
   };
 }
+
+/** O que a tela de ajustes precisa saber sobre a notificacao do navegador. */
+export type PushUiState =
+  | { kind: "unsupported"; reason: string }
+  | { kind: "unconfigured" }
+  | { kind: "denied" }
+  | { kind: "off" }
+  | { kind: "on" };

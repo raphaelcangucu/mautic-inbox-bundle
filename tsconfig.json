@@ -11,5 +11,6 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "types": ["svelte"]
   },
-  "include": ["Frontend/**/*.ts", "Frontend/**/*.svelte"]
+  "include": ["Frontend/**/*.ts", "Frontend/**/*.svelte"],
+  "exclude": ["Frontend/sw"]
 }

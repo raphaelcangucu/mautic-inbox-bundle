@@ -15,6 +15,9 @@
     'mautic.inbox.settings.canned_delete', 'mautic.inbox.settings.canned_deleted', 'mautic.inbox.settings.canned_edit',
     'mautic.inbox.settings.canned_empty', 'mautic.inbox.settings.canned_hint', 'mautic.inbox.settings.canned_new',
     'mautic.inbox.settings.canned_save_changes', 'mautic.inbox.settings.canned_saved', 'mautic.inbox.settings.notifications',
+    'mautic.inbox.push.title', 'mautic.inbox.push.hint', 'mautic.inbox.push.on', 'mautic.inbox.push.off',
+    'mautic.inbox.push.working', 'mautic.inbox.push.denied', 'mautic.inbox.push.unconfigured',
+    'mautic.inbox.push.unsupported', 'mautic.inbox.push.ios_install',
     'mautic.inbox.settings.notifications_hint', 'mautic.inbox.settings.open', 'mautic.inbox.settings.subtitle',
     'mautic.inbox.settings.title', 'mautic.inbox.template.choose', 'mautic.inbox.template.close',
     'mautic.inbox.template.body', 'mautic.inbox.template.confirm', 'mautic.inbox.template.empty', 'mautic.inbox.template.header', 'mautic.inbox.template.loading',
@@ -88,6 +91,8 @@
      data-retry-url="{{ path('mautic_inbox_retry', {outboundId: 0}) }}"
      data-note-url="{{ path('mautic_inbox_note', {stateId: 0}) }}"
      data-draft-url="{{ path('mautic_inbox_draft', {stateId: 0}) }}"
+     data-push-config-url="{{ path('mautic_inbox_push_config') }}"
+     data-push-subscriptions-url="{{ path('mautic_inbox_push_subscribe') }}"
      data-canned-url="{{ path('mautic_inbox_canned') }}"
      data-canned-item-url="{{ path('mautic_inbox_canned_update', {responseId: 0}) }}"
      data-canned-settings="{{ cannedResponses|json_encode|e('html_attr') }}"

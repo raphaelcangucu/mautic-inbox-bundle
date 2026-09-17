@@ -27,6 +27,8 @@ test("Inbox Twig exposes every API contract to the shared Svelte bundle", async 
     "draft",
     "canned",
     "canned-item",
+    "push-config",
+    "push-subscriptions",
   ]) {
     assert.match(twig, new RegExp(`data-${endpoint}-url=`));
   }

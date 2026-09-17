@@ -7,6 +7,8 @@
   import ContactPanel from "./ContactPanel.svelte";
   import Composer from "./Composer.svelte";
   import SettingsView from "./SettingsView.svelte";
+  import * as push from "../shared/push";
+  import type { PushUiState } from "../shared/types";
   import AutomationView from "./AutomationView.svelte";
   import { inboxBootstrap, translator } from "../shared/bootstrap";
   import {
@@ -733,6 +735,44 @@
     selected.channel === "whatsapp"
   )
     void loadTemplates();
+
+  // Notificacao do navegador. O estado real vem do servidor e do proprio navegador — nunca
+  // de um palpite guardado localmente, que e como estes controles costumam mentir.
+  let pushState: PushUiState = { kind: "off" };
+  let pushBusy = false;
+
+  async function refreshPush(): Promise<void> {
+    if (!config.urls.pushConfig) return;
+    try {
+      pushState = await push.currentState(config.urls.pushConfig);
+    } catch {
+      pushState = { kind: "off" };
+    }
+  }
+
+  async function togglePush(): Promise<void> {
+    if (pushBusy) return;
+    pushBusy = true;
+    try {
+      pushState =
+        pushState.kind === "on"
+          ? await push.disable(config.urls.pushSubscriptions, csrf)
+          : await push.enable(
+              {
+                config: config.urls.pushConfig,
+                subscribe: config.urls.pushSubscriptions,
+              },
+              csrf,
+            );
+    } catch (problem) {
+      pushState = { kind: "off" };
+      showError(problem instanceof Error ? problem.message : String(problem));
+    } finally {
+      pushBusy = false;
+    }
+  }
+
+  void refreshPush();
 </script>
 
 <div class="inbox-toolbar">
@@ -974,6 +1014,9 @@
     soundPressed={alertState.enabled && alertState.ready}
     {t}
     toggleSound={() => alerts.toggle()}
+    {pushState}
+    {pushBusy}
+    {togglePush}
     {saveCanned}
     {deleteCanned}
   />{/if}

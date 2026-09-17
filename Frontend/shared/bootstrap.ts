@@ -36,6 +36,8 @@ export function inboxBootstrap(root: HTMLElement): InboxBootstrap {
       draft: data.draftUrl || "",
       canned: data.cannedUrl || "",
       cannedItem: data.cannedItemUrl || "",
+      pushConfig: data.pushConfigUrl || "",
+      pushSubscriptions: data.pushSubscriptionsUrl || "",
     },
     canned: parseJson(data.cannedSettings, raw.canned ?? []),
     users: raw.users ?? [],

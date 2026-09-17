@@ -36,7 +36,8 @@ self.addEventListener("push", (event: PushEvent) => {
 
 async function show(event: PushEvent): Promise<void> {
   const payload = parse(event);
-  const conversationId = payload.conversationId != null ? String(payload.conversationId) : null;
+  const conversationId =
+    payload.conversationId != null ? String(payload.conversationId) : null;
 
   // Se a conversa ja esta visivel numa janela aberta, o SSE acabou de atualizar a tela.
   // Vibrar o aparelho que a pessoa esta segurando e ruido, nao aviso.
@@ -66,7 +67,10 @@ function parse(event: PushEvent): PushPayload {
 }
 
 async function isConversationVisible(conversationId: string): Promise<boolean> {
-  const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  const clients = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
 
   return clients.some(
     (client) =>
@@ -77,11 +81,18 @@ async function isConversationVisible(conversationId: string): Promise<boolean> {
 
 self.addEventListener("notificationclick", (event: NotificationEvent) => {
   event.notification.close();
-  event.waitUntil(open(String((event.notification.data as { url?: string })?.url ?? "/s/inbox")));
+  event.waitUntil(
+    open(
+      String((event.notification.data as { url?: string })?.url ?? "/s/inbox"),
+    ),
+  );
 });
 
 async function open(url: string): Promise<void> {
-  const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  const clients = await self.clients.matchAll({
+    type: "window",
+    includeUncontrolled: true,
+  });
 
   // Reaproveita a janela que ja existe em vez de abrir uma segunda. Atendente com duas abas
   // do mesmo inbox perde o fio da conversa.

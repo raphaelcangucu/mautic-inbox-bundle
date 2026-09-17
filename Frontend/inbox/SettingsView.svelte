@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "../shared/Icon.svelte";
+  import { iosNeedsInstall } from "../shared/push";
   import type { CannedResponse } from "../shared/types";
   export let canned: CannedResponse[] = [];
   export let canManage = false;
@@ -10,6 +11,9 @@
   export let soundPressed = false;
   export let t: (key: string) => string;
   export let toggleSound: () => void;
+  export let pushState: import("../shared/types").PushUiState = { kind: "off" };
+  export let pushBusy = false;
+  export let togglePush: () => void;
   export let saveCanned: (item: {
     id?: number;
     name: string;
@@ -81,6 +85,39 @@
           title={soundTitle}
           on:click={toggleSound}>{soundLabel}</button
         >
+      </div>
+    </article>
+    <article class="inbox-settings-card">
+      <div class="inbox-settings-card-icon"><Icon name="bell" /></div>
+      <div>
+        <h3>{t("mautic.inbox.push.title")}</h3>
+        <p>{t("mautic.inbox.push.hint")}</p>
+        {#if pushState.kind === "unsupported"}
+          <p class="text-muted">{t("mautic.inbox.push.unsupported")}</p>
+        {:else if pushState.kind === "unconfigured"}
+          <p class="text-muted">{t("mautic.inbox.push.unconfigured")}</p>
+        {:else if pushState.kind === "denied"}
+          <!-- Um "nao" do navegador e definitivo: nenhum codigo pede de novo. -->
+          <p class="text-muted">{t("mautic.inbox.push.denied")}</p>
+        {:else}
+          <button
+            type="button"
+            class="btn btn-sm {pushState.kind === 'on'
+              ? 'btn-success'
+              : 'btn-default'}"
+            aria-pressed={pushState.kind === "on"}
+            disabled={pushBusy}
+            on:click={togglePush}
+            >{pushBusy
+              ? t("mautic.inbox.push.working")
+              : pushState.kind === "on"
+                ? t("mautic.inbox.push.on")
+                : t("mautic.inbox.push.off")}</button
+          >
+          {#if pushState.kind !== "on" && iosNeedsInstall()}
+            <p class="text-muted">{t("mautic.inbox.push.ios_install")}</p>
+          {/if}
+        {/if}
       </div>
     </article>
     {#if isAdmin}<article class="inbox-settings-card">

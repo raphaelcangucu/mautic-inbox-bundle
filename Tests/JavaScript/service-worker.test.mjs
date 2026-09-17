@@ -57,7 +57,13 @@ test("push shows a notification tagged with the conversation", async () => {
   const waited = [];
 
   worker.fire("push", {
-    data: { json: () => ({ title: "Ana Paula", body: "Bom dia", conversationId: 481 }) },
+    data: {
+      json: () => ({
+        title: "Ana Paula",
+        body: "Bom dia",
+        conversationId: 481,
+      }),
+    },
     waitUntil: (p) => waited.push(p),
   });
   await settle(waited);
@@ -82,14 +88,22 @@ test("a malformed payload still notifies instead of throwing", async () => {
   });
   await settle(waited);
 
-  assert.equal(worker.shown.length, 1, "sem showNotification o navegador exibe um aviso generico");
+  assert.equal(
+    worker.shown.length,
+    1,
+    "sem showNotification o navegador exibe um aviso generico",
+  );
   assert.ok(worker.shown[0].title.length > 0);
 });
 
 test("a visible window on that conversation suppresses the notification", async () => {
   const worker = await loadWorker();
   worker.setClients([
-    { visibilityState: "visible", url: "https://exemplo.test/s/inbox/conversations/481", focus: async () => {} },
+    {
+      visibilityState: "visible",
+      url: "https://exemplo.test/s/inbox/conversations/481",
+      focus: async () => {},
+    },
   ]);
   const waited = [];
 
@@ -99,13 +113,21 @@ test("a visible window on that conversation suppresses the notification", async 
   });
   await settle(waited);
 
-  assert.equal(worker.shown.length, 0, "o SSE ja atualizou a tela; vibrar seria ruido");
+  assert.equal(
+    worker.shown.length,
+    0,
+    "o SSE ja atualizou a tela; vibrar seria ruido",
+  );
 });
 
 test("a visible window on a different conversation still notifies", async () => {
   const worker = await loadWorker();
   worker.setClients([
-    { visibilityState: "visible", url: "https://exemplo.test/s/inbox/conversations/999", focus: async () => {} },
+    {
+      visibilityState: "visible",
+      url: "https://exemplo.test/s/inbox/conversations/999",
+      focus: async () => {},
+    },
   ]);
   const waited = [];
 
@@ -115,7 +137,11 @@ test("a visible window on a different conversation still notifies", async () => 
   });
   await settle(waited);
 
-  assert.equal(worker.shown.length, 1, "supressao vale so para a conversa que esta aberta");
+  assert.equal(
+    worker.shown.length,
+    1,
+    "supressao vale so para a conversa que esta aberta",
+  );
 });
 
 test("clicking focuses an open window instead of opening a second", async () => {
@@ -137,14 +163,21 @@ test("clicking focuses an open window instead of opening a second", async () => 
   const waited = [];
 
   worker.fire("notificationclick", {
-    notification: { close: () => {}, data: { url: "/s/inbox/conversations/481" } },
+    notification: {
+      close: () => {},
+      data: { url: "/s/inbox/conversations/481" },
+    },
     waitUntil: (p) => waited.push(p),
   });
   await settle(waited);
 
   assert.equal(focusedCount, 1);
   assert.equal(navigatedTo, "/s/inbox/conversations/481");
-  assert.equal(worker.opened.length, 0, "duas abas do mesmo inbox perdem o fio da conversa");
+  assert.equal(
+    worker.opened.length,
+    0,
+    "duas abas do mesmo inbox perdem o fio da conversa",
+  );
 });
 
 test("clicking opens a window when none is open", async () => {
@@ -153,7 +186,10 @@ test("clicking opens a window when none is open", async () => {
   const waited = [];
 
   worker.fire("notificationclick", {
-    notification: { close: () => {}, data: { url: "/s/inbox/conversations/481" } },
+    notification: {
+      close: () => {},
+      data: { url: "/s/inbox/conversations/481" },
+    },
     waitUntil: (p) => waited.push(p),
   });
   await settle(waited);
