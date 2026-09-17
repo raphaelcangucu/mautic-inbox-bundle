@@ -25,8 +25,10 @@ O `VapidKeys` da fase 1 é objeto de valor puro: **não persiste nada e não cri
 **Convenções deste repositório, confirmadas no código:**
 
 - Entidades estendem `Mautic\CoreBundle\Entity\CommonEntity` e declaram schema em `loadMetadata` com `ClassMetadataBuilder`. Tabelas levam prefixo `inbox_`. Veja `Entity/CannedResponse.php`.
-- **Não há diretório `Migrations/`.** O schema nasce de `mautic:plugins:reload`, que lê os metadados da entidade. Adicionar a entidade e recarregar cria a tabela.
-- Serviços são autowired por `Config/services.php`; basta criar a classe.
+- Serviços são autowired por `Config/services.php`, que varre `../` inteiro menos a lista de
+  exclusões. **`Application/` não está na lista** — prova disso é o próprio arquivo, que já
+  exclui `Application/InboxException.php` à mão. Objeto de valor com construtor privado ou com
+  argumentos escalares precisa ser excluído, ou a compilação do contêiner quebra.
 - CSRF nos controllers: `$this->isCsrfTokenValid('mautic_inbox', $request->headers->get('X-CSRF-Token', ''))`.
 - Permissões: `inbox:conversations:view` e afins, via `$permissions->isGranted(...)`. Definidas em `Security/Permissions/InboxPermissions.php`.
 - Criptografia em repouso: `Mautic\CoreBundle\Helper\EncryptionHelper`, com `encrypt($data): string` e `decrypt($data)`. O padrão a seguir é `Security/CredentialVault.php` do Meta bundle.
@@ -38,12 +40,54 @@ O `VapidKeys` da fase 1 é objeto de valor puro: **não persiste nada e não cri
 
 ---
 
+## Decisões já tomadas
+
+Estas cinco existem porque a revisão do plano mostrou que, sem elas, o implementador teria de
+inventar a resposta — e cada uma tem uma resposta errada que só aparece tarde.
+
+**Como as tabelas nascem.** Não por `mautic:plugins:reload`. Ele instala schema a partir de
+metadados apenas na *primeira* instalação do plugin; depois disso segue outro caminho, que roda
+migrações versionadas de `Migrations/` e só quando a `version` do `Config/config.php` supera a
+registrada no banco. Nunca compara metadados. Como este plugin já está instalado, o reload sairia
+com código zero e nenhuma tabela. O `Command/AiSetupCommand.php` deste mesmo repositório já
+resolveu isso: checa `tablesExist` e cria com `SchemaTool`. O `PushSetupCommand` segue esse
+precedente. Criar `Migrations/` e passar a versionar o schema é mais correto a longo prazo, mas é
+mudança estrutural que não pertence a esta fase.
+
+**Onde a chave VAPID mora.** Não na configuração do Mautic: o `CoreParametersHelper` tem `get`,
+`has` e `all`, e **nenhum escritor**. Vai numa entidade `PushSetting` (tabela
+`inbox_push_settings`, `name` único e `value` em TEXT), seguindo o padrão que o
+`Application/Ai/AiStore.php` já usa sobre `Entity/AiRecord`. A privada é selada pelo
+`EncryptionHelper` antes de virar linha; a pública vai em claro, porque o navegador a recebe de
+qualquer forma.
+
+**O `subject` do VAPID.** Padrão é `mailto:` mais o `mailer_from_email`, lido pelo
+`CoreParametersHelper` — que serve bem para leitura. Não existe parâmetro de "e-mail do
+administrador" no Mautic; inventar um produziria um `401` do FCM difícil de diagnosticar.
+
+**Onde o base64url vira octeto cru.** O `PushDevice` guarda `p256dh` e `auth` **exatamente como o
+navegador enviou**, em base64url. O `PushSender` decodifica na hora de chamar a criptografia. A
+camada da fase 1 só vê octeto cru — o `Ec::publicPemFromPoint` recusa qualquer coisa que não
+tenha 65 octetos começando em `0x04`, então uma string base64url chegando lá vira exceção, não
+resultado errado.
+
+**Como o service worker é compilado.** O `vite.config.ts` atual usa `build.lib` com uma entrada
+só, e o modo biblioteca do Vite não aceita múltiplas entradas em formato `iife`. Então: um
+segundo arquivo, `vite.sw.config.ts`, com `emptyOutDir: false` — sem isso o segundo build apaga o
+`inbox-app.js` — saída em `Assets/dist/inbox-sw.js`, formato `iife`. Worker clássico, não módulo:
+service worker como módulo ES ainda é problema no Firefox e exigiria `{type:'module'}` no
+registro. O `npm run build` passa a rodar os dois.
+
 ## Estrutura de arquivos
 
 | Arquivo | Responsabilidade |
 |---|---|
 | `Entity/PushDevice.php` | Um registro por aparelho inscrito |
 | `Entity/PushDeviceRepository.php` | Consultas por usuário e por endpoint |
+| `Entity/PushSetting.php` | Par chave-valor do plugin; guarda o par VAPID |
+| `Entity/PushSettingRepository.php` | `get(string $name): ?string` e `set(string $name, string $value): void` |
+| `Config/services.php` | Exclui do autowiring os objetos de valor desta fase |
+| `vite.sw.config.ts` | Build do service worker, separado do bundle da interface |
 | `Application/Push/VapidKeyStore.php` | Lê e grava o par, privada criptografada |
 | `Application/Push/PushSubscriptions.php` | Inscrever, cancelar, listar, reativar |
 | `Application/Push/PushSender.php` | O POST no endpoint e a classificação da resposta |
@@ -58,11 +102,71 @@ O `VapidKeys` da fase 1 é objeto de valor puro: **não persiste nada e não cri
 
 ---
 
+## Tarefa 0: O banco descartável
+
+A tarefa 5 tem teste funcional, e teste funcional carrega o kernel e toca banco. O
+`MauticMysqlTestCase` deste fork tem uma trava real, em
+`app/bundles/CoreBundle/Test/MauticMysqlTestCase.php:73`: ele **recusa** preparar o banco a menos
+que a variável `MAUTIC_TEST_DATABASE_ALLOW_DESTRUCTIVE` contenha exatamente o nome do banco que a
+conexão Doctrine selecionou, e que esse nome seja seguro. Sem isso, a tarefa 5 não roda.
+
+- [ ] **Passo 1: Criar uma cópia descartável**
+
+O nome precisa conter `test`, `testing`, `ci`, `scratch` ou `tmp` — a trava verifica. Use
+`mautic_inbox_push_test`. **Só o schema, sem dados:** os testes criam o que precisam, e copiar
+dados reais traria conversas de clientes para um banco de teste sem necessidade nenhuma.
+
+```bash
+ssh $INBOX_TEST_HOST "mysqldump --no-data --routines <banco> > /tmp/schema.sql \
+  && mysql -e 'CREATE DATABASE IF NOT EXISTS mautic_inbox_push_test' \
+  && mysql mautic_inbox_push_test < /tmp/schema.sql && rm /tmp/schema.sql"
+```
+
+Ajuste às credenciais do servidor. O que não muda é o `--no-data`.
+
+- [ ] **Passo 2: Apontar o checkout do banco de provas para a cópia**
+
+A conexão vive em `app/config/local.php` **do banco de provas**, no parâmetro `db_name`. Altere só
+esse arquivo. **Nunca** o do checkout que o `current` referencia — esse atende clientes reais.
+
+Confirme lendo de volta o que o Doctrine realmente selecionou, porque é isso que a trava compara:
+
+```bash
+ssh $INBOX_TEST_HOST "cd <banco de provas> && php8.4 bin/console doctrine:query:sql 'SELECT DATABASE()'"
+```
+
+Esperado: `mautic_inbox_push_test`. Se vier outro nome, a trava recusa e a mensagem não diz qual
+dos dois lados está errado — por isso a conferência acontece aqui.
+
+- [ ] **Passo 3: Estender o `bin/dev-test.sh` para exportar a variável**
+
+```bash
+ssh "$HOST" "cd $BENCH && MAUTIC_TEST_DATABASE_ALLOW_DESTRUCTIVE=mautic_inbox_push_test php8.4 bin/phpunit -c app/phpunit.xml.dist $TARGET --testdox"
+```
+
+- [ ] **Passo 4: Provar que a trava está satisfeita**
+
+Rode um teste funcional que já existe, por exemplo `Tests/Functional/InboxBundleTest.php`.
+Esperado: ele roda. Se a mensagem "Database-backed tests refused" aparecer, o nome do banco ou a
+variável não batem — **não contorne a trava**, corrija o nome.
+
+- [ ] **Passo 5: Commit**
+
+```bash
+git add bin/dev-test.sh
+git commit -m "Point the test loop at a disposable database"
+```
+
+---
+
 ## Tarefa 1: `PushDevice`
 
 **Files:**
-- Create: `Entity/PushDevice.php`, `Entity/PushDeviceRepository.php`
+- Create: `Entity/PushDevice.php`, `Entity/PushDeviceRepository.php`, `Entity/PushSetting.php`
 - Test: `Tests/Unit/Entity/PushDeviceTest.php`
+
+O `p256dh` e o `auth` são guardados **em base64url, como o navegador enviou**. Nada aqui
+decodifica — ver *Decisões já tomadas*.
 
 - [ ] **Passo 1: Escrever o teste que falha**
 
@@ -124,7 +228,9 @@ A constante `public const RETIREMENT_THRESHOLD = 10;` existe para o teste e o c�
 - [ ] **Passo 5: Commit**
 
 ```bash
-git add Entity/PushDevice.php Entity/PushDeviceRepository.php Tests/Unit/Entity/PushDeviceTest.php
+git add Entity/PushDevice.php Entity/PushDeviceRepository.php \
+        Entity/PushSetting.php Entity/PushSettingRepository.php \
+        Tests/Unit/Entity/PushDeviceTest.php
 git commit -m "Add the push device record with its retirement rule"
 ```
 
@@ -147,23 +253,37 @@ public function testTheStoredPairComesBackIdentical(): void
     $encryption->method('encrypt')->willReturnCallback(static fn (string $v): string => 'selado:'.$v);
     $encryption->method('decrypt')->willReturnCallback(static fn (string $v): string => substr($v, 7));
 
-    $coreParams = new FakeCoreParameters();
-    $store      = new VapidKeyStore($encryption, $coreParams);
-    $generated  = $store->generate();
+    $settings  = new InMemorySettings(); // duplo de teste do repositorio de PushSetting
+    $store     = new VapidKeyStore($encryption, $settings);
+    $generated = $store->generate();
 
-    self::assertStringStartsWith('selado:', $coreParams->written['inbox_vapid_private'], 'a privada nunca vai para o disco em claro');
+    self::assertStringStartsWith('selado:', $settings->get('vapid_private'), 'a privada nunca vai para o banco em claro');
+    self::assertStringNotContainsString('BEGIN', $settings->get('vapid_private'));
 
     $restored = $store->load();
     self::assertSame($generated->publicKey(), $restored->publicKey());
     self::assertSame($generated->privatePem(), $restored->privatePem());
 }
 
+public function testTheStoredPublicKeyIsReadableWithoutDecrypting(): void
+{
+    // A publica nao e segredo: o navegador a recebe de qualquer forma, e guardar em claro
+    // evita um caminho de decifragem no request mais quente do fluxo.
+    $settings = new InMemorySettings();
+    $store    = new VapidKeyStore($this->passthroughEncryption(), $settings);
+    $keys     = $store->generate();
+
+    self::assertSame($keys->publicKey(), $settings->get('vapid_public'));
+}
+
 public function testLoadingWithoutAPairReportsThatPushIsOff(): void
 {
-    $store = new VapidKeyStore($this->createMock(EncryptionHelper::class), new FakeCoreParameters());
+    $store = new VapidKeyStore($this->createMock(EncryptionHelper::class), new InMemorySettings());
 
     self::assertFalse($store->isConfigured());
+
     $this->expectException(\RuntimeException::class);
+    $this->expectExceptionMessageMatches('/mautic:inbox:push:setup/', 'a mensagem tem que dizer o comando a rodar');
     $store->load();
 }
 ```
@@ -172,11 +292,27 @@ public function testLoadingWithoutAPairReportsThatPushIsOff(): void
 
 - [ ] **Passo 3: Implementar**
 
-`VapidKeyStore` grava dois parâmetros na configuração do Mautic: `inbox_vapid_private` (PEM passado pelo `EncryptionHelper::encrypt`) e `inbox_vapid_public` (base64url cru, não é segredo — o navegador recebe de qualquer forma). `isConfigured()` responde sem lançar. `load()` lança `RuntimeException` quando não há par, e a mensagem diz o comando a rodar. `generate()` cria com `VapidKeys::generate()` e grava.
+`VapidKeyStore` recebe duas dependências no construtor: `EncryptionHelper` e
+`PushSettingRepository`. O repositório expõe exatamente `get(string $name): ?string` e
+`set(string $name, string $value): void` — nada além disso. É esse contrato estreito que o
+`InMemorySettings` do teste implementa; note que o precedente `Application/Ai/AiStore.php` toma
+um `EntityManagerInterface` concreto e **não** seria substituível num teste, por isso não o
+copiamos aqui.
+
+O store grava duas linhas: `vapid_private` (o PEM passado pelo `EncryptionHelper::encrypt`) e
+`vapid_public` (base64url em claro). **Não use `CoreParametersHelper` — ele não tem escritor.** `isConfigured()` responde sem lançar. `load()`
+lança `RuntimeException` nomeando o comando a rodar. `generate()` cria com `VapidKeys::generate()`
+e grava.
 
 Siga `Security/CredentialVault.php` do Meta bundle no trato com o `EncryptionHelper`.
 
-`PushSetupCommand`, nome `mautic:inbox:push:setup`: gera o par, grava e imprime a chave pública. Com `--force` regenera, **avisando em voz alta que toda inscrição existente morre** e pedindo confirmação interativa quando não houver `--no-interaction`.
+`PushSetupCommand`, nome `mautic:inbox:push:setup`: **cria as tabelas se faltarem**, gera o par,
+grava e imprime a chave pública. A criação segue `Command/AiSetupCommand.php` linha por linha —
+`getClassMetadata`, `createSchemaManager()->tablesExist([...])`, e só então
+`(new SchemaTool($em))->createSchema([...])`. Vale para `PushDevice` e `PushSetting`.
+
+Com `--force` regenera o par, **avisando em voz alta que toda inscrição existente morre** e
+pedindo confirmação interativa quando não houver `--no-interaction`.
 
 - [ ] **Passo 4: Rodar e ver passar**
 
@@ -224,7 +360,12 @@ A resposta do serviço de push vira decisão. Sem fila ainda — isso é a fase 
 
 **Files:**
 - Create: `Application/Push/PushSender.php`, `Application/Push/PushResult.php`
+- Modify: `Config/services.php`
 - Test: `Tests/Unit/Application/Push/PushSenderTest.php`
+
+`PushResult` é objeto de valor com argumentos escalares no construtor. Some ao `$excludes` do
+`Config/services.php`, ao lado das exclusões que já existem, senão o contêiner não compila — e o
+estouro aparece no teste funcional da tarefa 5, longe daqui.
 
 - [ ] **Passo 1: Escrever o teste que falha**
 
@@ -242,7 +383,26 @@ public function testATransportErrorIsRetryable(): void
 public function testTheRequestCarriesTheEncodingTtlAndUrgencyHeaders(): void
 ```
 
-O último asserta os cabeçalhos: `Content-Encoding: aes128gcm`, `Content-Type: application/octet-stream`, `TTL: 3600`, `Urgency: high`, e um `Authorization` começando em `vapid t=`.
+O último asserta os cabeçalhos: `Content-Encoding: aes128gcm`,
+`Content-Type: application/octet-stream`, `TTL: 3600`, `Urgency: high`, e um `Authorization`
+começando em `vapid t=`.
+
+Acrescente um décimo, que tranca a fronteira de codificação:
+
+```php
+public function testTheStoredKeysAreDecodedBeforeReachingTheCrypto(): void
+{
+    // O aparelho guarda base64url; a criptografia da fase 1 so aceita octeto cru e recusa
+    // qualquer outra coisa. Este teste existe para que a conversao nunca suma numa refatoracao.
+    $device = (new PushDevice())
+        ->setEndpoint('https://fcm.googleapis.com/fcm/send/abc')
+        ->setKeys(RfcVectors::UA_PUBLIC, RfcVectors::AUTH_SECRET);
+
+    $result = $this->senderWith(new MockResponse('', ['http_code' => 201]))->send($device, 'ola');
+
+    self::assertTrue($result->delivered);
+}
+```
 
 - [ ] **Passo 2: Rodar e ver falhar**
 
@@ -250,7 +410,16 @@ O último asserta os cabeçalhos: `Content-Encoding: aes128gcm`, `Content-Type: 
 
 `PushResult` é um objeto de valor pequeno: `delivered`, `retryable`, `retireDevice`, `retryAfter`, `statusCode`, `message`. `PushSender::send(PushDevice $device, string $payload): PushResult` cifra com `WebPushCrypto::encrypt`, monta o cabeçalho com `authorizationHeader`, faz o POST e classifica. **Nunca lança** por resposta do servidor — erro de rede também vira `PushResult` retryable. O `413` é descartado, não reenfileirado, porque repetir um corpo grande demais só repete a falha.
 
-O `subject` do VAPID vem do parâmetro `inbox_vapid_subject`, com `mailto:` do e-mail do administrador como padrão.
+**Decodifique aqui, não antes.** O `PushDevice` entrega `p256dh` e `auth` em base64url;
+`PushSender::send` converte para octeto cru imediatamente antes de chamar
+`WebPushCrypto::encrypt`. Note que `encrypt` e `authorizationHeader` são métodos **de instância**,
+então o `WebPushCrypto` entra pelo construtor como dependência.
+
+O `subject` do VAPID é `mailto:` mais o `mailer_from_email`, lido pelo `CoreParametersHelper`.
+Não existe parâmetro de e-mail do administrador no Mautic, e inventar um rende um `401` do FCM
+que ninguém consegue diagnosticar. **Com `mailer_from_email` vazio, o `push:setup` recusa e
+explica:** `'mailto:'.''` passa na validação da fase 1 e só é rejeitado lá na frente pelo FCM, que
+é exatamente a falha difícil que esta decisão existe para evitar.
 
 - [ ] **Passo 4: Rodar e ver passar**
 
@@ -273,9 +442,20 @@ public function testAMissingCsrfTokenIsRefused(): void
 public function testAValidSubscriptionIsStoredForTheSignedInUser(): void
 public function testTheConfigEndpointReturnsThePublicKeyAndNeverThePrivateOne(): void
 public function testOneUserCannotUnsubscribeAnotherUsersEndpoint(): void
+public function testResubscribingReactivatesARetiredDevice(): void
 ```
 
+Os três testes da rota `/inbox-sw.js` nascem na tarefa 6, neste mesmo arquivo, junto com a rota
+que eles exercitam. Não os escreva aqui.
+
 - [ ] **Passo 2: Rodar e ver falhar**
+
+```bash
+./bin/dev-test.sh plugins/MauticInboxBundle/Tests/Functional/PushSubscriptionTest.php
+```
+
+Isto depende da tarefa 0: sem o banco descartável e a variável de ambiente, o
+`MauticMysqlTestCase` recusa e a mensagem fala em "Database-backed tests refused".
 
 - [ ] **Passo 3: Implementar**
 
@@ -296,9 +476,15 @@ Todas exigem `inbox:conversations:view`. As duas de escrita exigem o CSRF `mauti
 ## Tarefa 6: O service worker
 
 **Files:**
-- Create: `Frontend/sw/sw.ts`, `Controller/PwaAssetController.php`
-- Modify: `vite.config.ts` — segunda entrada de build; `Config/config.php` — `routes.public`
-- Test: `Tests/JavaScript/service-worker.test.mjs`
+- Create: `Frontend/sw/sw.ts`, `vite.sw.config.ts`, `Controller/PwaAssetController.php`
+- Modify: `package.json` (o script `build` roda os dois), `Config/config.php` (`routes.public`)
+- Test: `Tests/JavaScript/service-worker.test.mjs`, `Tests/Functional/PushSubscriptionTest.php`
+
+O build vai num arquivo próprio, não numa segunda entrada do `vite.config.ts`: o modo biblioteca
+do Vite não aceita múltiplas entradas em `iife`. O `vite.sw.config.ts` usa `emptyOutDir: false`
+— sem isso ele apaga o `inbox-app.js` que já está lá — e emite `Assets/dist/inbox-sw.js` como
+worker clássico. Worker como módulo ES exigiria `{type:'module'}` no registro e ainda é problema
+no Firefox.
 
 - [ ] **Passo 1: Escrever o teste que falha**
 
@@ -317,17 +503,40 @@ test('notificationclick opens a window when none is open', ...)
 npm run build && node --test Tests/JavaScript/service-worker.test.mjs
 ```
 
+Confirme que `Assets/dist/inbox-app.js` continua lá depois do build. Se sumiu, o
+`emptyOutDir: false` não está no lugar.
+
 - [ ] **Passo 3: Implementar**
 
 `sw.ts` trata `push` e `notificationclick`. A `tag` é o ID da conversa, para que mensagem nova substitua a anterior em vez de empilhar. Payload corrompido cai num texto de reserva — **nunca** deixe o handler lançar, porque o navegador pune com uma notificação genérica de "site atualizado em segundo plano".
 
 `PwaAssetController::serviceWorker()` devolve o arquivo compilado com `Content-Type: application/javascript` e **`Cache-Control: no-cache`**. O `no-cache` não é detalhe: a instância está atrás da Cloudflare, e um service worker retido na borda deixa a equipe presa numa versão que ninguém consegue atualizar, sem erro visível.
 
-Rota pública `/inbox-sw.js`, fora da sessão, para que a revalidação em segundo plano não esbarre em redirecionamento de login. O escopo registrado é `/s/`.
+Rota pública `/inbox-sw.js`, fora da sessão, para que a revalidação em segundo plano não esbarre
+em redirecionamento de login. O escopo registrado é `/s/`.
 
-- [ ] **Passo 4: Rodar e ver passar**
+- [ ] **Passo 4: Escrever os testes funcionais da rota**
 
-- [ ] **Passo 5: Commit**
+Em `Tests/Functional/PushSubscriptionTest.php`, os três reservados na tarefa 5:
+
+```php
+public function testTheServiceWorkerIsServedWithoutASession(): void
+public function testTheServiceWorkerDeclaresItsJavaScriptType(): void
+public function testTheServiceWorkerForbidsEdgeCaching(): void
+```
+
+O terceiro é o que importa mais e o que menos parece importar. Sem `Cache-Control: no-cache`, a
+Cloudflare retém o worker na borda, o navegador pede a versão nova, recebe a antiga, e a equipe
+fica presa numa versão que ninguém consegue atualizar — sem erro em lugar nenhum.
+
+- [ ] **Passo 5: Rodar e ver passar**
+
+```bash
+npm run build && node --test Tests/JavaScript/service-worker.test.mjs
+./bin/dev-test.sh plugins/MauticInboxBundle/Tests/Functional/PushSubscriptionTest.php
+```
+
+- [ ] **Passo 6: Commit**
 
 ---
 
@@ -335,8 +544,17 @@ Rota pública `/inbox-sw.js`, fora da sessão, para que a revalidação em segun
 
 **Files:**
 - Create: `Frontend/shared/push.ts`
-- Modify: `Frontend/inbox/SettingsView.svelte`, `Translations/` (pt_BR e en_US)
+- Modify: `Resources/views/Inbox/index.html.twig`, `Frontend/shared/bootstrap.ts`,
+  `Frontend/shared/types.ts`, `Frontend/inbox/InboxApp.svelte`,
+  `Frontend/inbox/SettingsView.svelte`, `Translations/` (pt_BR e en_US)
 - Test: `Tests/JavaScript/push-subscription.test.mjs`
+
+**O caminho de dados inteiro precisa ser aberto.** O `SettingsView.svelte` é componente de
+props puro: tudo chega por `export let`, e ele não busca nada. URLs e token de CSRF entram pelo
+template Twig como atributos `data-*`, passam pelo `bootstrap.ts`, viram props do `InboxApp` e
+descem até o `SettingsView`. Os testes funcionais em `Tests/Functional/InboxHttpTest.php` já
+asseguram atributos como `data-csrf` e `data-retry-url` — acrescente os novos ao mesmo padrão.
+Mexer só no `SettingsView` deixaria o `push.ts` sem rota para o servidor e sem token.
 
 - [ ] **Passo 1: Escrever o teste que falha**
 
@@ -397,10 +615,17 @@ Aqui a corrente inteira é exercitada pela primeira vez. Nada disto é automatiz
 
 ```bash
 ./bin/dev-test.sh plugins/MauticInboxBundle/Tests/Unit
-ssh $INBOX_TEST_HOST 'cd <banco de provas> && php8.4 bin/console mautic:plugins:reload && php8.4 bin/console mautic:inbox:push:setup'
+ssh $INBOX_TEST_HOST 'cd <banco de provas> && php8.4 bin/console mautic:inbox:push:setup'
 ```
 
-Esperado: a tabela `inbox_push_devices` nasce e o comando imprime a chave pública.
+**Não** chame `mautic:plugins:reload` esperando que ele crie tabela — ver *Decisões já tomadas*.
+Quem cria é o próprio `push:setup`. Asserte, não presuma:
+
+```bash
+ssh $INBOX_TEST_HOST "cd <banco de provas> && php8.4 bin/console doctrine:query:sql \"SHOW TABLES LIKE '%inbox_push_%'\""
+```
+
+Esperado: as duas tabelas listadas, e o comando de setup tendo impresso a chave pública.
 
 - [ ] **Passo 2: Inscrever um navegador de desktop**
 
