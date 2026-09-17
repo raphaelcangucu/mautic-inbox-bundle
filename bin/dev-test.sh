@@ -42,5 +42,25 @@ rsync -az --delete \
   --exclude='.git/' --exclude='node_modules/' --exclude='docs/' \
   ./ "$HOST:$BENCH_REAL/plugins/MauticInboxBundle/"
 
-# A variavel de banco descartavel so e usada pelos testes funcionais; os unitarios a ignoram.
-ssh "$HOST" "cd '$BENCH_REAL' && MAUTIC_TEST_DATABASE_ALLOW_DESTRUCTIVE='${INBOX_TEST_DATABASE:-}' $PHP bin/phpunit -c app/phpunit.xml.dist $TARGET --testdox"
+# Os testes unitarios nao tocam banco e ignoram tudo abaixo. Os funcionais exigem duas coisas:
+# as variaveis DB_* que o config_test.php do Mautic le, e a confirmacao explicita do nome do
+# banco descartavel, sem a qual o MauticMysqlTestCase se recusa a rodar — e faz bem.
+#
+# As credenciais sao lidas do proprio arquivo de ambiente DO SERVIDOR, no servidor. Elas nunca
+# viajam por aqui, nunca aparecem em linha de comando e nunca entram em log.
+DB_ENV="${INBOX_TEST_DB_ENV:-$SITE/.mariadb.env}"
+TESTDB="${INBOX_TEST_DATABASE:-}"
+
+ssh "$HOST" "
+  cd '$BENCH_REAL' || exit 1
+  if [ -n '$TESTDB' ] && [ -r '$DB_ENV' ]; then
+    set -a; . '$DB_ENV'; set +a
+    export DB_HOST=\"\${INBOX_TEST_DB_HOST:-127.0.0.1}\"
+    export DB_PORT=\"\${INBOX_TEST_DB_PORT:-3306}\"
+    export DB_NAME='$TESTDB'
+    export DB_USER=\"\$MARIADB_USER\"
+    export DB_PASSWD=\"\$MARIADB_PASSWORD\"
+    export MAUTIC_TEST_DATABASE_ALLOW_DESTRUCTIVE='$TESTDB'
+  fi
+  $PHP bin/phpunit -c app/phpunit.xml.dist $TARGET --testdox
+"

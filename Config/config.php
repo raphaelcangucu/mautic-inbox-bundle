@@ -37,6 +37,9 @@ return [
         'mautic_inbox_canned' => ['path' => '/inbox/api/canned-responses', 'controller' => InboxController::class.'::canned', 'method' => 'POST'],
         'mautic_inbox_canned_update' => ['path' => '/inbox/api/canned-responses/{responseId}', 'controller' => InboxController::class.'::updateCanned', 'method' => 'PUT', 'requirements' => ['responseId' => '\\d+']],
         'mautic_inbox_canned_delete' => ['path' => '/inbox/api/canned-responses/{responseId}', 'controller' => InboxController::class.'::deleteCanned', 'method' => 'DELETE', 'requirements' => ['responseId' => '\\d+']],
+    ],
+    'public' => [
+        'mautic_inbox_service_worker' => ['path' => '/inbox-sw.js', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::serviceWorker', 'method' => 'GET'],
     ]],
     'menu' => ['main' => [
         'mautic.inbox.menu' => ['id' => 'mautic_inbox', 'route' => 'mautic_inbox_index', 'access' => 'inbox:conversations:view', 'iconClass' => 'ri-customer-service-2-line', 'priority' => 21],
