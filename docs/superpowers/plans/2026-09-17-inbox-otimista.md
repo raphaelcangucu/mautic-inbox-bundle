@@ -124,6 +124,8 @@ export interface ListEntry {
   readonly key: string;
   items: Conversation[];
   cursor: string | null;
+  /** Os numeros das abas de fila. Sem casa aqui, servir do cache deixa os selos velhos. */
+  counts: Record<string, number>;
 }
 
 /** O conjunto que compoe a chave. Sem cursor, de proposito. */
@@ -132,18 +134,39 @@ export interface ListFilter {
   channel: string; search: string; needsResponse: boolean;
 }
 
-/** O que o poll devolve, e que hoje o cliente joga fora. */
+/**
+ * A carga INTEIRA do poll, nao uma projecao.
+ *
+ * O componente ainda precisa de next_since e do cursor de notificacao para alimentar os avisos
+ * sonoros; recortar o tipo deixaria esse caminho orfao sem ninguem perceber.
+ */
 export interface PollResult {
   version: string;
   conversations?: Conversation[];
   timeline?: TimelineItem[];
-  selectedId?: number;
+  next_since?: string;
+  notification_cursor?: string;
+  notifications?: unknown[];
+  has_more?: boolean;
+  notifications_more?: boolean;
+}
+
+/**
+ * O historico tem cursor pelo mesmo motivo que a lista tem.
+ *
+ * Sem ele, assim que abrir do cache parar de buscar — que e o objetivo 1 —, nada mais preenche
+ * o cursor de "carregar anteriores", e as mensagens antigas ficam inalcancaveis a partir da
+ * segunda visita a qualquer conversa.
+ */
+export interface TimelineEntry {
+  items: TimelineItem[];
+  older: string | null;
 }
 
 export interface InboxState {
   lists: Map<string, ListEntry>;
   conversations: Map<number, Conversation>;
-  timelines: Map<number, TimelineItem[]>;
+  timelines: Map<number, TimelineEntry>;
   pending: Map<number, PendingMessage[]>;
 }
 ```
@@ -353,11 +376,35 @@ export function beginRetry(state: InboxState, acao: { localId: string }): InboxS
 /**
  * A porta por onde TODO historico vindo do servidor entra — resposta de envio, poll,
  * carregamento inicial, qualquer um. E o unico lugar que chama reconcile().
+ *
+ * O modo e explicito porque as tres origens tem semanticas diferentes, e adivinhar pela
+ * forma dos dados seria frágil:
+ *
+ *   replace  pagina completa (abrir conversa): substitui o que havia
+ *   merge    incremento do poll: junta por chave, mantendo o que ja estava
+ *   prepend  "carregar anteriores": acrescenta no comeco
+ *
+ * reconcile() continua sem saber a origem — quem sabe e quem chama.
  */
 export function applyServerItems(state: InboxState, acao: {
-  conversationId: number; items: TimelineItem[];
+  conversationId: number;
+  items: TimelineItem[];
+  mode: "replace" | "merge" | "prepend";
+  cursor?: string | null;
 }): InboxState
 ```
+
+**A chave da mesclagem é `kind` mais `id`, nunca o `id` sozinho.** Cada item de histórico usa o id
+da **própria entidade**, e o poll emite os quatro tipos no mesmo vetor — então o id 42 pode ser uma
+nota, um envio e um evento ao mesmo tempo. Mesclar pelo id puro sobrescreve um tipo com outro, e
+faz isso justamente no caminho incremental, que só aparece sob tráfego real.
+
+É o mesmo fato que o quinto teste da tarefa 2 já guarda para as pendentes. Duas conclusões opostas
+sobre o mesmo fato, em duas páginas do mesmo plano, era um erro meu.
+
+**Ordenação depois de mesclar.** O servidor ordena por `[timestamp, rank, sort]` e **remove** `rank`
+e `sort` antes de enviar, então o cliente só tem o timestamp. Itens mesclados são reordenados por
+timestamp, e empate mantém a ordem de inserção.
 
 `acceptSend` remove a pendente e insere o `item` recebido no histórico **preservando o `status` que
 veio**. Não existe transição para "confirmada": é remoção.
@@ -618,18 +665,18 @@ a duplicata por outro caminho.
 Não é só o `select()`. **Sete** lugares escrevem `timeline` hoje, e deixar cinco de fora faz o
 cache da store divergir do que está na tela:
 
-| Caminho | O que faz hoje |
-|---|---|
-| `select()` | abre a conversa |
-| `refreshSelected()` | o que o poll chama |
-| `loadOlder()` | carrega mensagens anteriores |
-| `sendTemplate()` | recarrega depois do modelo |
-| `retryOutbound()` | recarrega depois da retentativa |
-| `mutate()` | soneca, resolver, reabrir |
-| `clearSelection()` | esvazia ao sair da conversa |
+| Caminho | O que faz hoje | Modo |
+|---|---|---|
+| `select()` | abre a conversa | `replace` |
+| `refreshSelected()` | o que o poll chama | `merge` |
+| `loadOlder()` | carrega mensagens anteriores | `prepend` |
+| `sendTemplate()` | recarrega depois do modelo | `replace` |
+| `retryOutbound()` | recarrega depois da retentativa | `replace` |
+| `mutate()` | soneca, resolver, reabrir | `replace` |
+| `clearSelection()` | esvazia ao sair da conversa | — não escreve |
 
-Todos passam a entregar itens por `applyServerItems`. O `loadOlder` **acrescenta** em vez de
-substituir, e o `clearSelection` não apaga o cache — só deixa de renderizar.
+Todos passam a entregar itens por `applyServerItems`, com o modo da coluna. O `clearSelection`
+**não apaga o cache** — só deixa de renderizar.
 
 - [ ] **Passo 2: A conversa selecionada também precisa voltar para a store**
 
@@ -647,6 +694,17 @@ objetivo 1, zero requisição — renderiza `assignee` e `can_reply` velhos, e *
 que produz 409 na próxima tomada ou transição**. O ganho de velocidade viraria uma fonte de erro.
 
 Todos escrevem em `conversations` pela store. `rows` idem, pela entrada de lista do filtro atual.
+
+**Uma exceção deliberada: os rascunhos continuam do componente.** O `changeMode`, o `draftInput` e
+o `send` escrevem dentro de `selected.drafts` **no lugar**, sem reatribuir o objeto. Com `selected`
+virando a conversa em cache da store, essas escritas cairiam no estado dela sem passar pelo
+reducer.
+
+O spec deixa o mecanismo de rascunho intocado de propósito — ele funciona, e mexer nele foi
+justamente o que a revisão do spec derrubou por abrir caminho para duplicata. Então: **o
+`draftCache` do componente continua sendo a fonte de verdade dos rascunhos**, e a conversa que a
+store devolve é hidratada a partir dele na leitura, em vez de ser mutada. Nenhuma escrita de
+rascunho entra no estado da store.
 
 - [ ] **Passo 3: Remover o recarregamento periódico do histórico**
 
@@ -722,6 +780,14 @@ Antes: ~1,5 s para abrir, ~3 s para enviar. Depois: um quadro para ambos, com as
 
 - [ ] **Passo 3: Conferir o que nenhum teste pega**
 
-Enviar uma resposta de verdade e ver a pendente virar mensagem com o status do servidor. Abrir a mesma conversa duas vezes e ver a segunda sem rede. Deixar o aparelho em modo avião, enviar, e ver a pendente marcada com o motivo certo.
+Enviar uma resposta de verdade e ver a pendente virar mensagem com o status do servidor. Abrir a
+mesma conversa duas vezes e ver a segunda sem rede. Deixar o aparelho em modo avião, enviar, e ver
+a pendente marcada com o motivo certo.
+
+E dois que **só aparecem na segunda visita**, que é onde o cache entra e onde nenhum teste
+automatizado olha: **reabrir uma conversa do cache e carregar mensagens anteriores** — se o cursor
+do histórico não sobreviveu, o botão some e as mensagens antigas ficam inalcançáveis —, e **trocar
+de filtro e voltar**, conferindo que os números das abas continuam certos em vez de congelados na
+última busca de rede.
 
 - [ ] **Passo 4: Atualizar o CHANGELOG e commitar**
