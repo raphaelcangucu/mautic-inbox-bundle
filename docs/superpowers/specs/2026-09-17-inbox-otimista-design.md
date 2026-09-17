@@ -210,6 +210,23 @@ Sem isso o passo 3 custa duas idas extras: a tela responderia rápido, mas a men
 apareceria segundos depois e a lista ficaria velha. A mudança é aditiva — quem consome os campos
 de hoje continua recebendo os mesmos.
 
+## O botão de enviar
+
+Hoje o envio é um botão de texto — "Send reply" — e ele passa a maior parte do tempo dizendo
+"enviando". Com o envio otimista esse rótulo deixa de existir: o botão nunca mais fica preso, então
+ele não precisa contar o que está acontecendo.
+
+Entra um **ícone de avião de papel**, o mesmo gesto que a equipe já conhece de aplicativo de
+mensagem. Ele é acrescentado ao `Icon.svelte`, que já reúne os dezoito ícones do plugin, e não vem
+de biblioteca nova — o plugin precisa continuar instalável sem Node.js em produção.
+
+Duas exigências que não são estética:
+
+- **O botão continua tendo nome acessível.** Ícone sozinho não diz nada para leitor de tela nem
+  aparece em teste; o rótulo de hoje vira `aria-label`, e a chave de tradução permanece.
+- **Alvo de toque de no mínimo 44 pixels.** O composer é usado com o polegar, e um avião de papel
+  desenhado pequeno demais vira um botão que erra.
+
 ## Bordas e falhas
 
 - **Uma pendente tem dois estados: *enviando* e *falhou*.** Não existe estado "confirmada": quando
