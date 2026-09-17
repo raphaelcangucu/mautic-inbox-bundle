@@ -31,6 +31,11 @@ final class InMemoryDevices implements PushDeviceStore
         unset($this->rows[$device->getEndpointHash()]);
     }
 
+    public function allActive(): array
+    {
+        return array_values(array_filter($this->rows, static fn (PushDevice $d): bool => $d->isActive()));
+    }
+
     public function activeForUser(User $user): array
     {
         return array_values(array_filter($this->rows, static fn (PushDevice $d): bool => $d->isActive() && $d->getUser() === $user));

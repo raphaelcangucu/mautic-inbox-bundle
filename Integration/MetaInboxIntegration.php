@@ -24,6 +24,7 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
         private CommentContextRepository $comments,
         private OutboundRequestRepository $outboundRequests,
         private EntityManagerInterface $entityManager,
+        private \MauticPlugin\MauticInboxBundle\Application\Push\PendingNotifications $notifications,
     ) {
     }
 
@@ -83,6 +84,32 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
         $this->entityManager->persist($event);
 
         $this->entityManager->flush();
+
+        // So registra a intencao. Nenhuma rede, nenhuma criptografia, nenhuma excecao possivel
+        // aqui dentro: o envio sai depois do kernel.terminate, com a resposta ja entregue.
+        $this->notifications->add((int) $state->getId(), $this->contactName($message), $this->preview($message));
+    }
+
+    private function contactName(MetaMessage $message): string
+    {
+        $contact = $message->getContact();
+        $name    = null !== $contact ? trim((string) $contact->getName()) : '';
+
+        return '' !== $name ? $name : (string) $message->getRecipient();
+    }
+
+    private function preview(MetaMessage $message): string
+    {
+        $payload = $message->getPayload();
+        $content = is_array($payload['message'] ?? null) ? $payload['message'] : $payload;
+        $text    = $content['text']['body'] ?? $content['text'] ?? $payload['text'] ?? '';
+
+        if (is_string($text) && '' !== trim($text)) {
+            return $text;
+        }
+
+        // Mensagem so com midia nao tem texto. Dizer o tipo e melhor que uma notificacao vazia.
+        return 'Enviou '.$message->getMessageType();
     }
 
     public function automationAllowed(MetaAsset $asset, string $recipient): bool

@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 use Doctrine\Bundle\DoctrineBundle\DependencyInjection\Compiler\ServiceRepositoryCompilerPass;
 use Mautic\CoreBundle\DependencyInjection\MauticCoreExtension;
+use MauticPlugin\MauticInboxBundle\Application\Push\InboxAccess;
 use MauticPlugin\MauticInboxBundle\Application\Push\PushDeviceStore;
 use MauticPlugin\MauticInboxBundle\Application\Push\PushSettingStore;
 use MauticPlugin\MauticInboxBundle\Entity\PushDeviceRepository;
 use MauticPlugin\MauticInboxBundle\Entity\PushSettingRepository;
+use MauticPlugin\MauticInboxBundle\Security\InboxAccessCheck;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 
 return function (ContainerConfigurator $configurator): void {
@@ -23,4 +25,8 @@ return function (ContainerConfigurator $configurator): void {
     // diferentes, e o apelido automatico do Symfony so vale dentro de uma mesma chamada.
     $services->alias(PushSettingStore::class, PushSettingRepository::class);
     $services->alias(PushDeviceStore::class, PushDeviceRepository::class);
+    // Security/ esta na lista de exclusoes padrao do Mautic, entao esta classe precisa ser
+    // registrada a mao — mesmo motivo pelo qual o Meta bundle registra o CredentialVault.
+    $services->set(InboxAccessCheck::class)->autowire();
+    $services->alias(InboxAccess::class, InboxAccessCheck::class);
 };

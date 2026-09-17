@@ -22,5 +22,12 @@ interface PushDeviceStore
     public function remove(PushDevice $device): void;
 
     /** @return PushDevice[] */
+    /**
+     * Todos os aparelhos ativos da instalacao, de qualquer usuario.
+     *
+     * @return list<\MauticPlugin\MauticInboxBundle\Entity\PushDevice>
+     */
+    public function allActive(): array;
+
     public function activeForUser(User $user): array;
 }

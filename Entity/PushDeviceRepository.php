@@ -35,4 +35,9 @@ final class PushDeviceRepository extends CommonRepository implements PushDeviceS
     {
         return $this->findBy(['user' => $user, 'active' => true], ['id' => 'ASC']);
     }
+
+    public function allActive(): array
+    {
+        return $this->findBy(['active' => true], ['id' => 'ASC']);
+    }
 }
