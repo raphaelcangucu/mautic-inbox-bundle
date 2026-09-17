@@ -9,6 +9,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\UserBundle\Entity\User;
+use MauticPlugin\MauticInboxBundle\Application\AssetVersion;
 use MauticPlugin\MauticInboxBundle\Application\ConversationActions;
 use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Application\InboxQuery;
@@ -42,6 +43,7 @@ final class InboxController extends CommonController
             'contentTemplate' => '@MauticInbox/Inbox/index.html.twig',
             'passthroughVars' => ['mauticContent' => 'inbox', 'route' => $route],
             'viewParameters' => [
+                'assetVersion' => AssetVersion::current(),
                 'currentUserId' => $user->getId(),
                 'initialStateId' => $stateId,
                 'users' => $query->users(),

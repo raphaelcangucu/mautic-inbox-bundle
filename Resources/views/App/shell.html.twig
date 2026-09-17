@@ -24,7 +24,7 @@
 {# Emitido direto, e nao por includeStylesheet: aquele helper apenas enfileira, e a funcao de
    saida do Mautic nao devolve o CSS de plugin — comprovado inspecionando document.styleSheets
    no aparelho, onde libraries.css e app.css apareciam e o inbox.css nao. #}
-<link rel="stylesheet" href="{{ asset('plugins/MauticInboxBundle/Assets/css/inbox.css', null, assetVersion) }}">
+<link rel="stylesheet" href="{{ asset('plugins/MauticInboxBundle/Assets/css/inbox.css') }}?v={{ assetVersion }}">
 <style>
   /* O shell nao carrega o chrome do Mautic, entao o basico mora aqui. */
   html, body { height: 100%; margin: 0; background: #f6f7fb; }
@@ -43,7 +43,7 @@
 <div class="inbox-shell">
 {{ include('@MauticInbox/Inbox/_root.html.twig', {standalone: true}) }}
 </div>
-<script src="{{ asset('plugins/MauticInboxBundle/Assets/dist/inbox-app.js', null, assetVersion) }}"></script>
+<script src="{{ asset('plugins/MauticInboxBundle/Assets/dist/inbox-app.js') }}?v={{ assetVersion }}"></script>
 <script>
   // O bundle expoe inboxOnLoad para o ciclo de navegacao do Mautic. Aqui nao ha aquele ciclo,
   // entao a montagem e direta.

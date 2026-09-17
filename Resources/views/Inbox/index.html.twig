@@ -4,7 +4,7 @@
 {% block headerTitle %}{{ 'mautic.inbox.ui.support_inbox_fff9ea'|trans }}{% endblock %}
 
 {% block content %}
-{{ includeStylesheet('plugins/MauticInboxBundle/Assets/css/inbox.css?inbox=20260915-limit1') }}
+{{ includeStylesheet('plugins/MauticInboxBundle/Assets/css/inbox.css?v=' ~ assetVersion) }}
 {{ include('@MauticInbox/Inbox/_root.html.twig') }}
-{{ includeScript('plugins/MauticInboxBundle/Assets/dist/inbox-app.js?inbox=20260915-limit1', 'inboxOnLoad', 'inboxOnLoad') }}
+{{ includeScript('plugins/MauticInboxBundle/Assets/dist/inbox-app.js?v=' ~ assetVersion, 'inboxOnLoad', 'inboxOnLoad') }}
 {% endblock %}
