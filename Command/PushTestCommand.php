@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MauticPlugin\MauticInboxBundle\Command;
 
 use Mautic\UserBundle\Model\UserModel;
+use MauticPlugin\MauticInboxBundle\Application\Push\PushPayload;
 use MauticPlugin\MauticInboxBundle\Application\Push\PushSender;
 use MauticPlugin\MauticInboxBundle\Application\Push\PushSubscriptions;
 use MauticPlugin\MauticInboxBundle\Application\Push\VapidKeyStore;
@@ -14,6 +15,7 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 /**
  * Envia uma notificacao de teste para os aparelhos de um usuario.
@@ -30,6 +32,7 @@ final class PushTestCommand extends Command
         private PushSubscriptions $subscriptions,
         private PushSender $sender,
         private VapidKeyStore $keys,
+        private UrlGeneratorInterface $router,
     ) {
         parent::__construct();
     }
@@ -38,6 +41,7 @@ final class PushTestCommand extends Command
     {
         $this->addOption('user', null, InputOption::VALUE_REQUIRED, 'ID ou e-mail do usuario.');
         $this->addOption('message', null, InputOption::VALUE_REQUIRED, 'Texto da notificacao.', 'Chegou uma mensagem nova no atendimento.');
+        $this->addOption('conversation', null, InputOption::VALUE_REQUIRED, 'ID da conversa, para o aviso abrir nela e realertar como o de verdade.', '0');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -74,11 +78,20 @@ final class PushTestCommand extends Command
             return Command::SUCCESS;
         }
 
-        $payload = (string) json_encode([
-            'title'   => 'Teste do atendimento',
-            'body'    => (string) $input->getOption('message'),
-            'url'     => '/s/inbox',
-        ], JSON_UNESCAPED_UNICODE);
+        // Monta pelo MESMO caminho que uma mensagem de verdade usa. Antes isto era um JSON
+        // escrito a mao, e o teste deixava de exercitar justamente o que podia quebrar: a
+        // truncagem, a tag por conversa e o vinculo com o destino. Sem a tag de conversa, o
+        // Android trata a notificacao seguinte como atualizacao da anterior e nao realerta —
+        // o comando dizia "entregue" e a tela nao piscava.
+        $conversa = (int) $input->getOption('conversation');
+        $payload  = PushPayload::forInboundMessage(
+            'Teste do atendimento',
+            (string) $input->getOption('message'),
+            $conversa,
+            $conversa > 0
+                ? $this->router->generate('mautic_inbox_app_conversation', ['stateId' => $conversa])
+                : $this->router->generate('mautic_inbox_app'),
+        );
 
         $entregues = 0;
         $linhas    = [];
