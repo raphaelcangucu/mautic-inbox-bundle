@@ -73,3 +73,142 @@
 #inbox-assignee-label.is-ai{display:inline-flex!important;align-items:center;gap:5px;margin-top:7px!important;padding:3px 7px;border-radius:6px;background:#f0f1fb;color:#505d9e;font-weight:600}#inbox-assignee-label.is-ai:before{content:"✦";font-size:10px}
 .inbox-ai-pending{flex:none;margin:0 24px 24px;padding:15px 16px;border:1px solid #d9def0;border-radius:12px;background:linear-gradient(135deg,#f7f7fd 0%,#f1f5ff 100%);box-shadow:0 5px 18px #4e5e9e12;color:#46516f}.inbox-ai-pending-heading{display:flex;align-items:center;gap:10px}.inbox-ai-pending-heading>span:nth-child(2){min-width:0;flex:1}.inbox-ai-pending-heading strong,.inbox-ai-pending-heading small{display:block}.inbox-ai-pending-heading strong{font-size:12px;color:#3f4868}.inbox-ai-pending-heading small{margin-top:2px;font-size:10px;color:#7d869e}.inbox-ai-pending .inbox-pill{flex:none;background:#e8ebf8;color:#5965a1}.inbox-ai-pending-body{margin:13px 0 0;padding:13px 14px;border:1px solid #e2e5f1;border-radius:9px;background:#fff;color:#536079}.inbox-ai-pending-body .inbox-message-body p{margin:0 0 7px;font-size:13px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.inbox-ai-pending-body .inbox-message-body p:last-child{margin-bottom:0}.inbox-ai-pending-reason{margin-top:10px;font-size:11px;line-height:1.55;color:#8a6d57}.inbox-ai-pending-reason:empty{display:none}.inbox-ai-pending-actions{display:flex;gap:8px;margin-top:13px;flex-wrap:wrap}.inbox-ai-pending.processing .inbox-ai-avatar,.inbox-ai-pending.retrying .inbox-ai-avatar,.inbox-ai-pending.queued .inbox-ai-avatar{animation:inbox-ai-pulse 1.25s ease-in-out infinite}.inbox-ai-pending.blocked,.inbox-ai-pending.failed{border-color:#efd8d1;background:#fff9f7}.inbox-ai-pending.blocked .inbox-ai-avatar,.inbox-ai-pending.failed .inbox-ai-avatar{background:#a87768;box-shadow:none}.inbox-ai-pending.uncertain{border-color:#eadfbd;background:#fffdf6}.inbox-ai-pending.uncertain .inbox-ai-avatar{background:#aa8a51;box-shadow:none}
 @media(max-width:760px){.inbox-ai-pending{margin:0 13px 18px}.inbox-ai-pending-actions .btn{flex:1}}
+.inbox-pending{align-self:flex-end;max-width:86%;padding:13px 15px;background:#eef0f8;border:1px solid #dce0f0;border-radius:11px 11px 3px 11px;line-height:1.7;box-shadow:0 1px 1px #00000002}.inbox-pending.note{align-self:stretch;max-width:100%;border-color:#f3e6b8;background:var(--ib-note);border-radius:8px;color:#8b733f}.inbox-pending.sending{opacity:.62}.inbox-pending.failed{background:#fff9f7;border-color:#efd8d1;opacity:1}.inbox-pending p{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 7px}.inbox-pending-status{display:flex;align-items:center;justify-content:flex-end;gap:5px;font-size:11px;color:#7f8996;line-height:1.4}.inbox-pending-status svg{width:12px;height:12px}.inbox-pending-reason{font-size:11px;color:#bd7168;line-height:1.6;margin-top:7px;overflow-wrap:anywhere}#inbox-send{min-width:44px;min-height:44px;padding:0;border-radius:9px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center}#inbox-send svg{width:20px;height:20px}
+
+.inbox-tabs .inbox-tabs-link{display:flex;align-items:center;gap:7px;border:0;border-radius:6px;background:transparent;padding:8px 13px;color:#717884;font-size:13px;font-weight:550;text-decoration:none}
+.inbox-tabs .inbox-tabs-link:hover{color:var(--ib-accent)}
+
+/* O MESMO menu, com dois comportamentos. No desktop ele continua sendo o grupo de pilulas na
+   barra de cima. No celular ele desce e vira a barra fixa de rodape, no formato que as pessoas
+   ja conhecem de aplicativo de mensagem: icone em cima, rotulo embaixo, alvo grande de polegar.
+   Um elemento so no DOM — duplicar o menu significaria duplicar o estado de "aba ativa", que e
+   a maneira mais facil de as duas copias discordarem.
+   Vale no app instalado E no navegador: no celular o Mautic nao desenha barra propria em volta
+   do inbox, entao nao ha com o que competir embaixo. */
+@media(max-width:760px){
+.inbox-shell{padding-bottom:0}
+.inbox-app{--ib-bottom-nav:calc(58px + env(safe-area-inset-bottom,0px));margin:0 0 var(--ib-bottom-nav)}
+/* Sem as abas dentro dela, a barra de cima volta a ser uma linha so e devolve altura ao chat. */
+.inbox-toolbar{flex-direction:row;align-items:center;min-height:0;padding:10px 14px}
+.inbox-tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;width:auto;gap:0;padding:0 0 env(safe-area-inset-bottom,0px);border-top:1px solid var(--ib-border);border-radius:0;background:#fff;box-shadow:0 -2px 10px #1e26340f}
+.inbox-tabs button,.inbox-tabs .inbox-tabs-link{display:flex;align-items:center;flex:1 1 0;min-width:0;min-height:52px;flex-direction:column;justify-content:center;gap:3px;padding:7px 2px;border-radius:0;font-size:10px;font-weight:550;text-decoration:none;color:#79808c}
+.inbox-tabs button.active,.inbox-tabs .inbox-tabs-link:hover{background:transparent;box-shadow:none;color:var(--ib-accent)}
+.inbox-tabs svg{width:21px;height:21px}
+/* Nenhum rotulo pode quebrar em duas linhas: a barra tem altura fixa e o que passa dela
+   transborda por cima do que estiver embaixo. Aconteceu com "Agentes e contexto". */
+.inbox-tabs button,.inbox-tabs .inbox-tabs-link{white-space:nowrap;overflow:hidden}
+/* No desktop o engrenagem e so icone; aqui ele ganha rotulo como os vizinhos, sem outro elemento. */
+.inbox-tabs .inbox-settings-tab{width:auto;padding-left:2px!important;padding-right:2px!important}
+.inbox-tabs .inbox-settings-tab .sr-only{position:static;width:auto;height:auto;margin:0;padding:0;clip:auto;clip-path:none;overflow:visible;white-space:normal}
+/* A conta da altura desconta as duas barras e os dois entalhes, senao o compositor fica atras
+   do menu — que e exatamente onde o polegar vai bater. */
+/* Coluna com altura definida: a barra de cima fica com o que precisa e a area de trabalho com o
+   resto. Assim some a ultima conta chutada do arquivo — a altura da barra —, e ela mudava sozinha
+   quando o cabecalho do produto some dentro da conversa. */
+.inbox-app{display:flex;flex-direction:column;height:calc(100dvh - var(--ib-app-top,0px) - var(--ib-bottom-nav))}
+.inbox-toolbar{flex:none}
+.inbox-workspace{flex:1 1 auto;height:auto;min-height:0}
+}
+
+/* A conversa no celular, no formato de aplicativo de mensagem.
+   O que ocupava a tela antes: um cabecalho de 100px com os botoes numa linha propria, o aviso de
+   canal em bloco, e a linha de rodape de rascunho. Somados, sobrava pouco para as mensagens — que
+   e a unica coisa pela qual alguem abre a conversa. */
+@media(max-width:760px){
+/* Cabecalho: uma linha so — voltar, foto, nome, e as acoes a direita. */
+.inbox-thread #inbox-selected{grid-template-rows:auto minmax(100px,1fr) auto}
+.inbox-thread-header{display:flex;align-items:center;gap:9px;padding:7px 10px}
+.inbox-thread-header .inbox-avatar{display:flex;width:34px;height:34px;border-radius:50%;font-size:12px}
+.inbox-thread-identity{flex:1 1 auto;min-width:0}
+.inbox-thread-identity h3{font-size:14px;margin:0}
+.inbox-thread-identity p{font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-thread-header .inbox-actions{grid-column:auto;width:auto;margin-left:auto;gap:5px;flex-shrink:0}
+.inbox-thread-header .inbox-actions .btn{padding:7px 10px;font-size:11px;border-radius:15px;box-shadow:none}
+.inbox-contact-panel.open{top:50px}
+.inbox-timeline{padding:12px 12px 18px;gap:9px}
+.inbox-message{max-width:82%;padding:9px 12px;line-height:1.5}
+.inbox-message p{margin:0 0 4px}
+
+/* Compositor: linha unica com o campo arredondado e o aviao redondo do lado, como no WhatsApp.
+   display:contents no rodape dissolve aquele agrupamento e deixa as ferramentas, o campo e o botao
+   virarem irmaos na mesma linha, sem precisar remexer a arvore do componente. */
+.inbox-composer{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px;margin:0;padding:8px 10px calc(8px + env(safe-area-inset-bottom,0px));border-radius:0;border-width:1px 0 0;box-shadow:none}
+.inbox-composer-top{flex:1 0 100%;padding:0 0 2px}
+.inbox-reply-hint{flex:1 0 100%;margin:0}
+/* O aviso longo de canal so aparece quando ha um impedimento real. Repetir "escreva sua resposta"
+   acima do campo de escrever custava um terco da tela. */
+.inbox-reply-hint:not(.blocked){display:none}
+#inbox-feedback{flex:1 0 100%}
+.inbox-template-panel{flex:1 0 100%}
+.inbox-composer-footer{display:contents}
+.inbox-composer-tools{order:1;flex:none;position:relative;width:40px;height:40px;justify-content:center;gap:0}
+.inbox-composer-tools svg{width:19px;height:19px}
+/* O seletor invisivel cobre o raio: tocar no icone abre a lista nativa, e ele continua sendo um
+   select de verdade para o leitor de tela e para o teste. */
+.inbox-composer-tools select{position:absolute;inset:0;width:100%;max-width:none;opacity:0;padding:0}
+.inbox-composer textarea{order:2;flex:1 1 auto;width:auto;min-width:0;min-height:42px;max-height:120px;padding:10px 15px;border-radius:21px;background:#f3f4f7;resize:none;line-height:1.45}
+#inbox-send{order:3;border-radius:50%}
+/* "Rascunho salvo" e "Ctrl+Enter para enviar" nao dizem nada a quem esta com o polegar na tela. */
+.inbox-editor-status{display:none}
+/* Dentro da conversa, o cabecalho do produto nao ajuda: o nome do contato ja esta logo abaixo e o
+   menu agora mora no rodape. Escondendo-o, a lista de mensagens ganha os 70px que ele ocupava.
+   A barra em si continua no fluxo porque o menu e filho dela — display:none nela levaria o menu
+   junto, por mais fixo que ele seja. */
+.inbox-app.has-selection .inbox-toolbar{min-height:0;padding:0;border-bottom:0}
+.inbox-app.has-selection .inbox-product-heading{display:none}
+/* Acoes discretas: o nome do contato vem antes delas na disputa por largura. */
+.inbox-thread-header .inbox-actions .btn{padding:6px 9px;font-size:10.5px;letter-spacing:-.1px}
+.inbox-thread-header .inbox-actions .btn-primary{background:transparent!important;border-color:#d7dbe8!important;color:var(--ib-accent)!important}
+.inbox-composer textarea{height:42px}
+}
+
+/* A lista no celular. Na captura do aparelho cabiam quatro conversas na tela inteira: cada linha
+   gastava 16px de recheio em cima e embaixo, e o cabecalho da lista outros 36. Apertando, cabem
+   sete — e uma lista de atendimento existe para ser varrida, nao contemplada. */
+@media(max-width:760px){
+.inbox-list-heading{padding:12px 14px 8px}
+.inbox-list-heading h2{font-size:15px}
+.inbox-search-wrap{margin:0 12px 10px;padding:7px 10px}
+.inbox-queues{margin:0 12px}
+.inbox-queues button{padding:7px 0 9px}
+.inbox-list-scroll{padding:4px 6px}
+.inbox-list-item{padding:9px 8px;gap:10px;margin-bottom:1px}
+/* Foto redonda e um pouco maior, como em qualquer aplicativo de mensagem. */
+.inbox-list-item .inbox-avatar{width:42px;height:42px;border-radius:50%}
+.inbox-list-title{font-size:13.5px}
+.inbox-list-preview{margin-top:2px}
+.inbox-list-flags{margin-top:5px;gap:4px}
+.inbox-list-meta{margin:2px 0}
+}
+
+/* O indicador de puxar para atualizar. Fica preso ao alto da tela e desce junto com o dedo; o
+   translate vem do componente porque a distancia e continua e nao cabe em classe. */
+/* Nasce acima da borda e entra deslizando junto com o dedo, em vez de aparecer inteiro de uma vez.
+   O recuo do entalhe entra aqui porque o elemento e fixo: ele ignora o recuo do shell em volta. */
+.inbox-pull{position:fixed;top:calc(env(safe-area-inset-top,0px) - 40px);left:50%;margin-left:-18px;z-index:40;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#fff;color:#9aa1ac;border:1px solid var(--ib-border);box-shadow:0 2px 8px #1e263418;transition:color .15s}
+.inbox-pull.pronto{color:var(--ib-accent)}
+/* A rotacao vai no desenho, e nao na bolha: a bolha ja usa transform para descer com o dedo, e
+   uma animacao de transform substitui a outra por inteiro — o icone saltaria para o topo. */
+.inbox-pull.girando svg{animation:inbox-pull-girando .9s linear infinite}
+@keyframes inbox-pull-girando{to{transform:rotate(360deg)}}
+
+/* O endereco que aparece no corpo da mensagem. E um <button> de verdade, entao precisa perder o
+   visual de botao e ganhar o de link — e um alvo que o polegar alcance. */
+.inbox-email{border:0;background:transparent;padding:0;margin:0;font:inherit;color:var(--ib-accent);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere;text-align:left}
+.inbox-email:hover{text-decoration-thickness:2px}
+
+/* A folha de acoes: sobe de baixo no celular, onde o polegar esta, e fica centrada no desktop,
+   onde o cursor esta. Um so componente, como o menu. */
+.inbox-sheet-backdrop{position:fixed;inset:0;background:#1b2230;opacity:.35;z-index:60;border:0}
+.inbox-sheet{position:fixed;z-index:61;left:0;right:0;bottom:0;max-height:88dvh;overflow:auto;background:#fff;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 30px #1b223026;display:flex;flex-direction:column;gap:12px}
+@media(min-width:761px){.inbox-sheet{left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%);width:420px;max-width:92vw;border-radius:14px;padding:18px}}
+.inbox-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.inbox-sheet-head strong{font-size:15px;font-weight:650}
+.inbox-sheet-email{margin:0;font-size:14px;font-weight:600;color:var(--ib-accent);overflow-wrap:anywhere}
+.inbox-sheet-block{border:0;margin:0;padding:0;display:block}
+.inbox-sheet-block legend{font-size:12px;color:#818b98;padding:0;margin:0 0 6px}
+.inbox-sheet-choice{display:flex;align-items:flex-start;gap:9px;padding:9px 0;margin:0;font-size:13px;font-weight:400}
+.inbox-sheet-choice small{display:block;font-size:11px;color:#8b94a0}
+.inbox-sheet-check{display:flex;align-items:center;gap:9px;margin:0;min-height:44px;font-size:13px;font-weight:400}
+.inbox-sheet-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:4px}
+.inbox-sheet-foot .btn{min-height:44px;padding:0 18px}

@@ -1,0 +1,110 @@
+{% set uiTranslationKeys = [
+    'mautic.inbox.ai.agents', 'mautic.inbox.ai.ai_assign', 'mautic.inbox.ai.choose',
+    'mautic.inbox.ai.none_available', 'mautic.inbox.ai.pending_title', 'mautic.inbox.ai.pi',
+    'mautic.inbox.ai.read_only', 'mautic.inbox.ai.regenerate', 'mautic.inbox.ai.reset', 'mautic.inbox.ai.validate_first',
+    'mautic.inbox.ai.reset_success', 'mautic.inbox.ai.send_now', 'mautic.inbox.ai.sending_now',
+    'mautic.inbox.ai.sent_now', 'mautic.inbox.ai.limit', 'mautic.inbox.ai.unlimited', 'mautic.inbox.settings.ai_hint',
+    'mautic.inbox.settings.ai_manage', 'mautic.inbox.settings.canned_cancel', 'mautic.inbox.settings.canned_confirm_delete',
+    'mautic.inbox.settings.canned_delete', 'mautic.inbox.settings.canned_deleted', 'mautic.inbox.settings.canned_edit',
+    'mautic.inbox.settings.canned_empty', 'mautic.inbox.settings.canned_hint', 'mautic.inbox.settings.canned_new',
+    'mautic.inbox.settings.canned_save_changes', 'mautic.inbox.settings.canned_saved', 'mautic.inbox.settings.notifications',
+    'mautic.inbox.push.title', 'mautic.inbox.push.hint', 'mautic.inbox.push.on', 'mautic.inbox.push.off',
+    'mautic.inbox.push.working', 'mautic.inbox.push.denied', 'mautic.inbox.push.unconfigured',
+    'mautic.inbox.push.unsupported', 'mautic.inbox.push.ios_install',
+    'mautic.inbox.settings.notifications_hint', 'mautic.inbox.settings.open', 'mautic.inbox.settings.subtitle',
+    'mautic.inbox.settings.title', 'mautic.inbox.template.choose', 'mautic.inbox.template.close',
+    'mautic.inbox.template.body', 'mautic.inbox.template.confirm', 'mautic.inbox.template.empty', 'mautic.inbox.template.header', 'mautic.inbox.template.loading',
+    'mautic.inbox.template.queued', 'mautic.inbox.template.select', 'mautic.inbox.template.send',
+    'mautic.inbox.template.sending', 'mautic.inbox.template.title', 'mautic.inbox.template.unsupported',
+    'mautic.inbox.template.variable', 'mautic.inbox.ui.accepted_by_meta_212288', 'mautic.inbox.ui.add_note_344d88',
+    'mautic.inbox.ui.all_8a3c34', 'mautic.inbox.ui.all_channels_44265e', 'mautic.inbox.ui.and_continue_helping_the_customer_ae8878',
+    'mautic.inbox.ui.assign_to_me_96f796', 'mautic.inbox.ui.assign_to_me_and_send_509661', 'mautic.inbox.ui.assignee_b1ce0b',
+    'mautic.inbox.ui.automatic_updates_8a484f', 'mautic.inbox.ui.automation_available_a68946', 'mautic.inbox.ui.automation_paused_for_this_conversation_5e3144', 'mautic.inbox.ui.automations_3714d9', 'mautic.inbox.ui.awaiting_reply_f6a6ba',
+    'mautic.inbox.ui.back_to_conversations_5a51a8', 'mautic.inbox.ui.campaign_df4fbe', 'mautic.inbox.ui.canned_responses_f45beb',
+    'mautic.inbox.ui.channel_61f21e', 'mautic.inbox.ui.channel_message_f3ffdf', 'mautic.inbox.ui.comment_by_8b43f4',
+    'mautic.inbox.ui.comments_6fe305', 'mautic.inbox.ui.complex_rules_remain_in_mautic_campaigns_this_page_shows_existing_7c55a6', 'mautic.inbox.ui.contact_details_1ee714',
+    'mautic.inbox.ui.connecting_dc8abc', 'mautic.inbox.ui.contact_not_linked_yet_e9a529', 'mautic.inbox.ui.conversation_assigned_e9e32d', 'mautic.inbox.ui.conversation_b70a33',
+    'mautic.inbox.ui.conversation_created_fa0fd7', 'mautic.inbox.ui.conversation_history_87eaf7', 'mautic.inbox.ui.conversation_list',
+    'mautic.inbox.ui.conversation_reopened_5108d0', 'mautic.inbox.ui.conversation_reopened_by_a_new_message_306e4e', 'mautic.inbox.ui.conversation_resolved_973a89',
+    'mautic.inbox.ui.conversation_returned_to_the_queue_dee084', 'mautic.inbox.ui.conversation_snoozed_2489e7', 'mautic.inbox.ui.conversation_source_229634',
+    'mautic.inbox.ui.conversation_transferred_f5ab14', 'mautic.inbox.ui.conversation_updated_f74900', 'mautic.inbox.ui.conversations_86d0e6', 'mautic.inbox.ui.could_not_complete_the_action_0cb5b3',
+    'mautic.inbox.ui.could_not_load_the_preview_9f03de', 'mautic.inbox.ui.could_not_save_the_draft_a70018', 'mautic.inbox.ui.ctrl_enter_to_send_0d34b5',
+    'mautic.inbox.ui.delivered_e0ca94', 'mautic.inbox.ui.draft_saved_a76c6d', 'mautic.inbox.ui.draft_saved_automatically_da72a0',
+    'mautic.inbox.ui.enable_sound_e0b13b', 'mautic.inbox.ui.enable_sound_notifications_9d9271', 'mautic.inbox.ui.filter_conversations_9d8aa3', 'mautic.inbox.ui.in_1_hour_f47829',
+    'mautic.inbox.ui.in_4_hours_9f8243', 'mautic.inbox.ui.in_progress_5ca373', 'mautic.inbox.ui.inbox_227cf7',
+    'mautic.inbox.ui.insert_canned_response_97c0df', 'mautic.inbox.ui.instagram_comment_rules_b6e5bf', 'mautic.inbox.ui.internal_note_010aa1',
+    'mautic.inbox.ui.internal_note_only_your_team_will_see_this_text_6f8a19', 'mautic.inbox.ui.load_earlier_messages_3d0b6c', 'mautic.inbox.ui.load_more_eb48bb',
+    'mautic.inbox.ui.loading_conversations_cb1a50', 'mautic.inbox.ui.loading_more_cfca50', 'mautic.inbox.ui.media_01fec9',
+    'mautic.inbox.ui.live_c81a1f', 'mautic.inbox.ui.media_retry', 'mautic.inbox.ui.message_received_0d110d', 'mautic.inbox.ui.meta_asset_d48602', 'mautic.inbox.ui.mine_1380c1',
+    'mautic.inbox.ui.name_13030d', 'mautic.inbox.ui.network_id_f461ad', 'mautic.inbox.ui.next_action_dd848a',
+    'mautic.inbox.ui.no_comment_rules_configured_afcbbb', 'mautic.inbox.ui.no_conversations_found_12522a', 'mautic.inbox.ui.not_sent_3f0e80',
+    'mautic.inbox.ui.pending_network_failure', 'mautic.inbox.ui.pending_channel_refused',
+    'mautic.inbox.ui.message_placeholder_short', 'mautic.inbox.ui.note_placeholder_short',
+    'mautic.inbox.ui.agents_short',
+    'mautic.inbox.contact.title', 'mautic.inbox.contact.cancel', 'mautic.inbox.contact.loading', 'mautic.inbox.contact.not_allowed', 'mautic.inbox.contact.choose_contact', 'mautic.inbox.contact.new_contact', 'mautic.inbox.contact.conversation_contact', 'mautic.inbox.contact.existing', 'mautic.inbox.contact.no_contact', 'mautic.inbox.contact.save_email', 'mautic.inbox.contact.campaign', 'mautic.inbox.contact.segment', 'mautic.inbox.contact.none', 'mautic.inbox.contact.nothing_chosen', 'mautic.inbox.contact.apply', 'mautic.inbox.contact.applying', 'mautic.inbox.contact.done',
+    'mautic.inbox.ui.pull_to_refresh',
+    'mautic.inbox.ui.open_5c072d', 'mautic.inbox.ui.open_825b3a', 'mautic.inbox.ui.open_bcd313',
+    'mautic.inbox.ui.open_campaign_cde8e4', 'mautic.inbox.ui.open_full_size_image_44fa9f', 'mautic.inbox.ui.open_private_conversation_edf027',
+    'mautic.inbox.ui.paused_144ffd', 'mautic.inbox.ui.photo_of_5bece3', 'mautic.inbox.ui.post_linked_to_the_original_comment_405f5e',
+    'mautic.inbox.ui.private_reply_ecd924', 'mautic.inbox.ui.public_comment_4a1398', 'mautic.inbox.ui.public_reply_42dc43',
+    'mautic.inbox.ui.public_reply_on_facebook_38b969', 'mautic.inbox.ui.published_9d32b0', 'mautic.inbox.ui.queued_a3ecf1',
+    'mautic.inbox.ui.queues_8e5d55', 'mautic.inbox.ui.read_5ac9d4', 'mautic.inbox.ui.reconnecting_5c2ce7', 'mautic.inbox.ui.reopen_3a7b78',
+    'mautic.inbox.ui.reply_queued_8a4e0a', 'mautic.inbox.ui.reply_requested_immediate', 'mautic.inbox.ui.reply_text_680d6f',
+    'mautic.inbox.ui.resolve_3628ac', 'mautic.inbox.ui.resolved_0d46ce', 'mautic.inbox.ui.resolved_6d70e1',
+    'mautic.inbox.ui.return_to_queue_a86b9c', 'mautic.inbox.ui.rule_e6ee04', 'mautic.inbox.ui.save_response_8d37d6',
+    'mautic.inbox.ui.saving_draft_1493aa', 'mautic.inbox.ui.search_conversations_519789', 'mautic.inbox.ui.select_a_conversation_to_view_its_history_a1750d',
+    'mautic.inbox.ui.send_again', 'mautic.inbox.ui.send_reply_c50a43', 'mautic.inbox.ui.sending_569978',
+    'mautic.inbox.ui.sending_5e91dc', 'mautic.inbox.ui.sending_again', 'mautic.inbox.ui.sent_again',
+    'mautic.inbox.ui.sent_e1be83', 'mautic.inbox.ui.shared_inbox_822665', 'mautic.inbox.ui.snooze_2d407d',
+    'mautic.inbox.ui.snooze_conversation_cd8362', 'mautic.inbox.ui.snooze_duration_38b154', 'mautic.inbox.ui.snooze_period_ended_360c38',
+    'mautic.inbox.ui.snoozed_435da9', 'mautic.inbox.ui.snoozed_ae3ae2', 'mautic.inbox.ui.sound_notifications_for_new_messages_click_to_enable_or_mute_5f2dc2', 'mautic.inbox.ui.sound_off_95de2d',
+    'mautic.inbox.ui.sound_on_ff7013', 'mautic.inbox.ui.sound_unavailable_029b22', 'mautic.inbox.ui.source_post_eed81e',
+    'mautic.inbox.ui.status_2d3abf', 'mautic.inbox.ui.status_87cf2a', 'mautic.inbox.ui.support_inbox_fff9ea',
+    'mautic.inbox.ui.support_workspace_d55134', 'mautic.inbox.ui.the_file_was_not_stored_request_it_again_if_needed_1cc4cb', 'mautic.inbox.ui.tomorrow_9_am_b2eccf',
+    'mautic.inbox.ui.transfer_conversation_0194f9', 'mautic.inbox.ui.transfer_to_fb6a4c', 'mautic.inbox.ui.unassigned_3986c8', 'mautic.inbox.ui.unassigned_a121ae',
+    'mautic.inbox.ui.unassigned_5c8896', 'mautic.inbox.ui.unconfirmed_90d72f', 'mautic.inbox.ui.unconfirmed_send_3c9317',
+    'mautic.inbox.ui.unnamed_contact_666b99', 'mautic.inbox.ui.unsupported_link_9a5896', 'mautic.inbox.ui.video_preview_b48d9b',
+    'mautic.inbox.ui.view_contact_in_mautic_199894', 'mautic.inbox.ui.view_original_comment_0d3156', 'mautic.inbox.ui.view_post_on_b9e2d7',
+    'mautic.inbox.ui.waiting_to_retry_5ea365', 'mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89', 'mautic.inbox.ui.write_a_private_reply_394bc1',
+    'mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01', 'mautic.inbox.ui.your_support_conversations_in_one_place_b05a85'
+] %}
+{% set uiTranslations = {} %}
+{% for key in uiTranslationKeys %}
+    {% set uiTranslations = uiTranslations|merge({(key): key|trans}) %}
+{% endfor %}
+{# standalone: o shell instalavel nao tem o menu do Mautic em volta, entao o menu do app
+   precisa levar tambem para a pagina de agentes. Em /s/inbox aquele caminho ja existe no
+   menu lateral, e repeti-lo aqui seria um segundo caminho para o mesmo lugar. #}
+<div id="inbox-app" data-standalone="{{ standalone|default(false) ? 1 : 0 }}" data-ai-page-url="{{ path('mautic_inbox_ai') }}" data-ai-url="{{ path('mautic_inbox_ai_available', {stateId:0}) }}" data-locale="{{ app.request.locale|e('html_attr') }}" data-translations="{{ uiTranslations|json_encode|e('html_attr') }}" class="inbox-app"
+     data-ai-retry-url="{{ path('mautic_inbox_ai_retry', {stateId:0}) }}"
+     data-index-url="{{ path('mautic_inbox_index') }}"
+     data-conversation-url="{{ path('mautic_inbox_conversation', {stateId: 0}) }}"
+     data-initial-state-id="{{ initialStateId|default(0) }}"
+     data-stream-url="{{ path('mautic_inbox_stream') }}"
+     data-list-url="{{ path('mautic_inbox_list') }}"
+     data-detail-url="{{ path('mautic_inbox_detail', {stateId: 0}) }}"
+     data-timeline-url="{{ path('mautic_inbox_timeline', {stateId: 0}) }}"
+     data-poll-url="{{ path('mautic_inbox_poll') }}"
+     data-take-url="{{ path('mautic_inbox_take', {stateId: 0}) }}"
+     data-state-url="{{ path('mautic_inbox_state', {stateId: 0}) }}"
+     data-templates-url="{{ path('mautic_inbox_templates', {stateId:0}) }}"
+     data-reply-url="{{ path('mautic_inbox_reply', {stateId: 0}) }}"
+     data-retry-url="{{ path('mautic_inbox_retry', {outboundId: 0}) }}"
+     data-note-url="{{ path('mautic_inbox_note', {stateId: 0}) }}"
+     data-email-options-url="{{ path('mautic_inbox_email_options', {stateId: 0}) }}"
+     data-email-apply-url="{{ path('mautic_inbox_email_apply', {stateId: 0}) }}"
+     data-draft-url="{{ path('mautic_inbox_draft', {stateId: 0}) }}"
+     data-push-config-url="{{ path('mautic_inbox_push_config') }}"
+     data-push-subscriptions-url="{{ path('mautic_inbox_push_subscribe') }}"
+     data-canned-url="{{ path('mautic_inbox_canned') }}"
+     data-canned-item-url="{{ path('mautic_inbox_canned_update', {responseId: 0}) }}"
+     data-canned-settings="{{ cannedResponses|json_encode|e('html_attr') }}"
+     data-bootstrap="{{ {
+         users: users|default([]),
+         automationRules: automationRules|default([]),
+         channelNotices: channelNotices|default([]),
+         canManageCanned: canManageCannedResponses|default(false),
+         isAdmin: app.user.isAdmin()
+     }|json_encode|e('html_attr') }}"
+     data-csrf="{{ csrf_token('mautic_inbox') }}"
+     data-current-user="{{ currentUserId }}"></div>

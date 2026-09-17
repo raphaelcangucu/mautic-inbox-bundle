@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="{{ app.request.locale|replace({'_': '-'}) }}">
+<head>
+<meta charset="utf-8">
+{# viewport-fit=cover para o conteudo correr ate a borda em aparelho com entalhe #}
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+{# O PwaAssetsSubscriber declara manifest, apple-touch-icon e theme-color no evento
+   VIEW_INJECT_CUSTOM_ASSETS. Quem emite aquilo e outputHeadDeclarations, que o head.html.twig
+   do Mautic chama — e este shell nao estende aquele layout. Sem a chamada abaixo a pagina do
+   app sai SEM manifest nenhum, e o Chrome nao tem o que instalar: o "Instalar app" some
+   justamente na tela que o atendente abre depois de logar. Comprovado no servidor:
+   grep -c 'rel="manifest"' neste arquivo publicado dava 0.
+   Nao duplica o CSS: outputSystemStylesheets emite os assets de sistema, e esta emite outro
+   balde — as folhas enfileiradas e as declaracoes de plugin. #}
+{{ outputHeadDeclarations() }}
+<title>Macro Zap</title>
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="icon" href="{{ path('mautic_inbox_icon', {name: '192'}) }}" sizes="192x192" type="image/png">
+{# includeStylesheet apenas ENFILEIRA; quem emite e outputSystemStylesheets, que o layout do
+   Mautic chama e este shell autonomo precisa chamar por conta propria. Sem isso a pagina sai
+   sem estilo nenhum: icone SVG no tamanho natural, avatar como circulo gigante.
+   O libraries.css e o app.css entram junto porque o inbox.css foi escrito para herdar deles. #}
+{{ outputSystemStylesheets() }}
+{# Emitido direto, e nao por includeStylesheet: aquele helper apenas enfileira, e a funcao de
+   saida do Mautic nao devolve o CSS de plugin — comprovado inspecionando document.styleSheets
+   no aparelho, onde libraries.css e app.css apareciam e o inbox.css nao. #}
+<link rel="stylesheet" href="{{ asset('plugins/MauticInboxBundle/Assets/css/inbox.css') }}?v={{ assetVersion }}">
+<style>
+  /* O shell nao carrega o chrome do Mautic, entao o basico mora aqui. */
+  html, body { height: 100%; margin: 0; background: #f6f7fb; }
+  body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
+  .inbox-shell {
+    display: flex; flex-direction: column; height: 100%;
+    /* Respeita a area segura do aparelho em vez de esconder conteudo sob a barra do sistema.
+       So em cima: embaixo quem encosta na borda e o menu do app, que e fixo e traz o proprio
+       recuo — somar os dois deixaria uma faixa morta acima da barra. */
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .inbox-shell > #inbox-app { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+</style>
+</head>
+<body>
+<div class="inbox-shell">
+{{ include('@MauticInbox/Inbox/_root.html.twig', {standalone: true}) }}
+</div>
+<script src="{{ asset('plugins/MauticInboxBundle/Assets/dist/inbox-app.js') }}?v={{ assetVersion }}"></script>
+<script>
+  // O bundle expoe inboxOnLoad para o ciclo de navegacao do Mautic. Aqui nao ha aquele ciclo,
+  // entao a montagem e direta.
+  if (typeof window.inboxOnLoad === 'function') { window.inboxOnLoad(); }
+</script>
+</body>
+</html>

@@ -4,7 +4,7 @@ Este bundle adiciona a caixa nativa **Atendimento** para WhatsApp, Instagram e F
 
 ## Instalação
 
-Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.12.0 ou compatível instalado. Em uma instalação DDEV:
+Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.14.0 ou compatível instalado. Em uma instalação DDEV:
 
 ```bash
 ddev start

@@ -4,13 +4,13 @@
 
 Use uma instalação Mautic 7 funcional, com acesso à linha de comando, banco compatível e o mesmo ambiente PHP usado pela aplicação. O conjunto foi validado em Mautic 7.2.0-rc; isso não equivale a uma matriz de testes de todas as versões 7.x.
 
-O conector precisa ser instalado **antes ou junto** ao Inbox, na mesma aplicação. A versão 0.12.0 fornece `InboxIntegrationInterface`, a integração opcional, perfis de participantes e as operações Facebook usadas pelo atendimento. A restrição Composer `^0.12.0` aceita correções 0.12.x e não aceita automaticamente 0.13.x.
+O conector precisa ser instalado **antes ou junto** ao Inbox, na mesma aplicação. A versão 0.14.0 fornece `InboxIntegrationInterface`, a integração opcional, perfis de participantes, as operações Facebook usadas pelo atendimento, o Tech Provider e a interface administrativa Svelte compatível. A restrição Composer `^0.14.0` aceita atualizações compatíveis da série 0.14.x.
 
 Faça backup do banco antes de instalar ou atualizar. Execute os comandos a seguir na raiz do Mautic e somente se os diretórios de destino ainda não existirem:
 
 ```bash
-git clone --branch v0.12.1 --depth 1 https://github.com/raphaelcangucu/mautic-meta-bundle.git plugins/MauticMetaBundle
-git clone --branch v1.0.2 --depth 1 https://github.com/raphaelcangucu/mautic-inbox-bundle.git plugins/MauticInboxBundle
+git clone --branch v0.14.0 --depth 1 https://github.com/raphaelcangucu/mautic-meta-bundle.git plugins/MauticMetaBundle
+git clone --branch v1.1.1 --depth 1 https://github.com/raphaelcangucu/mautic-inbox-bundle.git plugins/MauticInboxBundle
 ```
 
 Em ambiente DDEV:
@@ -29,7 +29,7 @@ O pacote tem tipo `mautic-plugin` e diretório de instalação `MauticInboxBundl
 ```bash
 ddev composer config repositories.meta vcs https://github.com/raphaelcangucu/mautic-meta-bundle.git
 ddev composer config repositories.inbox vcs https://github.com/raphaelcangucu/mautic-inbox-bundle.git
-ddev composer require raphaelcangucu/mautic-meta-bundle:^0.12.0 raphaelcangucu/mautic-inbox-bundle:^1.0.2
+ddev composer require raphaelcangucu/mautic-meta-bundle:^0.14.0 raphaelcangucu/mautic-inbox-bundle:^1.1.1
 ```
 
 Verifique a resolução das dependências e os diretórios resultantes em homologação. Não misture instalação por clone com Composer nos mesmos diretórios. A implantação validada utilizou os diretórios dos bundles; o fluxo Composer acima depende da configuração do projeto principal.

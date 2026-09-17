@@ -9,6 +9,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\UserBundle\Entity\User;
+use MauticPlugin\MauticInboxBundle\Application\AssetVersion;
+use MauticPlugin\MauticInboxBundle\Application\ContactLinking;
 use MauticPlugin\MauticInboxBundle\Application\ConversationActions;
 use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Application\InboxQuery;
@@ -42,6 +44,7 @@ final class InboxController extends CommonController
             'contentTemplate' => '@MauticInbox/Inbox/index.html.twig',
             'passthroughVars' => ['mauticContent' => 'inbox', 'route' => $route],
             'viewParameters' => [
+                'assetVersion' => AssetVersion::current(),
                 'currentUserId' => $user->getId(),
                 'initialStateId' => $stateId,
                 'users' => $query->users(),
@@ -185,13 +188,18 @@ final class InboxController extends CommonController
         });
     }
 
-    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions): JsonResponse
+    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query): JsonResponse
     {
         $this->grantMutation($request, $permissions, 'create');
-        return $this->respond(function () use ($stateId, $request, $users, $states, $actions): array {
+        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query): array {
             $payload = $this->payload($request);
-            $outbound = $actions->reply($this->requireState($states, $stateId), $this->user($users), (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null);
-            return ['request_id' => $outbound->getRequestId(), 'status' => $outbound->getStatus()];
+            $state = $this->requireState($states, $stateId);
+            $outbound = $actions->reply($state, $this->user($users), (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null);
+
+            // O envio devolve o que acabou de criar porque senao ele custa mais duas idas ao
+            // servidor: uma para o historico mostrar a mensagem e outra para a lista nao ficar
+            // velha. `request_id` e `status` continuam saindo iguais para quem ja os lia.
+            return ['request_id' => $outbound->getRequestId(), 'status' => $outbound->getStatus(), 'item' => $query->outboundItem($outbound), 'summary' => $query->summary($state)];
         }, Response::HTTP_ACCEPTED);
     }
 
@@ -217,6 +225,44 @@ final class InboxController extends CommonController
         return $this->respond(function () use ($templates, $states, $stateId): array {
             $state = $this->requireState($states, $stateId); $reason = $templates->blockedReason($state);
             return ['items' => $templates->catalog($state), 'blocked_reason' => $reason ? $this->translator->trans($reason) : null];
+        });
+    }
+
+    /**
+     * O que oferecer quando o atendente toca num e-mail que apareceu na conversa. Uma ida so:
+     * o contato ligado, os homonimos por e-mail, e as listas de campanha e segmento.
+     */
+    public function emailOptions(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ContactLinking $linking): JsonResponse
+    {
+        $this->grant($permissions, 'view');
+        return $this->respond(function () use ($stateId, $request, $users, $states, $linking): array {
+            $state = $this->requireState($states, $stateId);
+            return $linking->options($state->getConversation(), $linking->email((string) $request->query->get('email', '')), $this->user($users));
+        });
+    }
+
+    /**
+     * Executa o que foi escolhido. O contato alvo vem decidido da tela de proposito: quando ha
+     * um homonimo por e-mail, escolher entre ele e o contato da conversa e julgamento de quem
+     * atende, e adivinhar aqui moveria a conversa de dono sem ninguem ver.
+     */
+    public function emailApply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ContactLinking $linking): JsonResponse
+    {
+        $this->grantMutation($request, $permissions, 'edit');
+        return $this->respond(function () use ($stateId, $request, $users, $states, $linking): array {
+            $state = $this->requireState($states, $stateId);
+            $payload = $this->payload($request);
+            $campaign = (int) ($payload['campaign_id'] ?? 0);
+            $segment = (int) ($payload['segment_id'] ?? 0);
+            return $linking->apply(
+                $state->getConversation(),
+                $linking->email((string) ($payload['email'] ?? '')),
+                (int) ($payload['contact_id'] ?? 0),
+                (bool) ($payload['save_email'] ?? false),
+                $campaign > 0 ? $campaign : null,
+                $segment > 0 ? $segment : null,
+                $this->user($users)
+            );
         });
     }
 

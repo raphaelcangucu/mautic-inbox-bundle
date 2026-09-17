@@ -13,9 +13,24 @@ Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, In
 - Agentes de IA com contexto versionado, fontes controladas, indicação visual de autoria e execução e retomada humana segura.
 - Sessões de IA sem teto de mensagens. O contador é somente telemetria e pode ser reiniciado pela interface.
 
+## Frontend Svelte 5
+
+O atendimento e a configuração dos agentes usam componentes Svelte 5 com TypeScript, mantendo o visual, as rotas e as garantias do Mautic. Twig fornece somente os pontos de montagem e os dados iniciais escapados. O bundle compilado e versionado em `Assets/dist/inbox-app.js` contém o runtime necessário, portanto a instalação por Composer não exige Node.js em produção.
+
+Para desenvolver ou validar o frontend:
+
+```bash
+npm ci
+npm run check
+npm test
+npm run build
+```
+
+Os componentes ficam em `Frontend/`. O entrypoint atende `Mautic.inboxOnLoad` e `Mautic.inboxaiOnLoad`, desmontando efeitos, timers, SSE e listeners quando o Mautic substitui a página por AJAX. Não edite diretamente o bundle compilado.
+
 ## Instalação
 
-Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.13.0 ou compatível instalado. Em uma instalação DDEV:
+Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.14.0 ou compatível instalado. Em uma instalação DDEV:
 
 ```bash
 ddev start
@@ -80,7 +95,7 @@ php bin/console mautic:inbox:ai:setup --env=prod
 php bin/console mautic:inbox:ai:work --env=prod
 ```
 
-O agente não possui limite de respostas por conversa. O contador exibido ajuda a observar a sessão, mas não pausa, transfere ou encerra o atendimento. A ação de reinício invalida trabalhos antigos, cria uma nova sessão e zera a telemetria sem ampliar permissões. Falha de entrega, retomada humana, desativação administrativa, restrições do canal e ações explícitas do agente continuam interrompendo a automação de forma segura.
+O limite de respostas pode ser configurado globalmente e por agente. O valor `0`, usado como padrão, mantém a conversa ilimitada. Quando os dois níveis possuem valores positivos, vale o menor deles. A última resposta permitida é enviada e o agente pausa a conversa para continuidade humana; transferências preservam o contador e a ação de reinício abre uma nova sessão com a contagem zerada.
 
 O modelo só recebe ferramentas e fontes autorizadas. Credenciais do Pi e do CMS ficam fora do banco de documentos, das respostas HTTP e do repositório. Consulte [Agentes de atendimento com Pi](docs/AI-AGENTS.md) para instalação, permissões, fontes e diagnóstico.
 
@@ -136,4 +151,4 @@ O identificador do link representa o estado persistido da conversa no Inbox. Ele
 
 ## Compatibilidade e versão
 
-A versão `1.0.14` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.13.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+A versão `1.1.1` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).

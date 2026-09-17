@@ -3,7 +3,7 @@
 | Sintoma | O que conferir |
 | --- | --- |
 | Atendimento não aparece | Instalação dos dois bundles, recarregamento, cache e permissões do papel |
-| Erro de classe ou serviço da integração | Meta Bundle >= 0.12.0; diretórios e namespaces corretos |
+| Erro de classe ou serviço da integração | Meta Bundle >= 0.14.0; diretórios e namespaces corretos |
 | Inbox vazio | Mensagens no conector, webhook do ativo e reconciliação das conversas antigas |
 | Não consegue responder | Responsável, permissões do atendente, ativo habilitado, conexão Meta e janela do canal |
 | Resposta fica pendente | Execução e logs de `mautic:meta:queue:process`; backlog da fila |

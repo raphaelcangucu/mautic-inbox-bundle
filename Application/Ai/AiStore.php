@@ -13,11 +13,17 @@ final class AiStore {
         $r??=(new AiRecord())->initialize($kind,$key);$r->change($data);$this->em->persist($r);$this->em->flush();return $r;
     }
     public function config(): array {
-        $config=$this->get('config','global')+['enabled'=>false,'permissions'=>[],'model'=>'gpt-5.6-luna','provider'=>'openai-codex'];
-        // Reply counts remain available for observability, but they never cap a support session.
-        $config['limit']=0;
-        $config['limit_action']='continue';
+        $config=$this->get('config','global')+['enabled'=>false,'permissions'=>[],'model'=>'gpt-5.6-luna','provider'=>'openai-codex','limit'=>0,'limit_configured'=>false];
+        $config['limit']=self::globalLimit($config);
+        $config['limit_action']='pause';
         return $config;
+    }
+    public static function normalizeLimit(mixed $value): int {return max(0,min(10000,(int)$value));}
+    public static function globalLimit(array $config): int {return !empty($config['limit_configured'])?self::normalizeLimit($config['limit']??0):0;}
+    public static function agentLimit(array $agent): int {return !empty($agent['limit_configured'])?self::normalizeLimit($agent['limit']??0):0;}
+    public static function effectiveLimit(array $config,array $agent): int {
+        $limits=array_values(array_filter([self::globalLimit($config),self::agentLimit($agent)],static fn(int $limit):bool=>$limit>0));
+        return $limits?min($limits):0;
     }
     public function context(array $agent): array {
         $out=[];foreach($this->all('document') as $d){$v=$d['published']??null;if(!$v)continue;if(($v['scope']??'')==='global'||in_array($d['key'],$agent['documents']??[],true))$out[]=['key'=>$d['key'],'version'=>$v['version'],'name'=>$v['name'],'body'=>$v['body']];}

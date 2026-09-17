@@ -1,5 +1,28 @@
 # Changelog
 
+## Nao lancado
+
+- Adiciona a fundacao criptografica do Web Push sobre ext-openssl, sem dependencia de Composer.
+- Verifica a cifra de conteudo contra os vetores publicados na RFC 8291.
+
+## 1.1.1
+
+- Adiciona limite global e por agente para respostas de IA em cada conversa.
+- Mantém `0` como padrão ilimitado e aplica o menor limite positivo entre as duas configurações.
+- Envia a última resposta permitida, pausa o agente e mantém a conversa aguardando atendimento humano ao atingir a trava.
+- Preserva como ilimitadas as configurações globais e os agentes antigos cujo campo de limite existia apenas como dado informativo.
+
+## 1.1.0
+
+- Migra o atendimento e o workspace de agentes de IA para componentes Svelte 5 com TypeScript.
+- Preserva os contratos PHP, rotas, permissões, CSRF, SSE, filas, rascunhos, mídia, modelos WhatsApp, respostas prontas e ações de atendimento existentes.
+- Compartilha componentes de avatar, lista, timeline, mensagens, mídia, composer, contato, configurações, documentos, permissões e agentes.
+- Mantém o visual do Mautic e o ciclo de navegação AJAX com montagem e desmontagem seguras.
+- Preserva o salvamento do agente pela barra superior e seu comportamento responsivo, evolução que já estava ativa em produção.
+- Publica um bundle autônomo em `Assets/dist/inbox-app.js`, permitindo instalar o plugin por Composer sem Node.js em produção.
+- Adiciona verificações de TypeScript/Svelte e testes do bundle compilado, traduções, Markdown, histórico, notificações, CSRF e persistência de rascunhos.
+- Alinha a dependência do conector com o Meta Bundle 0.14.0, que inclui a interface Svelte e o Tech Provider preservado.
+
 ## 1.0.14
 
 - Adiciona uma URL compartilhável e estável para cada conversa do atendimento.

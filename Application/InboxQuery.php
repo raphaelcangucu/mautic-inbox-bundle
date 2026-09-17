@@ -23,6 +23,14 @@ use MauticPlugin\MauticMetaBundle\MetaEvents;
 
 final class InboxQuery
 {
+    /** Os quatro tipos do historico, cada um com o desempate de ordem para quando o instante empata. */
+    private const TIMELINE_TYPES = [
+        MetaMessage::class => ['message', 4],
+        OutboundRequest::class => ['outbound', 3],
+        Note::class => ['note', 2],
+        EventLog::class => ['event', 1],
+    ];
+
     public function __construct(
         private EntityManagerInterface $entityManager,
         private \Symfony\Contracts\Translation\TranslatorInterface $translator,
@@ -134,9 +142,8 @@ final class InboxQuery
         $limit = max(1, min(100, $limit));
         $cursor = $this->decodeTimeCursor($before);
         $conversation = $state->getConversation();
-        $types = [MetaMessage::class => ['message', 4], OutboundRequest::class => ['outbound', 3], Note::class => ['note', 2], EventLog::class => ['event', 1]];
         $items = [];
-        foreach ($types as $class => [$kind, $rank]) {
+        foreach (self::TIMELINE_TYPES as $class => [$kind, $rank]) {
             $qb = $this->entityManager->createQueryBuilder()->select('x')->from($class, 'x')->where('x.conversation = :conversation')->setParameter('conversation', $conversation);
             if (MetaMessage::class === $class) { $qb->andWhere('x.id NOT IN (SELECT humanJob.messageLogId FROM '.OutboundRequest::class.' humanRequest JOIN humanRequest.job humanJob WHERE humanRequest.conversation = :conversation AND humanJob.messageLogId IS NOT NULL)'); }
             if (null !== $cursor) {
@@ -158,9 +165,35 @@ final class InboxQuery
         $items = array_slice($items, 0, $limit);
         $oldest = [] === $items ? null : $items[array_key_last($items)];
         $items = array_reverse($items);
-        $items = array_map(static function (array $item): array { unset($item['rank'], $item['sort']); return $item; }, $items);
+        $items = array_map(fn (array $item): array => $this->withoutOrdering($item), $items);
 
         return ['items' => $items, 'next_cursor' => $hasMore && is_array($oldest) ? $this->encodeTimeCursor(new \DateTimeImmutable($oldest['timestamp']), $oldest['rank'], $oldest['sort']) : null];
+    }
+
+    /**
+     * O item de historico de um envio recem-criado, na forma que o historico ja devolve. Quem
+     * responde ao envio precisa disto para nao ter que recarregar o historico so para ver o que
+     * acabou de escrever; montar o array em outro lugar criaria uma segunda forma, e as duas
+     * divergem na primeira mudanca.
+     *
+     * @return array<string,mixed>
+     */
+    public function outboundItem(OutboundRequest $outbound): array
+    {
+        [$kind, $rank] = self::TIMELINE_TYPES[OutboundRequest::class];
+
+        return $this->withoutOrdering($this->timelineItem($outbound, $kind, $rank));
+    }
+
+    /**
+     * O resumo de uma conversa, na forma que a listagem ja devolve, para quem acabou de mexer nela
+     * e teria que buscar a lista inteira para nao mostra-la velha.
+     *
+     * @return array<string,mixed>
+     */
+    public function summary(ConversationState $state): array
+    {
+        return $this->conversation($state);
     }
 
     /** @return list<array{id:int,name:string,body:string,enabled:bool}> */
@@ -235,7 +268,7 @@ final class InboxQuery
         $states = array_slice($states, 0, 50);
         $timeline = [];
         if ($selected instanceof ConversationState) {
-            foreach ([MetaMessage::class => ['message', 4], OutboundRequest::class => ['outbound', 3], Note::class => ['note', 2], EventLog::class => ['event', 1]] as $class => [$kind, $rank]) {
+            foreach (self::TIMELINE_TYPES as $class => [$kind, $rank]) {
                 $qb = $this->entityManager->createQueryBuilder()->select('x')->from($class, 'x')->where('x.conversation = :conversation')->andWhere('x.dateAdded > :from')->andWhere('x.dateAdded <= :until')
                     ->setParameter('conversation', $selected->getConversation())->setParameter('from', $from)->setParameter('until', $until);
             if (MetaMessage::class === $class) { $qb->andWhere('x.id NOT IN (SELECT humanJob.messageLogId FROM '.OutboundRequest::class.' humanRequest JOIN humanRequest.job humanJob WHERE humanRequest.conversation = :conversation AND humanJob.messageLogId IS NOT NULL)'); }
@@ -245,7 +278,7 @@ final class InboxQuery
             }
             usort($timeline, static fn (array $a, array $b): int => [$a['timestamp'], $a['rank'], $a['sort']] <=> [$b['timestamp'], $b['rank'], $b['sort']]);
             if (count($timeline) > 100) { $timeline = array_slice($timeline, 0, 100); $hasMore = true; }
-            $timeline = array_map(static function (array $item): array { unset($item['rank'], $item['sort']); return $item; }, $timeline);
+            $timeline = array_map(fn (array $item): array => $this->withoutOrdering($item), $timeline);
         }
         $next = $hasMore && [] !== $states ? end($states)->getDateModified() : $until;
 
@@ -309,6 +342,18 @@ final class InboxQuery
             'human_takeover' => $state->isHumanTakeover(), 'snoozed_until' => $state->getSnoozedUntil()?->format(DATE_ATOM),
             'last_message_at' => $c->getLastMessageAt()->format(DATE_ATOM), 'updated_at' => $state->getDateModified()->format(DATE_ATOM),
         ];
+    }
+
+    /**
+     * `rank` e `sort` decidem a ordem aqui dentro e nao significam nada para quem le a resposta.
+     *
+     * @return array<string,mixed>
+     */
+    private function withoutOrdering(array $item): array
+    {
+        unset($item['rank'], $item['sort']);
+
+        return $item;
     }
 
     /** @return array<string,mixed> */
