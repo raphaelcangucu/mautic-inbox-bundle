@@ -69,6 +69,28 @@ final class EcTest extends TestCase
         self::assertSame(64, strlen(Ec::signatureToRaw($der)));
     }
 
+    public function testAnIntegerShorterThanThirtyTwoOctetsIsPaddedOnTheLeft(): void
+    {
+        // O caso espelhado do teste abaixo: um INTEGER que e genuinamente curto porque o
+        // proprio valor comeca com zero. Sem preenchimento, R sai com 31 octetos e o FCM
+        // recusa — mas so em cerca de uma assinatura em 128, que e o pior jeito de falhar.
+        $r31 = str_repeat("\x11", 31);
+        $s32 = str_repeat("\x22", 32);
+        $der = "\x30".chr(4 + 31 + 32)."\x02".chr(31).$r31."\x02".chr(32).$s32;
+
+        $raw = Ec::signatureToRaw($der);
+
+        self::assertSame(64, strlen($raw));
+        self::assertSame("\x00".$r31, substr($raw, 0, 32), 'R curto precisa ser preenchido a esquerda');
+        self::assertSame($s32, substr($raw, 32, 32));
+    }
+
+    public function testATruncatedSignatureIsRefusedInsteadOfSilentlyWrong(): void
+    {
+        $this->expectException(\RuntimeException::class);
+        Ec::signatureToRaw("\x30\x44\x02\x20".str_repeat("\x11", 8));
+    }
+
     public function testIntegersWithALeadingZeroKeepTheirValue(): void
     {
         // DER assina inteiros: um valor cujo primeiro bit e 1 ganha um 0x00 na frente.

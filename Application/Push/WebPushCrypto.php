@@ -15,8 +15,20 @@ final class WebPushCrypto
     /**
      * @return array{sharedSecret:string, contentEncryptionKey:string, nonce:string, serverPoint:string}
      */
-    public function derive(string $userAgentPoint, string $authSecret, string $serverPrivatePem, string $salt): array
-    {
+    public function derive(
+        string $userAgentPoint,
+        string $authSecret,
+        #[\SensitiveParameter] string $serverPrivatePem,
+        string $salt,
+    ): array {
+        // A RFC 8291 fixa o segredo de autenticacao em 16 octetos. Um valor truncado ou
+        // decodificado duas vezes cifra sem reclamar, o serviço de push responde 201, e a
+        // notificacao simplesmente nao aparece. E a falha mais dificil de diagnosticar
+        // deste fluxo inteiro, e custa uma linha impedir.
+        if (16 !== strlen($authSecret)) {
+            throw new \InvalidArgumentException('O segredo de autenticacao tem exatamente 16 octetos.');
+        }
+
         $serverKey = openssl_pkey_get_private($serverPrivatePem);
         if (false === $serverKey) {
             throw new \RuntimeException('Chave privada do servidor invalida.');
@@ -74,10 +86,10 @@ final class WebPushCrypto
             $tag,
         );
         if (false === $cipher) {
-            throw new \RuntimeException('Falha na cifra AES-128-GCM.');
+            throw new \RuntimeException('Falha na cifra AES-128-GCM: '.(openssl_error_string() ?: 'sem detalhe do OpenSSL').'.');
         }
 
-        return $salt.pack('N', self::RECORD_SIZE).chr(65).$derived['serverPoint'].$cipher.$tag;
+        return $salt.pack('N', self::RECORD_SIZE).chr(strlen($derived['serverPoint'])).$derived['serverPoint'].$cipher.$tag;
     }
 
     public function authorizationHeader(string $endpoint, string $subject, VapidKeys $keys, int $lifetime = 43200): string
@@ -90,7 +102,7 @@ final class WebPushCrypto
         if (!isset($parts['scheme'], $parts['host'])) {
             throw new \InvalidArgumentException('Endpoint sem esquema ou host.');
         }
-        $audience = $parts['scheme'].'://'.$parts['host'].(isset($parts['port']) ? ':'.$parts['port'] : '');
+        $audience = strtolower($parts['scheme']).'://'.strtolower($parts['host']).(isset($parts['port']) ? ':'.$parts['port'] : '');
 
         $signing = $this->encode('{"typ":"JWT","alg":"ES256"}')
             .'.'.$this->encode((string) json_encode([

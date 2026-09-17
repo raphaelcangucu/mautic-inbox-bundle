@@ -61,8 +61,8 @@ O PHP local desta máquina está quebrado — Homebrew sem `libcapstone`. Os tes
 # NUNCA aponta para releases/tech-provider-20260914 nem para current: aquilo é produção.
 set -euo pipefail
 
-HOST="$INBOX_TEST_HOST"
-BENCH="<release de provas>"
+HOST="${INBOX_TEST_HOST:?defina INBOX_TEST_HOST}"
+BENCH="${INBOX_TEST_BENCH:?defina INBOX_TEST_BENCH}"
 TARGET="${1:-plugins/MauticInboxBundle/Tests/Unit}"
 
 # Guarda real: pergunta ao servidor para onde current aponta e recusa se for o mesmo lugar.
@@ -934,15 +934,26 @@ public function testTheAuthorizationHeaderVerifiesAgainstItsOwnKey(): void
     ));
 }
 
-public function testTwoEndpointsOnDifferentOriginsGetDifferentAudiences(): void
+public function testEachEndpointOriginGetsItsOwnAudience(): void
 {
+    // ATENCAO: nao troque isto por assertNotSame entre dois cabecalhos. O ES256 nao e
+    // deterministico, entao duas chamadas diferem sempre — inclusive com o aud fixo numa
+    // constante. Um teste assim afirma a aleatoriedade do ECDSA, nao o comportamento.
     $keys   = VapidKeys::generate();
     $crypto = new WebPushCrypto();
 
-    $google  = $crypto->authorizationHeader('https://fcm.googleapis.com/fcm/send/a', 'mailto:a@b.c', $keys);
-    $mozilla = $crypto->authorizationHeader('https://updates.push.services.mozilla.com/wpush/v2/a', 'mailto:a@b.c', $keys);
+    $casos = [
+        'https://fcm.googleapis.com/fcm/send/a'                => 'https://fcm.googleapis.com',
+        'https://updates.push.services.mozilla.com/wpush/v2/a' => 'https://updates.push.services.mozilla.com',
+        'https://web.push.apple.com/QDx/abc'                   => 'https://web.push.apple.com',
+        'https://fcm.googleapis.com:8443/fcm/send/a'           => 'https://fcm.googleapis.com:8443',
+    ];
 
-    self::assertNotSame($google, $mozilla, 'reaproveitar um token entre origens e o erro classico');
+    foreach ($casos as $endpoint => $esperado) {
+        $claims = $this->claimsOf($crypto->authorizationHeader($endpoint, 'mailto:a@b.c', $keys));
+
+        self::assertSame($esperado, $claims['aud'], 'aud errado para '.$endpoint);
+    }
 }
 
 public function testASubjectThatIsNotMailtoOrHttpsIsRefused(): void

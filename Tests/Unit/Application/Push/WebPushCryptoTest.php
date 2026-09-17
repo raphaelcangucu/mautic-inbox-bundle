@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace MauticPlugin\MauticInboxBundle\Tests\Unit\Application\Push;
 
+use MauticPlugin\MauticInboxBundle\Application\Push\Ec;
+use MauticPlugin\MauticInboxBundle\Application\Push\VapidKeys;
 use MauticPlugin\MauticInboxBundle\Application\Push\WebPushCrypto;
 use PHPUnit\Framework\TestCase;
 
@@ -67,7 +69,7 @@ final class WebPushCryptoTest extends TestCase
 
     public function testTheAuthorizationHeaderVerifiesAgainstItsOwnKey(): void
     {
-        $keys   = \MauticPlugin\MauticInboxBundle\Application\Push\VapidKeys::generate();
+        $keys   = VapidKeys::generate();
         $header = (new WebPushCrypto())->authorizationHeader(
             'https://fcm.googleapis.com/fcm/send/abc123',
             'mailto:suporte@exemplo.com',
@@ -89,26 +91,47 @@ final class WebPushCryptoTest extends TestCase
         self::assertSame(1, openssl_verify(
             $header64.'.'.$claims64,
             $der,
-            openssl_pkey_get_public(\MauticPlugin\MauticInboxBundle\Application\Push\Ec::publicPemFromPoint(RfcVectors::decode($keys->publicKey()))),
+            openssl_pkey_get_public(Ec::publicPemFromPoint(RfcVectors::decode($keys->publicKey()))),
             OPENSSL_ALGO_SHA256,
         ));
     }
 
-    public function testTwoEndpointsOnDifferentOriginsGetDifferentAudiences(): void
+    public function testEachEndpointOriginGetsItsOwnAudience(): void
     {
-        $keys   = \MauticPlugin\MauticInboxBundle\Application\Push\VapidKeys::generate();
+        // ATENCAO: nao troque isto por assertNotSame entre dois cabecalhos. O ES256 nao e
+        // deterministico, entao duas chamadas diferem sempre — inclusive com o aud fixo numa
+        // constante. Um teste assim afirma a aleatoriedade do ECDSA, nao o comportamento.
+        $keys   = VapidKeys::generate();
         $crypto = new WebPushCrypto();
 
-        $google  = $crypto->authorizationHeader('https://fcm.googleapis.com/fcm/send/a', 'mailto:a@b.c', $keys);
-        $mozilla = $crypto->authorizationHeader('https://updates.push.services.mozilla.com/wpush/v2/a', 'mailto:a@b.c', $keys);
+        $casos = [
+            'https://fcm.googleapis.com/fcm/send/a'                      => 'https://fcm.googleapis.com',
+            'https://updates.push.services.mozilla.com/wpush/v2/a'       => 'https://updates.push.services.mozilla.com',
+            'https://web.push.apple.com/QDx/abc'                         => 'https://web.push.apple.com',
+            'https://fcm.googleapis.com:8443/fcm/send/a'                 => 'https://fcm.googleapis.com:8443',
+        ];
 
-        self::assertNotSame($google, $mozilla, 'reaproveitar um token entre origens e o erro classico');
+        foreach ($casos as $endpoint => $esperado) {
+            $claims = $this->claimsOf($crypto->authorizationHeader($endpoint, 'mailto:a@b.c', $keys));
+
+            self::assertSame($esperado, $claims['aud'], 'aud errado para '.$endpoint);
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function claimsOf(string $header): array
+    {
+        $token = substr($header, 8, strpos($header, ', k=') - 8);
+
+        return (array) json_decode(RfcVectors::decode(explode('.', $token)[1]), true);
     }
 
     public function testASubjectThatIsNotMailtoOrHttpsIsRefused(): void
     {
         $this->expectException(\InvalidArgumentException::class);
-        (new WebPushCrypto())->authorizationHeader('https://fcm.googleapis.com/fcm/send/a', 'suporte@exemplo.com', \MauticPlugin\MauticInboxBundle\Application\Push\VapidKeys::generate());
+        (new WebPushCrypto())->authorizationHeader('https://fcm.googleapis.com/fcm/send/a', 'suporte@exemplo.com', VapidKeys::generate());
     }
 
     private static function rawSignatureToDer(string $raw): string

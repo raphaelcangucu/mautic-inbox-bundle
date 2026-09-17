@@ -43,6 +43,10 @@ final class VapidKeys
         return new self($privatePem, $publicKey);
     }
 
+    /**
+     * Devolve o PEM **em claro**. Esta classe nao cifra nada: quem persistir e responsavel por
+     * selar com o EncryptionHelper antes de gravar. Ver a fase 2 do spec.
+     */
     public function privatePem(): string
     {
         return $this->privatePem;

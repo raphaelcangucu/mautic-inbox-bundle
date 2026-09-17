@@ -53,23 +53,36 @@ final class Ec
 
     public static function signatureToRaw(string $der): string
     {
+        $length = strlen($der);
         $offset = 0;
-        if ("\x30" !== ($der[$offset++] ?? '')) {
-            throw new \RuntimeException('Assinatura DER precisa comecar com SEQUENCE.');
-        }
-        $offset++; // comprimento da sequencia, sempre curto para P-256
 
-        $read = static function () use ($der, &$offset): string {
-            if ("\x02" !== ($der[$offset++] ?? '')) {
-                throw new \RuntimeException('Esperado INTEGER na assinatura DER.');
+        $take = static function (int $count) use ($der, $length, &$offset): string {
+            if ($offset + $count > $length) {
+                throw new \RuntimeException('Assinatura DER truncada.');
             }
-            $length = ord($der[$offset++]);
-            $value  = substr($der, $offset, $length);
-            $offset += $length;
+            $slice = substr($der, $offset, $count);
+            $offset += $count;
 
-            return str_pad(ltrim($value, "\x00"), 32, "\x00", STR_PAD_LEFT);
+            return $slice;
         };
 
-        return $read().$read();
+        if ("\x30" !== $take(1)) {
+            throw new \RuntimeException('Assinatura DER precisa comecar com SEQUENCE.');
+        }
+        $take(1); // comprimento da sequencia, sempre curto para P-256
+
+        $readInteger = static function () use ($take): string {
+            if ("\x02" !== $take(1)) {
+                throw new \RuntimeException('Esperado INTEGER na assinatura DER.');
+            }
+            $value = ltrim($take(ord($take(1))), "\x00");
+            if (strlen($value) > 32) {
+                throw new \RuntimeException('Inteiro maior que 32 octetos numa assinatura P-256.');
+            }
+
+            return str_pad($value, 32, "\x00", STR_PAD_LEFT);
+        };
+
+        return $readInteger().$readInteger();
     }
 }
