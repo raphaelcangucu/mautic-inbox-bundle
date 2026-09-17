@@ -10,6 +10,7 @@ return function (ContainerConfigurator $configurator): void {
     $services = $configurator->services()->defaults()->autowire()->autoconfigure()->public();
     $excludes = MauticCoreExtension::DEFAULT_EXCLUDES;
     $excludes[] = 'Application/InboxException.php';
+    $excludes[] = 'Application/Push/VapidKeys.php'; // construtor privado: nao e servico
     $excludes[] = 'DependencyInjection/Compiler';
     $services->load('MauticPlugin\\MauticInboxBundle\\', '../')->exclude('../{'.implode(',', $excludes).'}');
     $services->load('MauticPlugin\\MauticInboxBundle\\Entity\\', '../Entity/*Repository.php')->tag(ServiceRepositoryCompilerPass::REPOSITORY_SERVICE_TAG);
