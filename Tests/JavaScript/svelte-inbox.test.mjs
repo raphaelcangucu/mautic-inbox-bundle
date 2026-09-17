@@ -142,6 +142,9 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
     origins: [],
     can_reply: false,
     can_take_and_reply: true,
+    // Com nao lidas: abrir precisa marcar como lida. Sem elas o POST nao sai mais, de
+    // proposito — era uma ida ao servidor a toa em toda reabertura.
+    unread: 2,
     reply_hint: "Responder atribui a conversa.",
     human_takeover: false,
   };
@@ -325,11 +328,22 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
     "o historico da store precisa ser renderizado, e nao so guardado",
   );
   assert.ok(requests.some(([url]) => /\/conversations\/11\/history/.test(url)));
+  for (let volta = 0; volta < 60; volta += 1) {
+    if (
+      requests.some(
+        ([url, method]) =>
+          /\/conversations\/11\/state/.test(url) && method === "POST",
+      )
+    )
+      break;
+    await tick();
+  }
   assert.ok(
     requests.some(
       ([url, method]) =>
         /\/conversations\/11\/state/.test(url) && method === "POST",
     ),
+    "abrir uma conversa com nao lidas precisa marca-la como lida",
   );
   const mutation = requests.find(
     ([url, method]) =>

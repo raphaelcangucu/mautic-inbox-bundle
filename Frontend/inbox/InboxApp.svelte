@@ -191,41 +191,67 @@
     root.classList.remove("has-selection");
     if (update) history?.clear(false);
   }
+  /** Tudo o que trocar de conversa muda na tela. Separado porque o cache chama primeiro. */
+  function aplicarConversa(
+    detail: Conversation,
+    id: number,
+    update: boolean,
+  ): void {
+    detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
+    selected = detail;
+    root.classList.add("has-selection");
+    if (update) history?.open(id, false);
+    sincronizar();
+  }
+
+  /**
+   * Abrir uma conversa.
+   *
+   * Se ela ja foi aberta antes, aparece AGORA, do cache, sem rede nenhuma. Se e a primeira
+   * vez, as tres chamadas — detalhe, historico e ia — saem juntas em vez de encadeadas, e a
+   * conversa desenha sem esperar a ia.
+   */
   async function select(id: number, update = true): Promise<void> {
     alerts?.acknowledge(id);
     const revision = ++selectionRevision;
     feedback = "";
     delete root.dataset.feedbackSource;
-    try {
-      const detail = await api<Conversation>(url("detail", id));
-      if (revision !== selectionRevision) return;
-      loja.guardarConversa(detail);
-      detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
-      selected = detail;
-      sincronizar();
-      root.classList.add("has-selection");
-      if (update) history?.open(id, false);
-      older = null;
-      mode = "reply";
-      composerBody = detail.drafts[mode] || "";
-      templates = [];
-      templatesOwner = 0;
-      templateBlocked = null;
-      templateError = "";
-      templateAttempt = null;
-      await Promise.all([loadTimeline(id, revision), loadAi(id, true)]);
-      void api(url("state", id), {
-        method: "POST",
-        body: JSON.stringify({ action: "read" }),
-      }).catch(() => undefined);
-      if (matchMedia("(max-width:760px)").matches) {
-        window.scrollTo(0, 0);
-        document.getElementById("app-wrapper")?.scrollTo(0, 0);
-      }
-    } catch (error) {
-      showError((error as Error).message);
+
+    const emCache = loja.conversations.get(id);
+    if (emCache) aplicarConversa(emCache, id, update);
+
+    // A troca de composer acontece uma vez so, e antes da rede: e o que evita o atendente ver
+    // por um instante o rascunho da conversa anterior dentro da nova.
+    mode = "reply";
+    composerBody = (emCache?.drafts || draftCache[id] || {})[mode] || "";
+    templates = [];
+    templatesOwner = 0;
+    templateBlocked = null;
+    templateError = "";
+    templateAttempt = null;
+
+    const aberta = await loja.abrir(id);
+    if (revision !== selectionRevision) return;
+    if (aberta.error) {
+      showError(aberta.error.message);
+      return;
+    }
+    if (aberta.conversation) {
+      aplicarConversa(aberta.conversation, id, update);
+      composerBody = aberta.conversation.drafts?.[mode] || composerBody;
+    }
+    sincronizar();
+
+    void aberta.ai.then((dados) => {
+      if (dados && revision === selectionRevision) aplicarIa(dados, id);
+    });
+
+    if (matchMedia("(max-width:760px)").matches) {
+      window.scrollTo(0, 0);
+      document.getElementById("app-wrapper")?.scrollTo(0, 0);
     }
   }
+
   async function loadTimeline(
     id = selected?.id,
     revision = selectionRevision,
@@ -344,24 +370,33 @@
         void select(selected.id, false);
     }
   }
+  /**
+   * O que a resposta da ia muda na tela. Chamada pelo intervalo E pela abertura — que recebe a
+   * ia junto com as outras duas chamadas e nao deve pedi-la de novo.
+   */
+  function aplicarIa(data: AiInfo, id: number): void {
+    if (selected?.id !== id) return;
+    ai = data;
+    selected = { ...selected, version: data.version };
+    if (
+      data.assignment &&
+      feedbackError &&
+      root.dataset.feedbackSource === "ai" &&
+      feedback.trim() === t("mautic.inbox.ai.validate_first").trim()
+    ) {
+      feedback = "";
+      feedbackError = false;
+      delete root.dataset.feedbackSource;
+    }
+  }
+
   async function loadAi(id = selected?.id, force = false): Promise<void> {
     if (!id) return;
     const request = ++aiRequest;
     try {
       const data = await api<AiInfo>(url("ai", id));
       if (request !== aiRequest || selected?.id !== id) return;
-      ai = data;
-      if (selected) selected = { ...selected, version: data.version };
-      if (
-        data.assignment &&
-        feedbackError &&
-        root.dataset.feedbackSource === "ai" &&
-        feedback.trim() === t("mautic.inbox.ai.validate_first").trim()
-      ) {
-        feedback = "";
-        feedbackError = false;
-        delete root.dataset.feedbackSource;
-      }
+      aplicarIa(data, id);
     } catch (error) {
       if (request === aiRequest && force)
         showError((error as Error).message, "ai");
