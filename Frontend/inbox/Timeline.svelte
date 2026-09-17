@@ -2,11 +2,13 @@
   import { afterUpdate, tick } from "svelte";
   import Icon from "../shared/Icon.svelte";
   import MessageBubble from "./MessageBubble.svelte";
+  import PendingBubble from "./PendingBubble.svelte";
   import type {
     AiPendingReply,
     Conversation,
     TimelineItem,
   } from "../shared/types";
+  import type { PendingMessage } from "../shared/store/types";
   import { renderMessage } from "../shared/markdown";
   export let items: TimelineItem[] = [];
   export let selected: Conversation;
@@ -16,7 +18,10 @@
   export let onOlder: () => Promise<void>;
   export let retry: (item: TimelineItem) => void;
   export let retryBusy: Set<number>;
+  /** A resposta pendente da IA. Nao confundir com pendingMessages, que sao as do atendente. */
   export let pending: AiPendingReply | null = null;
+  export let pendingMessages: PendingMessage[] = [];
+  export let onRetryPending: (message: PendingMessage) => void = () => {};
   export let aiCanAssign = false;
   export let aiRetryBusy = false;
   export let onAiSend: () => void;
@@ -29,6 +34,11 @@
     new Intl.DateTimeFormat(locale, { day: "numeric", month: "long" }).format(
       new Date(iso),
     );
+  /**
+   * A pendente mora em outra colecao, entao observar so items.length deixa a bolha otimista
+   * nascer abaixo da dobra — que e justamente o ganho que o envio otimista promete.
+   */
+  $: visibleCount = items.length + pendingMessages.length;
   $: grouped = items.map((item, index) => ({
     item,
     showDay:
@@ -41,11 +51,11 @@
       scroller.scrollTop = scroller.scrollHeight;
       lastOwner = selected.id;
     } else if (
-      items.length >= previousCount &&
+      visibleCount >= previousCount &&
       scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 180
     )
       scroller.scrollTop = scroller.scrollHeight;
-    previousCount = items.length;
+    previousCount = visibleCount;
   });
   async function loadOlder(): Promise<void> {
     const oldTop = scroller.scrollTop,
@@ -55,7 +65,7 @@
       await onOlder();
       await tick();
       scroller.scrollTop = oldTop + scroller.scrollHeight - oldHeight;
-      previousCount = items.length;
+      previousCount = items.length + pendingMessages.length;
     } finally {
       preserving = false;
     }
@@ -89,6 +99,11 @@
         {t}
         {retry}
         retryBusy={retryBusy.has(row.item.id)}
+      />{/each}{#each pendingMessages as message (message.localId)}<PendingBubble
+        {message}
+        {locale}
+        {t}
+        retry={onRetryPending}
       />{/each}
   </div>
   {#if pending}<article

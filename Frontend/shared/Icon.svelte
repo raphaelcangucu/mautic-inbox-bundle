@@ -22,6 +22,11 @@
     sound: "M11 5 6 9H3v6h3l5 4z M15 9a4 4 0 0 1 0 6 M18 6a8 8 0 0 1 0 12",
     agent:
       "M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M4 21a8 8 0 0 1 16 0 M18 5h4 M20 3v4",
+    // Aviao de papel inclinado para cima e para a DIREITA: a ponta em 21,5, a dobra descendo
+    // ate o entalhe em 10,14. Espelhado ele vira um botao de "voltar"; na horizontal, contornado,
+    // ele deixa de parecer aviao e vira uma seta de avancar — as duas foram conferidas na tela.
+    send: "M21 5L3 11l7 3 3 7z M21 5l-11 9",
+    clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 7v5l3 2",
   };
 </script>
 

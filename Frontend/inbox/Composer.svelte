@@ -34,6 +34,17 @@
   let templateSending = false;
   let owner = selected.id;
   $: note = mode === "note";
+  /**
+   * O aviao nao diz nada a leitor de tela nem a um teste, entao o rotulo que estava escrito no
+   * botao continua existindo — como nome acessivel, e com as mesmas chaves de traducao.
+   */
+  $: sendLabel = sending
+    ? t("mautic.inbox.ui.sending_5e91dc")
+    : note
+      ? t("mautic.inbox.ui.add_note_344d88")
+      : selected.can_take_and_reply
+        ? t("mautic.inbox.ui.assign_to_me_and_send_509661")
+        : t("mautic.inbox.ui.send_reply_c50a43");
   $: publicReply = Boolean(selected.reply_public);
   $: selectedTemplate = templates.find(
     (item) => String(item.id) === templateId,
@@ -283,16 +294,11 @@
     </div>
     <button
       id="inbox-send"
-      class="btn btn-primary"
+      class="btn btn-primary inbox-send-icon"
       disabled={disabled || !body.trim()}
-      on:click={onSend}
-      >{sending
-        ? t("mautic.inbox.ui.sending_5e91dc")
-        : note
-          ? t("mautic.inbox.ui.add_note_344d88")
-          : selected.can_take_and_reply
-            ? t("mautic.inbox.ui.assign_to_me_and_send_509661")
-            : t("mautic.inbox.ui.send_reply_c50a43")}</button
+      aria-label={sendLabel}
+      title={sendLabel}
+      on:click={onSend}><Icon name="send" /></button
     >
   </div>
   <div class="inbox-editor-status">
