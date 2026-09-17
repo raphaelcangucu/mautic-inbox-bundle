@@ -68,7 +68,10 @@
 {% for key in uiTranslationKeys %}
     {% set uiTranslations = uiTranslations|merge({(key): key|trans}) %}
 {% endfor %}
-<div id="inbox-app" data-ai-url="{{ path('mautic_inbox_ai_available', {stateId:0}) }}" data-locale="{{ app.request.locale|e('html_attr') }}" data-translations="{{ uiTranslations|json_encode|e('html_attr') }}" class="inbox-app"
+{# standalone: o shell instalavel nao tem o menu do Mautic em volta, entao o menu do app
+   precisa levar tambem para a pagina de agentes. Em /s/inbox aquele caminho ja existe no
+   menu lateral, e repeti-lo aqui seria um segundo caminho para o mesmo lugar. #}
+<div id="inbox-app" data-standalone="{{ standalone|default(false) ? 1 : 0 }}" data-ai-page-url="{{ path('mautic_inbox_ai') }}" data-ai-url="{{ path('mautic_inbox_ai_available', {stateId:0}) }}" data-locale="{{ app.request.locale|e('html_attr') }}" data-translations="{{ uiTranslations|json_encode|e('html_attr') }}" class="inbox-app"
      data-ai-retry-url="{{ path('mautic_inbox_ai_retry', {stateId:0}) }}"
      data-index-url="{{ path('mautic_inbox_index') }}"
      data-conversation-url="{{ path('mautic_inbox_conversation', {stateId: 0}) }}"

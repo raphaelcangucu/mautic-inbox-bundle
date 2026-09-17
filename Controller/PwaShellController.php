@@ -35,7 +35,6 @@ class PwaShellController extends CommonController
             'automationRules'          => $query->automationRules(),
             'channelNotices'           => $query->channelNotices(),
             'canManageCannedResponses' => $permissions->isGranted('inbox:templates:edit'),
-            'isAdmin'                  => $user->isAdmin(),
         ]);
     }
 }

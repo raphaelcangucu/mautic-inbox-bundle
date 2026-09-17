@@ -74,3 +74,30 @@
 .inbox-ai-pending{flex:none;margin:0 24px 24px;padding:15px 16px;border:1px solid #d9def0;border-radius:12px;background:linear-gradient(135deg,#f7f7fd 0%,#f1f5ff 100%);box-shadow:0 5px 18px #4e5e9e12;color:#46516f}.inbox-ai-pending-heading{display:flex;align-items:center;gap:10px}.inbox-ai-pending-heading>span:nth-child(2){min-width:0;flex:1}.inbox-ai-pending-heading strong,.inbox-ai-pending-heading small{display:block}.inbox-ai-pending-heading strong{font-size:12px;color:#3f4868}.inbox-ai-pending-heading small{margin-top:2px;font-size:10px;color:#7d869e}.inbox-ai-pending .inbox-pill{flex:none;background:#e8ebf8;color:#5965a1}.inbox-ai-pending-body{margin:13px 0 0;padding:13px 14px;border:1px solid #e2e5f1;border-radius:9px;background:#fff;color:#536079}.inbox-ai-pending-body .inbox-message-body p{margin:0 0 7px;font-size:13px;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.inbox-ai-pending-body .inbox-message-body p:last-child{margin-bottom:0}.inbox-ai-pending-reason{margin-top:10px;font-size:11px;line-height:1.55;color:#8a6d57}.inbox-ai-pending-reason:empty{display:none}.inbox-ai-pending-actions{display:flex;gap:8px;margin-top:13px;flex-wrap:wrap}.inbox-ai-pending.processing .inbox-ai-avatar,.inbox-ai-pending.retrying .inbox-ai-avatar,.inbox-ai-pending.queued .inbox-ai-avatar{animation:inbox-ai-pulse 1.25s ease-in-out infinite}.inbox-ai-pending.blocked,.inbox-ai-pending.failed{border-color:#efd8d1;background:#fff9f7}.inbox-ai-pending.blocked .inbox-ai-avatar,.inbox-ai-pending.failed .inbox-ai-avatar{background:#a87768;box-shadow:none}.inbox-ai-pending.uncertain{border-color:#eadfbd;background:#fffdf6}.inbox-ai-pending.uncertain .inbox-ai-avatar{background:#aa8a51;box-shadow:none}
 @media(max-width:760px){.inbox-ai-pending{margin:0 13px 18px}.inbox-ai-pending-actions .btn{flex:1}}
 .inbox-pending{align-self:flex-end;max-width:86%;padding:13px 15px;background:#eef0f8;border:1px solid #dce0f0;border-radius:11px 11px 3px 11px;line-height:1.7;box-shadow:0 1px 1px #00000002}.inbox-pending.note{align-self:stretch;max-width:100%;border-color:#f3e6b8;background:var(--ib-note);border-radius:8px;color:#8b733f}.inbox-pending.sending{opacity:.62}.inbox-pending.failed{background:#fff9f7;border-color:#efd8d1;opacity:1}.inbox-pending p{font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 7px}.inbox-pending-status{display:flex;align-items:center;justify-content:flex-end;gap:5px;font-size:11px;color:#7f8996;line-height:1.4}.inbox-pending-status svg{width:12px;height:12px}.inbox-pending-reason{font-size:11px;color:#bd7168;line-height:1.6;margin-top:7px;overflow-wrap:anywhere}#inbox-send{min-width:44px;min-height:44px;padding:0;border-radius:9px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center}#inbox-send svg{width:20px;height:20px}
+
+.inbox-tabs .inbox-tabs-link{display:flex;align-items:center;gap:7px;border:0;border-radius:6px;background:transparent;padding:8px 13px;color:#717884;font-size:13px;font-weight:550;text-decoration:none}
+.inbox-tabs .inbox-tabs-link:hover{color:var(--ib-accent)}
+
+/* O MESMO menu, com dois comportamentos. No desktop ele continua sendo o grupo de pilulas na
+   barra de cima. No celular ele desce e vira a barra fixa de rodape, no formato que as pessoas
+   ja conhecem de aplicativo de mensagem: icone em cima, rotulo embaixo, alvo grande de polegar.
+   Um elemento so no DOM — duplicar o menu significaria duplicar o estado de "aba ativa", que e
+   a maneira mais facil de as duas copias discordarem.
+   Limitado ao .inbox-shell de proposito: em /s/inbox o Mautic ja poe a propria barra em volta, e
+   fixar uma segunda por cima dela e mudanca que ninguem pediu e que o time nao esta vendo agora. */
+@media(max-width:760px){
+.inbox-shell{padding-bottom:0}
+.inbox-shell .inbox-app{--ib-bottom-nav:calc(58px + env(safe-area-inset-bottom,0px));margin:0 0 var(--ib-bottom-nav)}
+/* Sem as abas dentro dela, a barra de cima volta a ser uma linha so e devolve altura ao chat. */
+.inbox-shell .inbox-toolbar{flex-direction:row;align-items:center;min-height:0;padding:10px 14px}
+.inbox-shell .inbox-tabs{position:fixed;left:0;right:0;bottom:0;z-index:30;width:auto;gap:0;padding:0 0 env(safe-area-inset-bottom,0px);border-top:1px solid var(--ib-border);border-radius:0;background:#fff;box-shadow:0 -2px 10px #1e26340f}
+.inbox-shell .inbox-tabs button,.inbox-shell .inbox-tabs .inbox-tabs-link{display:flex;align-items:center;flex:1 1 0;min-width:0;min-height:52px;flex-direction:column;justify-content:center;gap:3px;padding:7px 2px;border-radius:0;font-size:10px;font-weight:550;text-decoration:none;color:#79808c}
+.inbox-shell .inbox-tabs button.active,.inbox-shell .inbox-tabs .inbox-tabs-link:hover{background:transparent;box-shadow:none;color:var(--ib-accent)}
+.inbox-shell .inbox-tabs svg{width:21px;height:21px}
+/* No desktop o engrenagem e so icone; aqui ele ganha rotulo como os vizinhos, sem outro elemento. */
+.inbox-shell .inbox-tabs .inbox-settings-tab{width:auto;padding-left:2px!important;padding-right:2px!important}
+.inbox-shell .inbox-tabs .inbox-settings-tab .sr-only{position:static;width:auto;height:auto;margin:0;padding:0;clip:auto;clip-path:none;overflow:visible;white-space:normal}
+/* A conta da altura desconta as duas barras e os dois entalhes, senao o compositor fica atras
+   do menu — que e exatamente onde o polegar vai bater. */
+.inbox-shell .inbox-workspace{height:calc(100dvh - 60px - env(safe-area-inset-top,0px) - var(--ib-bottom-nav));min-height:280px}
+}

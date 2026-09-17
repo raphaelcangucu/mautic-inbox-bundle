@@ -19,6 +19,7 @@ export function inboxBootstrap(root: HTMLElement): InboxBootstrap {
     initialStateId: Number(data.initialStateId || raw.initialStateId || 0),
     urls: {
       ai: data.aiUrl || "",
+      aiPage: data.aiPageUrl || "",
       aiRetry: data.aiRetryUrl || "",
       index: data.indexUrl || "",
       conversation: data.conversationUrl || "",
@@ -45,6 +46,7 @@ export function inboxBootstrap(root: HTMLElement): InboxBootstrap {
     channelNotices: raw.channelNotices ?? [],
     canManageCanned: Boolean(raw.canManageCanned),
     isAdmin: Boolean(raw.isAdmin),
+    standalone: "1" === data.standalone,
   };
 }
 

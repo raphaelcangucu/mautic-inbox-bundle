@@ -165,6 +165,8 @@ export interface InboxBootstrap {
   channelNotices: string[];
   canManageCanned: boolean;
   isAdmin: boolean;
+  /** Rodando no shell instalavel, sem o menu do Mautic em volta. */
+  standalone: boolean;
 }
 
 export interface AiDocumentVersion {

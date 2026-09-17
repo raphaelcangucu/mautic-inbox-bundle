@@ -804,7 +804,11 @@
       ><Icon name="settings" /><span class="sr-only"
         >{t("mautic.inbox.settings.title")}</span
       ></button
-    >
+    >{#if config.standalone && config.urls.aiPage}<a
+        class="inbox-tabs-link"
+        href={config.urls.aiPage}
+        ><Icon name="agent" />{t("mautic.inbox.ai.agents")}</a
+      >{/if}
   </nav>
 </div>
 {#each config.channelNotices as notice}<div

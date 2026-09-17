@@ -4,8 +4,15 @@
 <meta charset="utf-8">
 {# viewport-fit=cover para o conteudo correr ate a borda em aparelho com entalhe #}
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-{# manifest, apple-touch-icon e theme-color sao declarados pelo PwaAssetsSubscriber,
-   em toda pagina do Mautic — inclusive na de login, para o app ser instalavel antes dela. #}
+{# O PwaAssetsSubscriber declara manifest, apple-touch-icon e theme-color no evento
+   VIEW_INJECT_CUSTOM_ASSETS. Quem emite aquilo e outputHeadDeclarations, que o head.html.twig
+   do Mautic chama — e este shell nao estende aquele layout. Sem a chamada abaixo a pagina do
+   app sai SEM manifest nenhum, e o Chrome nao tem o que instalar: o "Instalar app" some
+   justamente na tela que o atendente abre depois de logar. Comprovado no servidor:
+   grep -c 'rel="manifest"' neste arquivo publicado dava 0.
+   Nao duplica o CSS: outputSystemStylesheets emite os assets de sistema, e esta emite outro
+   balde — as folhas enfileiradas e as declaracoes de plugin. #}
+{{ outputHeadDeclarations() }}
 <title>Macro Zap</title>
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <link rel="icon" href="{{ path('mautic_inbox_icon', {name: '192'}) }}" sizes="192x192" type="image/png">
@@ -24,31 +31,17 @@
   body { -webkit-tap-highlight-color: transparent; overscroll-behavior-y: none; }
   .inbox-shell {
     display: flex; flex-direction: column; height: 100%;
-    /* Respeita a area segura do aparelho em vez de esconder conteudo sob a barra do sistema. */
+    /* Respeita a area segura do aparelho em vez de esconder conteudo sob a barra do sistema.
+       So em cima: embaixo quem encosta na borda e o menu do app, que e fixo e traz o proprio
+       recuo — somar os dois deixaria uma faixa morta acima da barra. */
     padding-top: env(safe-area-inset-top, 0px);
-    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .inbox-shell > #inbox-app { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-  .inbox-shell-nav {
-    display: flex; flex: none; border-top: 1px solid #dfe3ec; background: #fff;
-  }
-  .inbox-shell-nav a {
-    flex: 1; padding: 10px 4px 12px; text-align: center; text-decoration: none;
-    color: #5a6573; font: 500 12px/1.3 system-ui, sans-serif;
-  }
-  .inbox-shell-nav a[aria-current="page"] { color: #4e5e9e; }
-  .inbox-shell-nav span { display: block; font-size: 18px; line-height: 1.1; }
 </style>
 </head>
 <body>
 <div class="inbox-shell">
-{{ include('@MauticInbox/Inbox/_root.html.twig') }}
-{% if isAdmin|default(false) %}
-<nav class="inbox-shell-nav">
-  <a href="{{ path('mautic_inbox_app') }}" aria-current="page"><span aria-hidden="true">💬</span>{{ 'mautic.inbox.ui.conversations_86d0e6'|trans }}</a>
-  <a href="{{ path('mautic_inbox_ai') }}"><span aria-hidden="true">🤖</span>{{ 'mautic.inbox.ai.agents'|trans }}</a>
-</nav>
-{% endif %}
+{{ include('@MauticInbox/Inbox/_root.html.twig', {standalone: true}) }}
 </div>
 <script src="{{ asset('plugins/MauticInboxBundle/Assets/dist/inbox-app.js') }}?app=1"></script>
 <script>
