@@ -5,26 +5,8 @@ declare(strict_types=1);
 namespace MauticPlugin\MauticInboxBundle\Tests\Unit\Application\Push;
 
 use Mautic\CoreBundle\Helper\EncryptionHelper;
-use MauticPlugin\MauticInboxBundle\Application\Push\PushSettingStore;
 use MauticPlugin\MauticInboxBundle\Application\Push\VapidKeyStore;
 use PHPUnit\Framework\TestCase;
-
-/** O mesmo contrato estreito do PushSettingRepository, sem banco nenhum. */
-final class InMemorySettings implements PushSettingStore
-{
-    /** @var array<string, string> */
-    public array $rows = [];
-
-    public function get(string $name): ?string
-    {
-        return $this->rows[$name] ?? null;
-    }
-
-    public function set(string $name, string $value): void
-    {
-        $this->rows[$name] = $value;
-    }
-}
 
 final class VapidKeyStoreTest extends TestCase
 {
