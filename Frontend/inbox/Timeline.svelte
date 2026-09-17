@@ -10,6 +10,7 @@
   } from "../shared/types";
   import type { PendingMessage } from "../shared/store/types";
   import { renderMessage } from "../shared/markdown";
+  import { decidirRolagem, rolagemInicial } from "./autoscroll";
   export let items: TimelineItem[] = [];
   export let selected: Conversation;
   export let older: string | null = null;
@@ -49,8 +50,7 @@
     scroller.addEventListener("click", ouvir);
     return () => scroller.removeEventListener("click", ouvir);
   });
-  let lastOwner = 0;
-  let previousCount = 0;
+  let rolagem = rolagemInicial();
   let preserving = false;
   const day = (iso: string) =>
     new Intl.DateTimeFormat(locale, { day: "numeric", month: "long" }).format(
@@ -69,15 +69,14 @@
   }));
   afterUpdate(() => {
     if (!scroller || preserving) return;
-    if (lastOwner !== selected.id) {
-      scroller.scrollTop = scroller.scrollHeight;
-      lastOwner = selected.id;
-    } else if (
-      visibleCount >= previousCount &&
-      scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 180
-    )
-      scroller.scrollTop = scroller.scrollHeight;
-    previousCount = visibleCount;
+    const decisao = decidirRolagem(rolagem, {
+      conversationId: selected.id,
+      visiveis: visibleCount,
+      distanciaDoFim:
+        scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight,
+    });
+    rolagem = decisao.estado;
+    if (decisao.aoFim) scroller.scrollTop = scroller.scrollHeight;
   });
   async function loadOlder(): Promise<void> {
     const oldTop = scroller.scrollTop,
@@ -87,7 +86,7 @@
       await onOlder();
       await tick();
       scroller.scrollTop = oldTop + scroller.scrollHeight - oldHeight;
-      previousCount = items.length + pendingMessages.length;
+      rolagem = { ...rolagem, vistos: items.length + pendingMessages.length };
     } finally {
       preserving = false;
     }

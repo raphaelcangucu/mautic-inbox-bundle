@@ -264,11 +264,16 @@ test("the timeline scrolls for a pending too, and stays inert until it is given 
     /visibleCount = items\.length \+ pendingMessages\.length/,
     "a rolagem precisa observar as duas colecoes",
   );
-  assert.match(timeline, /visibleCount >= previousCount/);
-  assert.match(timeline, /previousCount = visibleCount;/);
+  // A decisao em si mora em autoscroll.ts, com testes proprios. O que importa aqui e que o
+  // componente entregue a ela a contagem das DUAS colecoes, e nao so a das mensagens.
+  assert.match(
+    timeline,
+    /decidirRolagem\(rolagem, \{[\s\S]*?visiveis: visibleCount/,
+    "a decisao recebe a contagem que soma as duas colecoes",
+  );
   assert.doesNotMatch(
     timeline,
-    /previousCount = items\.length;/,
+    /vistos: items\.length(?!\s*\+)/,
     "o caminho de carregar anteriores tambem conta as duas",
   );
 });
