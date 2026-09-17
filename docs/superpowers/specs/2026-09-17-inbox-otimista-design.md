@@ -17,7 +17,7 @@ mediana de três execuções:
 
 O problema não são os 750 ms de cada ida — é que o código as **encadeia**:
 
-- **Abrir uma conversa** faz `detalhe` e depois `histórico`, em sequência: ~1,5 s de tela parada.
+- **Abrir uma conversa** faz `detalhe` e, só depois dele, `histórico` e `ia`: ~1,5 s de tela parada.
 - **Enviar uma mensagem** faz `take` (quando a conversa não é sua), depois `reply`, depois
   `histórico`, depois `lista`: até quatro idas, ~3 s com o botão preso em "enviando".
 
@@ -27,7 +27,7 @@ o resto depois. É essa a diferença que a equipe sente.
 ## Objetivos
 
 1. Abrir conversa já visitada sem nenhuma requisição.
-2. Abrir conversa nova com resposta visual imediata e as duas chamadas em paralelo.
+2. Abrir conversa nova com resposta visual imediata e as três chamadas em paralelo.
 3. Enviar mostrando a mensagem no mesmo quadro do toque.
 4. Tirar o estado de dados de dentro do `InboxApp.svelte`, hoje com 1022 linhas.
 
@@ -46,7 +46,7 @@ o resto depois. É essa a diferença que a equipe sente.
 | Cache sobrevive ao app fechar? | Não, só memória | Cache persistido poria histórico de cliente num aparelho que a empresa não controla |
 | Primeiro carregamento | Esqueleto no lugar das mensagens | Tela vazia por 780 ms parece travamento |
 | Biblioteca de estado | Stores nativas do Svelte 5 | Zustand e Pinia são de React e Vue; e o plugin precisa instalar sem Node.js em produção |
-| Conflito entre envio e SSE | Reconciliação por `request_id`, não por posição | O histórico é recarregado a cada 2 s e a resposta enviada **é** um item de histórico; sem chave, a mesma mensagem aparece duas vezes |
+| Conflito entre envio e atualização | Reconciliação por `request_id`, não por posição | A resposta enviada **é** um item de histórico e volta por mais de um caminho; sem chave, a mesma mensagem aparece duas vezes |
 | Ordem de limpeza do rascunho | **Mantida como está hoje** | Inverter removeria duas linhas que protegem contra recriar um rascunho já enviado — caminho direto para duplicata no cliente |
 | Onde mora o texto de uma pendente | Na própria pendente, em memória | Não precisa do rascunho para sobreviver a uma falha, e não mexe no que já funciona |
 | Forma da store | Lógica em TS puro, runes só como casca | `$state` é construção de compilador; o `tsx` do pipeline de testes não compila Svelte |
@@ -97,7 +97,7 @@ entradas de cache, não uma sobrescrevendo a outra.
 O passo 1 de "abrir uma conversa" assume o resumo já em memória porque veio na lista. **Isso é
 falso em quatro caminhos**: link direto, voltar e avançar do navegador, entrada por notificação, e
 conversa fora da página de filtro atual. Nesses casos não há resumo: a moldura aparece com
-esqueleto também no cabeçalho, e `detalhe` e `histórico` saem em paralelo como no caminho comum.
+esqueleto também no cabeçalho, e as três chamadas saem em paralelo como no caminho comum.
 
 ## Os dois fluxos
 
@@ -156,12 +156,13 @@ entregue — exatamente a falha que este documento existe para impedir.
 
 ### Reconciliação: por `request_id`, nunca por posição
 
-O histórico é recarregado a cada 2 segundos e a cada poll, e **uma resposta enviada é um item de
-histórico**. Sem chave, o item confirmado chega enquanto a pendente ainda está na tela e a mesma
-mensagem aparece duas vezes, uma delas dizendo "enviando".
+**Uma resposta enviada é, ela própria, um item de histórico.** Ela volta pela resposta do envio e
+volta de novo no próximo poll. Sem chave, o item confirmado chega enquanto a pendente ainda está na
+tela e a mesma mensagem aparece duas vezes, uma delas dizendo "enviando". A regra não depende de
+qual caminho trouxe o item, e por isso continua valendo depois que o recarregamento periódico sair.
 
-O item de histórico já carrega `request_id`. A regra é uma só: **quando um item de histórico com o
-mesmo `request_id` de uma pendente aparece, a pendente some** — venha ele da resposta do `reply`,
+O item de histórico já carrega `request_id`. A regra, **para resposta e modelo**, é uma só: quando um item de histórico com o
+mesmo `request_id` de uma pendente aparece, a pendente some — venha ele da resposta do `reply`,
 de um poll ou do recarregamento periódico. Não importa a ordem de chegada, e é isso que torna a
 regra segura.
 
@@ -245,9 +246,11 @@ pipeline atual, que não roda o compilador Svelte. Por isso a lógica vive em **
 **A store, sem navegador.** É lógica pura sobre estruturas em memória, e é onde mora o risco:
 
 - Enviar insere a pendente no fim e limpa o composer, sem rede.
-- Confirmar tira a pendente e põe a confirmada, sem buscar nada.
+- Aceita pelo servidor, a pendente **deixa de existir** e um item de histórico com o status que
+  o servidor deu toma o lugar dela, sem buscar nada.
 - Falhar mantém a pendente e a marca.
-- Tentar de novo reusa o mesmo `request_id` — o teste que impede a duplicata.
+- Tentar de novo **numa resposta ou modelo** reusa o mesmo `request_id` — o teste que impede a
+  duplicata. Nota não tem `request_id` e não tem idempotência; ver a seção da nota.
 - **Um item de histórico com o mesmo `request_id` faz a pendente sumir**, seja qual for a origem
   daquele item. O teste entrega o item à store diretamente, sem depender de qual caminho o trouxe —
   assim ele continua válido depois que o recarregamento periódico deixar de existir.
@@ -256,11 +259,12 @@ pipeline atual, que não roda o compilador Svelte. Por isso a lógica vive em **
 - Um `status` de `failed` ou `uncertain` numa resposta 202 **não** vira mensagem enviada.
 - Dois envios seguidos na mesma conversa produzem duas pendentes com `request_id` distintos.
 - Abrir conversa em cache faz zero requisição.
-- Abrir conversa nova dispara as duas chamadas **em paralelo**. Prova-se com promessas adiadas que
-  nunca resolvem: chama-se a abertura e verifica-se que **as duas URLs já foram pedidas** antes de
-  qualquer uma ser resolvida. Contar chamadas não serve — uma abertura sequencial também termina
-  com duas. É o teste que trava a regressão mais provável, porque reencadear é o caminho natural
-  de quem mexer nisso depois.
+- Abrir conversa nova dispara as **três** chamadas — `detalhe`, `histórico` e `ia` — em paralelo.
+  Prova-se com promessas adiadas que nunca resolvem: chama-se a abertura e verifica-se que **as
+  três URLs já foram pedidas** antes de qualquer uma ser resolvida. Afirmar duas seria um falso
+  positivo: uma implementação que dispara duas em paralelo e encadeia a terceira passaria no teste
+  e perderia justamente o ganho que este desenho promete. Contar chamadas também não serve — uma
+  abertura sequencial termina com o mesmo total.
 
 **No servidor.** Teste funcional de que o `reply` devolve o item de histórico e o resumo, e de que
 quem consumia os campos antigos continua recebendo.
@@ -280,11 +284,26 @@ Uma entrega que muda de `pending` para `failed` **move o token e dispara o poll 
 o intervalo não cega a interface para uma falha de entrega — só para de perguntar a cada dois
 segundos por algo que o servidor já avisa.
 
-O intervalo de 1,5 s do estado de IA some pelo mesmo motivo e pelo mesmo mecanismo. O painel passa
-a ser atualizado pelo poll, como o resto.
+**O intervalo de 1,5 s do estado de IA fica onde está**, e a primeira versão deste documento
+errou ao dizer que ele sairia "pelo mesmo motivo". O motivo não transfere.
 
-Os dois juntos devolvem bateria e dados ao aparelho da equipe, que é o tipo de ganho que ninguém
-pede mas todo mundo sente no fim do dia.
+O token de versão cobre seis classes: `MetaConversation`, `ConversationState`, `MetaMessage`,
+`OutboundRequest`, `Note` e `EventLog`. O estado vivo do painel de IA não está em nenhuma delas —
+ele mora no `AiRecord`, que guarda `id`, `kind`, `recordKey`, `data` e `revision`, **sem campo de
+status**. Uma atribuição indo de ativa para gerando, uma resposta pronta esperando aprovação, uma
+execução que falhou: nada disso move o token, nada dispara evento, nada gera poll.
+
+Remover o intervalo faria o atendente **parar de ser avisado de que há uma resposta de IA
+esperando por ele**. E enganaria quem testasse: algumas transições de IA movem o token por
+acidente — a pausa por limite bumpa a versão da conversa e grava um evento —, então pareceria
+funcionar justamente nos casos que não importam.
+
+Fazer o token cobrir o `AiRecord` resolveria, mas aquela tabela também guarda documentos, agentes
+e configuração global: uma edição de documento passaria a mover o token de **todos** os usuários.
+Isso merece decisão própria, e não cabe nesta mudança.
+
+Então esta rodada remove um intervalo, não dois. O do histórico sai; o da IA fica, com o motivo
+registrado para quem for mexer nisso depois.
 
 ## Entrega
 
