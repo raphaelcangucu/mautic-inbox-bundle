@@ -8,9 +8,29 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 test("Inbox Twig exposes every API contract to the shared Svelte bundle", async () => {
   const read = (path) =>
     readFile(new URL(`../../${path}`, import.meta.url), "utf8");
-  const twig = await read("Resources/views/Inbox/index.html.twig");
-  assert.match(twig, /Assets\/dist\/inbox-app\.js/);
-  assert.doesNotMatch(twig, /Assets\/js\/inbox\.js/);
+  // O contrato mora no parcial, compartilhado pela tela do Mautic e pelo shell do app —
+  // ler os tres garante que nenhum dos dois caminhos perca um atributo.
+  const twig = await read("Resources/views/Inbox/_root.html.twig");
+  const shell = await read("Resources/views/App/shell.html.twig");
+  assert.match(
+    shell,
+    /_root\.html\.twig/,
+    "o shell precisa incluir o mesmo parcial",
+  );
+  assert.match(
+    shell,
+    /rel="manifest"[^>]*mautic_inbox_manifest/,
+    "o shell precisa apontar para o manifest",
+  );
+  assert.match(
+    await read("Resources/views/Inbox/index.html.twig"),
+    /Assets\/dist\/inbox-app\.js/,
+  );
+  assert.match(shell, /Assets\/dist\/inbox-app\.js/);
+  assert.doesNotMatch(
+    await read("Resources/views/Inbox/index.html.twig"),
+    /Assets\/js\/inbox\.js/,
+  );
   for (const endpoint of [
     "ai",
     "ai-retry",

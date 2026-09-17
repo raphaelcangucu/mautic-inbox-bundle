@@ -31,6 +31,8 @@ return [
         'mautic_inbox_retry' => ['path' => '/inbox/api/outbound/{outboundId}/retry', 'controller' => InboxController::class.'::retry', 'method' => 'POST', 'requirements' => ['outboundId' => '\\d+']],
         'mautic_inbox_note' => ['path' => '/inbox/api/conversations/{stateId}/note', 'controller' => InboxController::class.'::note', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_draft' => ['path' => '/inbox/api/conversations/{stateId}/draft', 'controller' => InboxController::class.'::draft', 'method' => 'PUT', 'requirements' => ['stateId' => '\\d+']],
+        'mautic_inbox_app' => ['path' => '/inbox/app', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaShellController::class.'::index', 'method' => 'GET'],
+        'mautic_inbox_app_conversation' => ['path' => '/inbox/app/conversations/{stateId}', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaShellController::class.'::index', 'method' => 'GET', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_push_config' => ['path' => '/inbox/api/push/config', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PushController::class.'::config', 'method' => 'GET'],
         'mautic_inbox_push_subscribe' => ['path' => '/inbox/api/push/subscriptions', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PushController::class.'::subscribe', 'method' => 'POST'],
         'mautic_inbox_push_unsubscribe' => ['path' => '/inbox/api/push/subscriptions', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PushController::class.'::unsubscribe', 'method' => 'DELETE'],
@@ -40,6 +42,8 @@ return [
     ],
     'public' => [
         'mautic_inbox_service_worker' => ['path' => '/inbox-sw.js', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::serviceWorker', 'method' => 'GET'],
+        'mautic_inbox_manifest' => ['path' => '/inbox-manifest.webmanifest', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::manifest', 'method' => 'GET'],
+        'mautic_inbox_icon' => ['path' => '/inbox-icon-{name}.png', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::icon', 'method' => 'GET', 'requirements' => ['name' => '[0-9a-z-]+']],
     ]],
     'menu' => ['main' => [
         'mautic.inbox.menu' => ['id' => 'mautic_inbox', 'route' => 'mautic_inbox_index', 'access' => 'inbox:conversations:view', 'iconClass' => 'ri-customer-service-2-line', 'priority' => 21],

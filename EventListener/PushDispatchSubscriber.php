@@ -85,7 +85,9 @@ final class PushDispatchSubscriber implements EventSubscriberInterface
             $contact,
             $preview,
             $stateId,
-            $this->router->generate('mautic_inbox_conversation', ['stateId' => $stateId]),
+            // Aponta para o shell do app, nao para a tela do Mautic: quem tocou numa
+            // notificacao esta no celular, e o destino certo e o app instalado.
+            $this->router->generate('mautic_inbox_app_conversation', ['stateId' => $stateId]),
         );
 
         foreach ($devices as $device) {
