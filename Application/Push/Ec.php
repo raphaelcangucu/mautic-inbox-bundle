@@ -26,4 +26,28 @@ final class Ec
             .chunk_split(base64_encode(self::SPKI_PREFIX.$point), 64, "\n")
             ."-----END PUBLIC KEY-----\n";
     }
+
+    public static function pointFromKey(\OpenSSLAsymmetricKey $key): string
+    {
+        $details = openssl_pkey_get_details($key);
+        if (false === $details || !isset($details['ec']['x'], $details['ec']['y'])) {
+            throw new \RuntimeException('A chave nao expoe coordenadas de curva eliptica.');
+        }
+
+        return self::assemblePoint($details['ec']['x'], $details['ec']['y']);
+    }
+
+    public static function assemblePoint(string $x, string $y): string
+    {
+        return "\x04".self::pad32($x).self::pad32($y);
+    }
+
+    private static function pad32(string $coordinate): string
+    {
+        if (strlen($coordinate) > 32) {
+            throw new \RuntimeException('Coordenada P-256 maior que 32 octetos.');
+        }
+
+        return str_pad($coordinate, 32, "\x00", STR_PAD_LEFT);
+    }
 }
