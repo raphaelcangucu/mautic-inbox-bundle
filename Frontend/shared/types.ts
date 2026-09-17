@@ -76,6 +76,8 @@ export interface TimelineItem {
   failure?: string;
   retryable?: boolean;
   ai?: { agent?: string; key?: string };
+  /** Só em itens de envio. O servidor já manda; era o tipo que não declarava. */
+  request_id?: string;
 }
 export interface CannedResponse {
   id: number;
