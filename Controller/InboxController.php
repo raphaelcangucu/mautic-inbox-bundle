@@ -10,6 +10,7 @@ use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\UserBundle\Entity\User;
 use MauticPlugin\MauticInboxBundle\Application\AssetVersion;
+use MauticPlugin\MauticInboxBundle\Application\ContactLinking;
 use MauticPlugin\MauticInboxBundle\Application\ConversationActions;
 use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Application\InboxQuery;
@@ -224,6 +225,44 @@ final class InboxController extends CommonController
         return $this->respond(function () use ($templates, $states, $stateId): array {
             $state = $this->requireState($states, $stateId); $reason = $templates->blockedReason($state);
             return ['items' => $templates->catalog($state), 'blocked_reason' => $reason ? $this->translator->trans($reason) : null];
+        });
+    }
+
+    /**
+     * O que oferecer quando o atendente toca num e-mail que apareceu na conversa. Uma ida so:
+     * o contato ligado, os homonimos por e-mail, e as listas de campanha e segmento.
+     */
+    public function emailOptions(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ContactLinking $linking): JsonResponse
+    {
+        $this->grant($permissions, 'view');
+        return $this->respond(function () use ($stateId, $request, $users, $states, $linking): array {
+            $state = $this->requireState($states, $stateId);
+            return $linking->options($state->getConversation(), $linking->email((string) $request->query->get('email', '')), $this->user($users));
+        });
+    }
+
+    /**
+     * Executa o que foi escolhido. O contato alvo vem decidido da tela de proposito: quando ha
+     * um homonimo por e-mail, escolher entre ele e o contato da conversa e julgamento de quem
+     * atende, e adivinhar aqui moveria a conversa de dono sem ninguem ver.
+     */
+    public function emailApply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ContactLinking $linking): JsonResponse
+    {
+        $this->grantMutation($request, $permissions, 'edit');
+        return $this->respond(function () use ($stateId, $request, $users, $states, $linking): array {
+            $state = $this->requireState($states, $stateId);
+            $payload = $this->payload($request);
+            $campaign = (int) ($payload['campaign_id'] ?? 0);
+            $segment = (int) ($payload['segment_id'] ?? 0);
+            return $linking->apply(
+                $state->getConversation(),
+                $linking->email((string) ($payload['email'] ?? '')),
+                (int) ($payload['contact_id'] ?? 0),
+                (bool) ($payload['save_email'] ?? false),
+                $campaign > 0 ? $campaign : null,
+                $segment > 0 ? $segment : null,
+                $this->user($users)
+            );
         });
     }
 

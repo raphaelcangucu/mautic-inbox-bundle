@@ -41,6 +41,7 @@
     'mautic.inbox.ui.pending_network_failure', 'mautic.inbox.ui.pending_channel_refused',
     'mautic.inbox.ui.message_placeholder_short', 'mautic.inbox.ui.note_placeholder_short',
     'mautic.inbox.ui.agents_short',
+    'mautic.inbox.contact.title', 'mautic.inbox.contact.cancel', 'mautic.inbox.contact.loading', 'mautic.inbox.contact.not_allowed', 'mautic.inbox.contact.choose_contact', 'mautic.inbox.contact.new_contact', 'mautic.inbox.contact.conversation_contact', 'mautic.inbox.contact.existing', 'mautic.inbox.contact.no_contact', 'mautic.inbox.contact.save_email', 'mautic.inbox.contact.campaign', 'mautic.inbox.contact.segment', 'mautic.inbox.contact.none', 'mautic.inbox.contact.nothing_chosen', 'mautic.inbox.contact.apply', 'mautic.inbox.contact.applying', 'mautic.inbox.contact.done',
     'mautic.inbox.ui.pull_to_refresh',
     'mautic.inbox.ui.open_5c072d', 'mautic.inbox.ui.open_825b3a', 'mautic.inbox.ui.open_bcd313',
     'mautic.inbox.ui.open_campaign_cde8e4', 'mautic.inbox.ui.open_full_size_image_44fa9f', 'mautic.inbox.ui.open_private_conversation_edf027',
@@ -90,6 +91,8 @@
      data-reply-url="{{ path('mautic_inbox_reply', {stateId: 0}) }}"
      data-retry-url="{{ path('mautic_inbox_retry', {outboundId: 0}) }}"
      data-note-url="{{ path('mautic_inbox_note', {stateId: 0}) }}"
+     data-email-options-url="{{ path('mautic_inbox_email_options', {stateId: 0}) }}"
+     data-email-apply-url="{{ path('mautic_inbox_email_apply', {stateId: 0}) }}"
      data-draft-url="{{ path('mautic_inbox_draft', {stateId: 0}) }}"
      data-push-config-url="{{ path('mautic_inbox_push_config') }}"
      data-push-subscriptions-url="{{ path('mautic_inbox_push_subscribe') }}"

@@ -23,6 +23,46 @@ function expose(window: Window & typeof globalThis): void {
   });
 }
 
+test("an address in the message becomes an action, and a link stays a link", () => {
+  const dom = new JSDOM("<!doctype html><body></body>", {
+    url: "https://mautic.test/inbox",
+  });
+  expose(dom.window as unknown as Window & typeof globalThis);
+  const render = (value: string) => messageBody(value, true);
+
+  const simples = render("meu email eh romanodonato7@gmail.com, obrigado");
+  const chip = simples.querySelector("button.inbox-email");
+  assert.equal(chip?.getAttribute("data-email"), "romanodonato7@gmail.com");
+  assert.equal(chip?.textContent, "romanodonato7@gmail.com");
+  // A virgula fica de fora: engolida, ela viraria parte do endereco gravado no contato.
+  assert.ok(simples.textContent?.includes("gmail.com, obrigado"));
+
+  // O ponto final da frase tambem nao entra.
+  assert.equal(
+    render("escreve pra a@b.co.")
+      .querySelector("button.inbox-email")
+      ?.getAttribute("data-email"),
+    "a@b.co",
+  );
+
+  // Dentro de uma URL o endereco NAO vira acao: ali ele e parte do endereco da pagina, e o
+  // caminho do link continua sendo o link.
+  const dentroDeUrl = render("https://site.com/u/alguem@exemplo.com/perfil");
+  assert.equal(dentroDeUrl.querySelectorAll("button.inbox-email").length, 0);
+  assert.equal(dentroDeUrl.querySelectorAll("a").length, 1);
+
+  // Sublinhado colado nao parte o endereco em duas metades em italico.
+  const comEnfase = render("_fulano@exemplo.com_");
+  assert.equal(
+    comEnfase.querySelector("button.inbox-email")?.getAttribute("data-email"),
+    "fulano@exemplo.com",
+  );
+
+  // Sem dominio de verdade nao ha acao para oferecer.
+  assert.equal(render("arroba @ solto").querySelectorAll("button").length, 0);
+  assert.equal(render("a@b").querySelectorAll("button").length, 0);
+});
+
 test("message renderer keeps formatting useful and untrusted HTML inert", () => {
   const dom = new JSDOM("<!doctype html><body></body>", {
     url: "https://mautic.test/inbox",

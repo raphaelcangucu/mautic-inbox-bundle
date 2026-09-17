@@ -5,6 +5,7 @@
   import Avatar from "./Avatar.svelte";
   import ConversationList from "./ConversationList.svelte";
   import Timeline from "./Timeline.svelte";
+  import EmailActions from "./EmailActions.svelte";
   import ContactPanel from "./ContactPanel.svelte";
   import Composer from "./Composer.svelte";
   import SettingsView from "./SettingsView.svelte";
@@ -356,6 +357,8 @@
       aiRetryBusy = false;
     }
   }
+  /** O endereco em que o atendente tocou. null enquanto a folha esta fechada. */
+  let emailAberto: string | null = null;
   function showError(message: string, source = ""): void {
     feedback = message;
     feedbackError = true;
@@ -1029,6 +1032,7 @@
               aiRetryBusy={aiRetryBusy || aiMutationBusy}
               onAiSend={() => void sendAiPending()}
               onAiRegenerate={() => void resetAi()}
+              onEmail={(endereco) => (emailAberto = endereco)}
             /><ContactPanel
               {selected}
               users={config.users}
@@ -1093,4 +1097,21 @@
     {togglePush}
     {saveCanned}
     {deleteCanned}
+  />{/if}
+
+<!-- Fora do bloco de abas: a folha cobre a tela, e prende-la ao ramo da conversa a faria
+     desmontar no instante em que a acao mudasse a conversa selecionada. -->
+{#if null !== emailAberto && selected}<EmailActions
+    email={emailAberto}
+    stateId={selected.id}
+    {csrf}
+    optionsUrl={config.urls.emailOptions}
+    applyUrl={config.urls.emailApply}
+    {t}
+    onClose={() => (emailAberto = null)}
+    onApplied={(nome) => {
+      emailAberto = null;
+      showSuccess(`${t("mautic.inbox.contact.done")} · ${nome}`);
+      void refreshSelected();
+    }}
   />{/if}

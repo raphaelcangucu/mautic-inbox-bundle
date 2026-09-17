@@ -1,3 +1,11 @@
+/**
+ * O endereco, escrito uma vez so. Escrever o mesmo padrao em dois lugares foi exatamente como o
+ * token "_fulano@exemplo.com_" acabou classificado como e-mail: a alternacao entregava a enfase,
+ * e o reconhecimento olhava so o comeco do token e dizia que era endereco.
+ */
+const ENDERECO = "[A-Za-z0-9._%+-]+@[A-Za-z0-9][A-Za-z0-9.-]*\\.[A-Za-z]{2,}";
+const SO_ENDERECO = new RegExp(`^${ENDERECO}$`);
+
 export function messageBody(
   value: string,
   whatsapp: boolean,
@@ -10,8 +18,18 @@ export function messageBody(
       parent.appendChild(document.createTextNode(text));
       return;
     }
-    const tokens =
-      /(`[^`\n]+`|\[[^\]\n]+\]\(https?:\/\/[^\s<>]+?\)|https?:\/\/[^\s<>]+|\*\*[^\n]+?\*\*|__[^\n]+?__|~~[^\n]+?~~|\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~)/g;
+    // O endereco e a ULTIMA alternativa, e a posicao e deliberada. O sublinhado e caractere
+    // valido no inicio de um e-mail, entao em "_fulano@exemplo.com_" a alternativa do endereco
+    // casa desde o primeiro sublinhado e engole um caractere que nao e dele. Deixando-a por
+    // ultimo, a enfase ganha a mesma posicao, e a recursao de inline() encontra o endereco ja
+    // sem o sublinhado. A alternativa de URL segue na frente para que um endereco dentro do
+    // caminho de um link continue sendo link.
+    const tokens = new RegExp(
+      "(`[^`\\n]+`|\\[[^\\]\\n]+\\]\\(https?:\\/\\/[^\\s<>]+?\\)|https?:\\/\\/[^\\s<>]+|\\*\\*[^\\n]+?\\*\\*|__[^\\n]+?__|~~[^\\n]+?~~|\\*[^*\\n]+\\*|_[^_\\n]+_|~[^~\\n]+~|" +
+        ENDERECO +
+        ")",
+      "g",
+    );
     let last = 0;
     let match: RegExpExecArray | null;
     while ((match = tokens.exec(text))) {
@@ -52,6 +70,16 @@ export function messageBody(
           node = document.createTextNode(token);
           suffix = "";
         }
+      } else if (SO_ENDERECO.test(token)) {
+        // Botao, e nao link mailto: o toque nao abre o cliente de e-mail do aparelho, abre as
+        // acoes de CRM. Um <a href="mailto:"> prometeria a coisa errada e, no celular, tiraria o
+        // atendente do app.
+        const chip = document.createElement("button");
+        chip.type = "button";
+        chip.className = "inbox-email";
+        chip.dataset.email = token;
+        chip.textContent = token;
+        node = chip;
       } else {
         const double = /^(\*\*|__|~~)/.test(token);
         const size = double ? 2 : 1;

@@ -29,6 +29,8 @@ return [
         'mautic_inbox_templates' => ['path' => '/inbox/api/conversations/{stateId}/templates', 'controller' => InboxController::class.'::templates', 'method' => 'GET', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_reply' => ['path' => '/inbox/api/conversations/{stateId}/reply', 'controller' => InboxController::class.'::reply', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_retry' => ['path' => '/inbox/api/outbound/{outboundId}/retry', 'controller' => InboxController::class.'::retry', 'method' => 'POST', 'requirements' => ['outboundId' => '\\d+']],
+        'mautic_inbox_email_options' => ['path' => '/inbox/api/conversations/{stateId}/email-options', 'controller' => InboxController::class.'::emailOptions', 'method' => 'GET', 'requirements' => ['stateId' => '\\d+']],
+        'mautic_inbox_email_apply' => ['path' => '/inbox/api/conversations/{stateId}/email-actions', 'controller' => InboxController::class.'::emailApply', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_note' => ['path' => '/inbox/api/conversations/{stateId}/note', 'controller' => InboxController::class.'::note', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_draft' => ['path' => '/inbox/api/conversations/{stateId}/draft', 'controller' => InboxController::class.'::draft', 'method' => 'PUT', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_app' => ['path' => '/inbox/app', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaShellController::class.'::index', 'method' => 'GET'],

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { afterUpdate, tick } from "svelte";
+  import { afterUpdate, onMount, tick } from "svelte";
   import Icon from "../shared/Icon.svelte";
   import MessageBubble from "./MessageBubble.svelte";
   import PendingBubble from "./PendingBubble.svelte";
@@ -22,11 +22,33 @@
   export let pending: AiPendingReply | null = null;
   export let pendingMessages: PendingMessage[] = [];
   export let onRetryPending: (message: PendingMessage) => void = () => {};
+  /**
+   * O e-mail detectado no corpo da mensagem vira um botao que o renderMessage desenha em DOM
+   * puro, fora da arvore do Svelte. Por isso o clique e ouvido aqui, na secao inteira, em vez de
+   * ligado a cada botao: delegar e o unico jeito de alcancar um no que o componente nao criou.
+   */
+  export let onEmail: (email: string) => void = () => {};
   export let aiCanAssign = false;
   export let aiRetryBusy = false;
   export let onAiSend: () => void;
   export let onAiRegenerate: () => void;
   let scroller: HTMLElement;
+  /**
+   * Ouvinte posto a mao, e nao on:click no markup: a secao e um painel de rolagem, nao um
+   * controle, e declarar o clique nela pediria papel e teclado que ela nao deve ter. O botao do
+   * endereco, esse sim, e um <button> de verdade — so que criado em DOM puro pelo renderMessage,
+   * fora do alcance do Svelte.
+   */
+  onMount(() => {
+    const ouvir = (event: Event): void => {
+      const alvo = (event.target as HTMLElement | null)?.closest?.(
+        "[data-email]",
+      ) as HTMLElement | null;
+      if (alvo?.dataset.email) onEmail(alvo.dataset.email);
+    };
+    scroller.addEventListener("click", ouvir);
+    return () => scroller.removeEventListener("click", ouvir);
+  });
   let lastOwner = 0;
   let previousCount = 0;
   let preserving = false;

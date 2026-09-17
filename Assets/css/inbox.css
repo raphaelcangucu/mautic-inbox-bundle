@@ -191,3 +191,24 @@
    uma animacao de transform substitui a outra por inteiro — o icone saltaria para o topo. */
 .inbox-pull.girando svg{animation:inbox-pull-girando .9s linear infinite}
 @keyframes inbox-pull-girando{to{transform:rotate(360deg)}}
+
+/* O endereco que aparece no corpo da mensagem. E um <button> de verdade, entao precisa perder o
+   visual de botao e ganhar o de link — e um alvo que o polegar alcance. */
+.inbox-email{border:0;background:transparent;padding:0;margin:0;font:inherit;color:var(--ib-accent);text-decoration:underline;text-underline-offset:2px;overflow-wrap:anywhere;text-align:left}
+.inbox-email:hover{text-decoration-thickness:2px}
+
+/* A folha de acoes: sobe de baixo no celular, onde o polegar esta, e fica centrada no desktop,
+   onde o cursor esta. Um so componente, como o menu. */
+.inbox-sheet-backdrop{position:fixed;inset:0;background:#1b2230;opacity:.35;z-index:60;border:0}
+.inbox-sheet{position:fixed;z-index:61;left:0;right:0;bottom:0;max-height:88dvh;overflow:auto;background:#fff;border-radius:16px 16px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom,0px));box-shadow:0 -10px 30px #1b223026;display:flex;flex-direction:column;gap:12px}
+@media(min-width:761px){.inbox-sheet{left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%);width:420px;max-width:92vw;border-radius:14px;padding:18px}}
+.inbox-sheet-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.inbox-sheet-head strong{font-size:15px;font-weight:650}
+.inbox-sheet-email{margin:0;font-size:14px;font-weight:600;color:var(--ib-accent);overflow-wrap:anywhere}
+.inbox-sheet-block{border:0;margin:0;padding:0;display:block}
+.inbox-sheet-block legend{font-size:12px;color:#818b98;padding:0;margin:0 0 6px}
+.inbox-sheet-choice{display:flex;align-items:flex-start;gap:9px;padding:9px 0;margin:0;font-size:13px;font-weight:400}
+.inbox-sheet-choice small{display:block;font-size:11px;color:#8b94a0}
+.inbox-sheet-check{display:flex;align-items:center;gap:9px;margin:0;min-height:44px;font-size:13px;font-weight:400}
+.inbox-sheet-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:4px}
+.inbox-sheet-foot .btn{min-height:44px;padding:0 18px}
