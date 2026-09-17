@@ -53,7 +53,9 @@ class PushDevice extends CommonEntity
     public function setUser(User $v): self { $this->user = $v; return $this; }
     public function getEndpoint(): string { return $this->endpoint; }
     /** O endpoint e longo demais para indexar: o hash e quem carrega a unicidade. */
-    public function setEndpoint(string $v): self { $this->endpoint = $v; $this->endpointHash = hash('sha256', $v); return $this; }
+    public function setEndpoint(string $v): self { $this->endpoint = $v; $this->endpointHash = self::hashOf($v); return $this; }
+    /** A regra do hash mora aqui para que quem procura por endpoint nao a repita. */
+    public static function hashOf(string $endpoint): string { return hash('sha256', $endpoint); }
     public function getEndpointHash(): string { return $this->endpointHash; }
     /** As duas chaves nao querem dizer nada separadas, entao entram juntas. */
     public function setKeys(string $p256dh, string $auth): self { $this->p256dh = $p256dh; $this->auth = $auth; return $this; }
@@ -67,4 +69,6 @@ class PushDevice extends CommonEntity
     public function getLastDeliveredAt(): ?\DateTimeInterface { return $this->lastDeliveredAt; }
     public function recordFailure(): self { if (++$this->consecutiveFailures >= self::RETIREMENT_THRESHOLD) { $this->active = false; } return $this; }
     public function recordSuccess(): self { $this->consecutiveFailures = 0; $this->active = true; $this->lastDeliveredAt = new \DateTimeImmutable(); return $this; }
+    /** Volta a valer sem fingir uma entrega: quem reinscreve nao entregou nada ainda. */
+    public function reactivate(): self { $this->consecutiveFailures = 0; $this->active = true; return $this; }
 }
