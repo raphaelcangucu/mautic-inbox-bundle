@@ -766,7 +766,18 @@ O par de chaves. Privada em PEM pelo motivo registrado no spec: guardar o escala
 
 **Files:**
 - Create: `Application/Push/VapidKeys.php`
+- Modify: `Config/services.php`
 - Test: `Tests/Unit/Application/Push/VapidKeysTest.php`
+
+**Antes de escrever a classe, leia isto.** O `Config/services.php` deste bundle registra como
+serviço tudo que está sob `../`, exceto o que aparece na lista de exclusões — e `Application/`
+**não** está nela. Prova disso está no próprio arquivo, que já precisou excluir
+`Application/InboxException.php` à mão. O `VapidKeys` tem construtor privado, então é
+não-instanciável: deixá-lo visível ao autowiring quebra a compilação do contêiner inteiro.
+
+Nada nesta fase carrega o kernel, então nenhum teste daqui pegaria isso. O estouro aconteceria
+na fase 2, no primeiro teste funcional, com uma mensagem que não aponta para lugar nenhum perto
+da causa. Por isso a exclusão entra junto com a classe, no mesmo commit.
 
 - [ ] **Passo 1: Escrever o teste que falha**
 
@@ -862,12 +873,22 @@ final class VapidKeys
 }
 ```
 
-- [ ] **Passo 4: Rodar e ver passar**
+- [ ] **Passo 4: Excluir a classe do autowiring**
 
-- [ ] **Passo 5: Commit**
+Em `Config/services.php`, ao lado da exclusão que já existe:
+
+```php
+    $excludes[] = 'Application/InboxException.php';
+    $excludes[] = 'Application/Push/VapidKeys.php'; // construtor privado: nao e servico
+    $excludes[] = 'DependencyInjection/Compiler';
+```
+
+- [ ] **Passo 5: Rodar e ver passar**
+
+- [ ] **Passo 6: Commit**
 
 ```bash
-git add Application/Push/VapidKeys.php Tests/Unit/Application/Push/VapidKeysTest.php
+git add Application/Push/VapidKeys.php Config/services.php Tests/Unit/Application/Push/VapidKeysTest.php
 git commit -m "Hold the VAPID pair with the private key as PEM"
 ```
 

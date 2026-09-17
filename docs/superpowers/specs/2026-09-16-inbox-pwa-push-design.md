@@ -325,7 +325,16 @@ equipe e a plataforma com mais restrições.
 - Release nova em `releases/`, com troca do symlink `current`.
 - Bundle e service worker compilados no desenvolvimento e versionados no plugin.
 - Ícones de 192px, 512px e *maskable* de verdade, senão o Android recorta sobre o conteúdo.
-- Duas migrações, aplicadas por `mautic:plugins:reload` e doctrine.
+- **As duas tabelas não nascem sozinhas.** O `mautic:plugins:reload` só instala schema a partir
+  dos metadados de entidade na *primeira* instalação; para um plugin já instalado ele segue outro
+  caminho, que executa as migrações de `Migrations/` e só quando a `version` do `Config/config.php`
+  é maior que a registrada no banco. Nunca compara metadados. Este plugin não tem diretório
+  `Migrations/`, e o `Command/AiSetupCommand.php` mostra como o problema já foi resolvido aqui
+  antes: ele cria a própria tabela com `SchemaTool`, checando `tablesExist` primeiro. Seguir esse
+  precedente dentro do `mautic:inbox:push:setup` é o caminho de menor atrito; criar `Migrations/`
+  e passar a versionar o schema é o caminho mais correto a longo prazo. A escolha pertence ao
+  plano da fase 2, mas precisa ser feita explicitamente — assumir que o reload resolve produz um
+  comando que sai com código zero e nenhuma tabela.
 - `mautic:inbox:push:setup` gera o par VAPID antes do primeiro uso.
 
 ## Ordem de implementação
