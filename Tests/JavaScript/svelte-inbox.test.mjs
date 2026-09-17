@@ -19,7 +19,7 @@ test("Inbox Twig exposes every API contract to the shared Svelte bundle", async 
   );
   assert.match(
     shell,
-    /rel="manifest"[^>]*mautic_inbox_manifest/,
+    /PwaAssetsSubscriber/,
     "o shell precisa apontar para o manifest",
   );
   assert.match(

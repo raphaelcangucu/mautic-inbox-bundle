@@ -20,8 +20,8 @@ class PwaAssetController extends CommonController
     public function manifest(): JsonResponse
     {
         $manifest = new JsonResponse([
-            'name'             => 'Atendimento',
-            'short_name'       => 'Atendimento',
+            'name'             => 'Macro Zap',
+            'short_name'       => 'Macro Zap',
             'description'      => 'Atendimento humano dos canais Meta, no seu aparelho.',
             // start_url e scope apontam para o shell proprio, nao para /s/inbox: o app abre
             // direto na lista de conversas, sem o menu lateral do Mautic.
