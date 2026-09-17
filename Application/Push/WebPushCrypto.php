@@ -9,6 +9,7 @@ namespace MauticPlugin\MauticInboxBundle\Application\Push;
  */
 final class WebPushCrypto
 {
+    public const MAX_PLAINTEXT = 3993; // 4096 - 86 de cabecalho - 1 de delimitador - 16 de etiqueta
     private const RECORD_SIZE = 4096;
 
     /**
@@ -38,5 +39,54 @@ final class WebPushCrypto
             'nonce'                => Hkdf::expand($prk, "Content-Encoding: nonce\x00", 12),
             'serverPoint'          => $serverPoint,
         ];
+    }
+
+    public function encrypt(
+        string $plaintext,
+        string $userAgentPoint,
+        string $authSecret,
+        ?string $salt = null,
+        ?string $serverPrivatePem = null,
+    ): string {
+        if (strlen($plaintext) > self::MAX_PLAINTEXT) {
+            throw new \InvalidArgumentException('Texto claro acima de '.self::MAX_PLAINTEXT.' octetos nao cabe num registro.');
+        }
+
+        $salt ??= random_bytes(16);
+        if (16 !== strlen($salt)) {
+            throw new \InvalidArgumentException('O salt do aes128gcm tem exatamente 16 octetos.');
+        }
+
+        // Par efemero, gerado por mensagem. NAO e o par VAPID: aquele identifica o servidor e
+        // vive para sempre; este existe para cifrar uma notificacao e e descartado. Sao a mesma
+        // curva, o que torna a confusao facil e cara.
+        $serverPrivatePem ??= self::ephemeralPem();
+
+        $derived = $this->derive($userAgentPoint, $authSecret, $serverPrivatePem, $salt);
+
+        $tag    = '';
+        $cipher = openssl_encrypt(
+            $plaintext."\x02", // 0x02 marca o ultimo registro
+            'aes-128-gcm',
+            $derived['contentEncryptionKey'],
+            OPENSSL_RAW_DATA,
+            $derived['nonce'],
+            $tag,
+        );
+        if (false === $cipher) {
+            throw new \RuntimeException('Falha na cifra AES-128-GCM.');
+        }
+
+        return $salt.pack('N', self::RECORD_SIZE).chr(65).$derived['serverPoint'].$cipher.$tag;
+    }
+
+    private static function ephemeralPem(): string
+    {
+        $key = openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+        if (false === $key || !openssl_pkey_export($key, $pem)) {
+            throw new \RuntimeException('Nao foi possivel gerar o par efemero.');
+        }
+
+        return $pem;
     }
 }
