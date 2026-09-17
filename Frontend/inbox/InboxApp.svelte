@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
+  import { comoApp, puxarParaAtualizar } from "../shared/pullToRefresh";
   import Icon from "../shared/Icon.svelte";
   import Avatar from "./Avatar.svelte";
   import ConversationList from "./ConversationList.svelte";
@@ -633,8 +634,50 @@
         if (root.isConnected) void poll();
       }, 20000);
   }
+  /**
+   * Quanto do alto da tela nao pertence ao inbox.
+   *
+   * O CSS do celular precisa saber onde o app comeca para calcular a altura da area de trabalho,
+   * e nao tem como descobrir sozinho: em /s/inbox o Mautic desenha uma faixa propria acima, e no
+   * shell instalavel nao ha faixa nenhuma. Calcular por 100dvh, como estava, dava 60 pixels a
+   * mais — e era exatamente a altura em que o botao de enviar ficava atras do menu fixo,
+   * medido no aparelho: enviar ocupava de 665 a 709, e o menu comecava em 660.
+   */
+  /** Quanto o indicador de atualizar desceu. Zero quer dizer escondido. */
+  let puxada = 0;
+  let recarregando = false;
+  let puxadaDispose: (() => void) | null = null;
+  const LIMITE_DA_PUXADA = 72;
+
+  function medirTopo(): void {
+    root.style.setProperty(
+      "--ib-app-top",
+      `${Math.max(0, Math.round(root.getBoundingClientRect().top + window.scrollY))}px`,
+    );
+  }
+
   onMount(() => {
     root.dataset.svelteInboxMounted = "1";
+    medirTopo();
+    window.addEventListener("resize", medirTopo);
+    window.addEventListener("orientationchange", medirTopo);
+
+    // So dentro do app instalado: no navegador o Android ja tem o gesto nativo e o Safari tem o
+    // botao, e dois puxoes concorrendo no mesmo dedo e pior que nenhum.
+    const soltarPuxada = comoApp()
+      ? puxarParaAtualizar(root, {
+          limite: LIMITE_DA_PUXADA,
+          aoMover: (distancia) => (puxada = distancia),
+          aoSoltar: () => {
+            recarregando = true;
+            puxada = LIMITE_DA_PUXADA;
+            // Recarrega a pagina inteira, que e o que traz o pacote novo: a etiqueta de versao
+            // do shell vem da data dos arquivos compilados, entao o navegador nao reusa o velho.
+            window.location.reload();
+          },
+        })
+      : () => undefined;
+    puxadaDispose = soltarPuxada;
     panelOpen = window.innerWidth >= 1200;
     history = createInboxHistory(
       config.urls.index,
@@ -704,6 +747,10 @@
     };
   });
   onDestroy(() => {
+    puxadaDispose?.();
+    window.removeEventListener("resize", medirTopo);
+    window.removeEventListener("orientationchange", medirTopo);
+    root.style.removeProperty("--ib-app-top");
     root.classList.remove("has-selection");
     root.removeAttribute("data-svelte-inbox-mounted");
     delete root.dataset.feedbackSource;
@@ -775,6 +822,16 @@
   void refreshPush();
 </script>
 
+{#if puxada > 0}<div
+    class="inbox-pull"
+    class:pronto={puxada >= LIMITE_DA_PUXADA}
+    class:girando={recarregando}
+    style={`transform: translateY(${puxada}px)`}
+    role="status"
+    aria-label={t("mautic.inbox.ui.pull_to_refresh")}
+  >
+    <Icon name="reload" />
+  </div>{/if}
 <div class="inbox-toolbar">
   <div class="inbox-product-heading">
     <span class="inbox-product-icon" data-icon="inbox"

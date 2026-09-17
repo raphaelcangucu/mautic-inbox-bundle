@@ -44,8 +44,10 @@
   const estreito = (): boolean => estreita;
   function ajustarAltura(): void {
     if (!campo || !estreito()) return;
-    campo.style.height = "auto";
-    campo.style.height = `${Math.min(campo.scrollHeight, 120)}px`;
+    // Zero, e nao "auto": com o atributo rows=3 no elemento, "auto" vale tres linhas e o campo
+    // nascia com 90px de altura mesmo vazio. Do zero, scrollHeight e o texto que existe de fato.
+    campo.style.height = "0px";
+    campo.style.height = `${Math.min(Math.max(campo.scrollHeight, 42), 120)}px`;
   }
   let templateOpen = false;
   let templateId = "";

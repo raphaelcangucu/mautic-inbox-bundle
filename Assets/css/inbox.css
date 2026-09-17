@@ -99,7 +99,12 @@
 .inbox-tabs .inbox-settings-tab .sr-only{position:static;width:auto;height:auto;margin:0;padding:0;clip:auto;clip-path:none;overflow:visible;white-space:normal}
 /* A conta da altura desconta as duas barras e os dois entalhes, senao o compositor fica atras
    do menu — que e exatamente onde o polegar vai bater. */
-.inbox-workspace{height:calc(100dvh - 60px - env(safe-area-inset-top,0px) - var(--ib-bottom-nav));min-height:280px}
+/* Coluna com altura definida: a barra de cima fica com o que precisa e a area de trabalho com o
+   resto. Assim some a ultima conta chutada do arquivo — a altura da barra —, e ela mudava sozinha
+   quando o cabecalho do produto some dentro da conversa. */
+.inbox-app{display:flex;flex-direction:column;height:calc(100dvh - var(--ib-app-top,0px) - var(--ib-bottom-nav))}
+.inbox-toolbar{flex:none}
+.inbox-workspace{flex:1 1 auto;height:auto;min-height:0}
 }
 
 /* A conversa no celular, no formato de aplicativo de mensagem.
@@ -148,9 +153,38 @@
    junto, por mais fixo que ele seja. */
 .inbox-app.has-selection .inbox-toolbar{min-height:0;padding:0;border-bottom:0}
 .inbox-app.has-selection .inbox-product-heading{display:none}
-.inbox-app.has-selection .inbox-workspace{height:calc(100dvh - env(safe-area-inset-top,0px) - var(--ib-bottom-nav))}
 /* Acoes discretas: o nome do contato vem antes delas na disputa por largura. */
 .inbox-thread-header .inbox-actions .btn{padding:6px 9px;font-size:10.5px;letter-spacing:-.1px}
 .inbox-thread-header .inbox-actions .btn-primary{background:transparent!important;border-color:#d7dbe8!important;color:var(--ib-accent)!important}
 .inbox-composer textarea{height:42px}
 }
+
+/* A lista no celular. Na captura do aparelho cabiam quatro conversas na tela inteira: cada linha
+   gastava 16px de recheio em cima e embaixo, e o cabecalho da lista outros 36. Apertando, cabem
+   sete — e uma lista de atendimento existe para ser varrida, nao contemplada. */
+@media(max-width:760px){
+.inbox-list-heading{padding:12px 14px 8px}
+.inbox-list-heading h2{font-size:15px}
+.inbox-search-wrap{margin:0 12px 10px;padding:7px 10px}
+.inbox-queues{margin:0 12px}
+.inbox-queues button{padding:7px 0 9px}
+.inbox-list-scroll{padding:4px 6px}
+.inbox-list-item{padding:9px 8px;gap:10px;margin-bottom:1px}
+/* Foto redonda e um pouco maior, como em qualquer aplicativo de mensagem. */
+.inbox-list-item .inbox-avatar{width:42px;height:42px;border-radius:50%}
+.inbox-list-title{font-size:13.5px}
+.inbox-list-preview{margin-top:2px}
+.inbox-list-flags{margin-top:5px;gap:4px}
+.inbox-list-meta{margin:2px 0}
+}
+
+/* O indicador de puxar para atualizar. Fica preso ao alto da tela e desce junto com o dedo; o
+   translate vem do componente porque a distancia e continua e nao cabe em classe. */
+/* Nasce acima da borda e entra deslizando junto com o dedo, em vez de aparecer inteiro de uma vez.
+   O recuo do entalhe entra aqui porque o elemento e fixo: ele ignora o recuo do shell em volta. */
+.inbox-pull{position:fixed;top:calc(env(safe-area-inset-top,0px) - 40px);left:50%;margin-left:-18px;z-index:40;width:36px;height:36px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#fff;color:#9aa1ac;border:1px solid var(--ib-border);box-shadow:0 2px 8px #1e263418;transition:color .15s}
+.inbox-pull.pronto{color:var(--ib-accent)}
+/* A rotacao vai no desenho, e nao na bolha: a bolha ja usa transform para descer com o dedo, e
+   uma animacao de transform substitui a outra por inteiro — o icone saltaria para o topo. */
+.inbox-pull.girando svg{animation:inbox-pull-girando .9s linear infinite}
+@keyframes inbox-pull-girando{to{transform:rotate(360deg)}}
