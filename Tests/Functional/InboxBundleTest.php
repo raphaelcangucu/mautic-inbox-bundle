@@ -39,8 +39,18 @@ final class InboxBundleTest extends MauticMysqlTestCase
         $this->client->request('GET', '/s/inbox');
         self::assertResponseIsSuccessful();
         $content = (string) $this->client->getResponse()->getContent();
-        self::assertStringContainsString('Unassigned', $content);
-        self::assertStringContainsString('Awaiting reply', $content);
+        // Os dois rotulos eram texto do Twig quando este teste foi escrito. Hoje viajam
+        // dentro do catalogo em `data-translations`, que e um atributo JSON: o espaco de
+        // "Awaiting reply" sai como `&#x20;` e a busca literal no HTML nunca acha. Achar
+        // "Unassigned" e nao achar "Awaiting reply" media escapamento de atributo, nao
+        // traducao.
+        //
+        // Decodificar o catalogo pergunta a coisa certa -- os rotulos chegaram ao cliente
+        // traduzidos -- e passa a valer para rotulo com espaco, acento ou aspas.
+        $crawler = $this->client->getCrawler();
+        $catalog = json_decode((string) $crawler->filter('#inbox-app')->attr('data-translations'), true, 512, JSON_THROW_ON_ERROR);
+        self::assertContains('Unassigned', $catalog);
+        self::assertContains('Awaiting reply', $catalog);
         self::assertStringNotContainsString('access_token', $content);
     }
 }

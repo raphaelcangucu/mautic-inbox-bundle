@@ -362,6 +362,33 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
   await tick();
   assert.equal(sound.getAttribute("aria-pressed"), "true");
 
+  // O formulario de respostas prontas: a garantia estava num teste funcional do PHP que
+  // contava a marcacao no HTML servido, e ela nao existe la -- quem desenha e o Svelte,
+  // no navegador.
+  //
+  // E, medindo aqui, o formulario nem existe ao abrir os ajustes: ele so aparece depois
+  // de pedir uma resposta nova. Ou seja, a afirmacao antiga ja estava errada quando era
+  // possivel, e passava so porque o Twig desenhava o formulario sempre. A versao certa
+  // e clicar e conferir que ele abre.
+  assert.equal(
+    root.querySelector("#inbox-canned-form"),
+    null,
+    "o formulario de resposta pronta so deve existir depois de alguem pedir por ele",
+  );
+  root
+    .querySelector("#inbox-canned-new")
+    .dispatchEvent(new window.Event("click", { bubbles: true }));
+  await tick();
+  assert.ok(
+    root.querySelector("#inbox-settings #inbox-canned-form"),
+    "pedir uma resposta pronta nova precisa abrir o formulario dentro dos ajustes",
+  );
+  assert.equal(
+    root.querySelectorAll(".inbox-toolbar #inbox-sound").length,
+    0,
+    "o botao de som mora nos ajustes, nao na barra de ferramentas",
+  );
+
   root
     .querySelector(".inbox-tabs button")
     .dispatchEvent(new window.Event("click", { bubbles: true }));
