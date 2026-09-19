@@ -18,6 +18,8 @@ use MauticPlugin\MauticInboxBundle\Entity\OutboundRequestRepository;
 use MauticPlugin\MauticInboxBundle\Integration\MetaInboxIntegration;
 use MauticPlugin\MauticMetaBundle\Application\Queue\ImmediateOutboundDispatcher;
 use MauticPlugin\MauticMetaBundle\Application\Queue\OutboundQueue;
+use MauticPlugin\MauticMetaBundle\Domain\AssetType;
+use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
 use MauticPlugin\MauticMetaBundle\Entity\MetaConversation;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessage;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessageRepository;
@@ -36,6 +38,29 @@ final class ConversationActions
         private WhatsAppTemplates $templates,
         private ImmediateOutboundDispatcher $immediateDispatcher,
     ) {
+    }
+
+    /**
+     * Quantas tentativas o envio do atendente pede a fila do conector.
+     *
+     * Quem escolhe e a caixa, nao a fila: a fila so sabe esperar, e com uma unica
+     * tentativa o primeiro fracasso ja e terminal, entao o backoff de canal
+     * temporariamente indisponivel nunca chega a ser usado.
+     *
+     * A sessao por QR nao e homologada e perde o pareamento sozinha -- isso e rotina, nao
+     * excecao, e o numero volta por conta propria. A fila espera
+     * min(7200, 2 ** (tentativa - 1) * 30) segundos depois de cada fracasso, e so
+     * reagenda enquanto sobrar tentativa; somando as esperas, a n-esima tentativa cai em
+     * 0s, 30s, 1m30, 3m30, 7m30, 15m30, 31m30, 1h03m30 e 2h07m30. A oitava ainda para
+     * dentro da primeira hora, com o numero possivelmente fora do ar; a nona e a primeira
+     * que cruza as duas horas em que a resposta ainda pode sair.
+     *
+     * O canal homologado fica de fora: quando ele recusa, recusou por um motivo que
+     * repetir nao conserta, e repetir seria mensagem duplicada no cliente.
+     */
+    public static function sendAttempts(MetaAsset $asset): int
+    {
+        return AssetType::WhatsAppQrSession === $asset->getType() ? 9 : 1;
     }
 
     public function take(ConversationState $state, User $user, int $version): ConversationState
@@ -239,6 +264,10 @@ final class ConversationActions
             }
             $payload = ['recipient' => $recipient, 'text' => $failedRequest->getBody()];
         }
+        // Uma tentativa, inclusive no canal por QR: quem apertou "tentar de novo" pediu
+        // uma tentativa e esta olhando para o resultado dela. Uma serie automatica por
+        // cima disso entrega a mensagem horas depois, quando o atendente ja desistiu
+        // deste caminho e atendeu por outro.
         $job = $this->queue->enqueue($asset, $operation, $payload + [
             '_origin' => 'inbox_human',
             '_inbox_conversation_id' => $state->getConversation()->getId(),
@@ -297,7 +326,7 @@ final class ConversationActions
             'text' => $body,
             '_origin' => 'inbox_human',
             '_inbox_conversation_id' => $state->getConversation()->getId(),
-        ], $state->getConversation()->getContact(), 1, 'inbox:'.$requestId);
+        ], $state->getConversation()->getContact(), self::sendAttempts($asset), 'inbox:'.$requestId);
         $request = (new OutboundRequest())->setConversation($state->getConversation())->setAuthor($author)->setRequestId($requestId)->setBody($body)->setJob($job)->setStatus('pending');
         $state->setNeedsResponse(false)->setHumanTakeover(true)->setVersion($state->getVersion() + 1);
         $this->entityManager->persist($request);

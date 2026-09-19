@@ -33,10 +33,22 @@ final class TranslationTest extends MauticMysqlTestCase
         self::assertResponseIsSuccessful();
         $app = $crawler->filter('#inbox-app');
         self::assertSame($locale, $app->attr('data-locale'));
-        self::assertStringContainsString($conversations, $app->text());
+        // O texto de `#inbox-app` esta vazio no servidor: o Svelte preenche o ponto de
+        // montagem no navegador, e este cliente nao executa JavaScript. Afirmar sobre
+        // `$app->text()` afirmava sobre string vazia -- a primeira linha era impossivel
+        // de passar, e a de "nao contem chave crua" passava sem olhar nada.
+        //
+        // O que o servidor de fato promete e o catalogo: ele viaja no atributo, ja
+        // traduzido, e e dele que a tela inteira sai. E por isso a afirmacao mudou de
+        // alvo em vez de sumir.
         $catalog = json_decode($app->attr('data-translations'), true, 512, JSON_THROW_ON_ERROR);
         self::assertContains($conversations, $catalog);
-        self::assertStringNotContainsString('mautic.inbox.ui.', $app->text());
+        foreach ($catalog as $key => $value) {
+            // Chave que chega ao cliente sem traducao aparece na tela como
+            // "mautic.inbox.ui.alguma_coisa" -- e o modo mais comum de um idioma novo
+            // entrar quebrado sem ninguem perceber.
+            self::assertStringNotContainsString('mautic.inbox.ui.', (string) $value, sprintf('a chave "%s" chegou sem traducao', $key));
+        }
         $crawler = $this->client->request('GET', '/s/meta/connections');
         self::assertResponseIsSuccessful();
         self::assertStringContainsString($connections, $crawler->filter('.meta-ui')->text());

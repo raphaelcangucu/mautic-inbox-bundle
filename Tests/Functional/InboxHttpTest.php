@@ -20,10 +20,15 @@ final class InboxHttpTest extends MauticMysqlTestCase
         self::assertSame('/s/inbox/conversations/0', $crawler->filter('#inbox-app')->attr('data-conversation-url'));
         self::assertSame('0', $crawler->filter('#inbox-app')->attr('data-initial-state-id'));
         self::assertSame('/s/inbox/api/outbound/0/retry', $crawler->filter('#inbox-app')->attr('data-retry-url'));
-        self::assertCount(1, $crawler->filter('.inbox-settings-tab'));
-        self::assertCount(1, $crawler->filter('#inbox-settings #inbox-sound'));
-        self::assertCount(0, $crawler->filter('.inbox-toolbar #inbox-sound'));
-        self::assertCount(1, $crawler->filter('#inbox-settings #inbox-canned-form'));
+        // A aba de ajustes, o botao de som e o formulario de respostas prontas eram
+        // marcacao do Twig quando este teste foi escrito. O frontend em Svelte os
+        // desenha no navegador, e este cliente nunca executa JavaScript: contar aqui
+        // media a ausencia de um <script>, nao a existencia da tela. As tres garantias
+        // vivem agora em Tests/JavaScript/svelte-inbox.test.mjs, onde o componente
+        // realmente monta e a aba realmente abre.
+        //
+        // O que o servidor promete e o ponto de montagem com tudo que o cliente precisa
+        // para subir sozinho -- e isso e o que se afirma aqui.
         $this->client->request('GET', '/s/inbox/api/conversations?queue=all');
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);

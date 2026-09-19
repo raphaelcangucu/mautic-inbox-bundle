@@ -333,7 +333,11 @@ final class InboxQuery
             'avatar_url' => $profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null),
             'preview' => $preview,
             'id' => (int) $state->getId(), 'conversation_id' => (int) $c->getId(), 'version' => $state->getVersion(),
-            'channel' => $c->getChannel(), 'asset' => ['id' => $c->getAsset()->getId(), 'name' => $c->getAsset()->getName(), 'handle' => $c->getAsset()->getUsername(), 'phone' => $c->getAsset()->getPhoneNumber()],
+            // O tipo vai junto porque `channel` nao distingue os dois WhatsApp: o
+            // homologado e a sessao por QR chegam ambos como "whatsapp", e quem olha a
+            // lista precisa saber de qual dos dois a conversa veio -- um tem janela de
+            // 24h e modelos, o outro nao tem nem um nem outro.
+            'channel' => $c->getChannel(), 'asset' => ['id' => $c->getAsset()->getId(), 'name' => $c->getAsset()->getName(), 'handle' => $c->getAsset()->getUsername(), 'phone' => $c->getAsset()->getPhoneNumber(), 'type' => $c->getAsset()->getType()->value],
             'recipient' => $participant, 'contact_name' => $displayName,
             'conversation_kind' => $public ? ('reel' === ($identity['origin_media']['kind'] ?? null) ? $this->translator->trans('mautic.inbox.ui.reel_comment_6f7cab') : $this->translator->trans('mautic.inbox.ui.public_comment_4a1398')) : ('facebook' === $c->getChannel() ? 'Messenger' : $this->translator->trans('mautic.inbox.ui.private_message_e7efc2')),
             'reply_public' => $public && 'facebook' === $c->getChannel(),

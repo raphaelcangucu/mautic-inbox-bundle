@@ -35,8 +35,18 @@ final class McpToolsTest extends MauticMysqlTestCase
         $taken=$tool('take',$s->getId(),['version'=>$version],true);
         self::assertSame(200,$taken['httpStatus']);
         $stale=$tool('resolve',$s->getId(),['version'=>$version],true);self::assertSame(409,$stale['httpStatus']);
-        $note=$tool('note',$s->getId(),['body'=>'MCP test note'],true,'test-note-once');
-        $again=$tool('note',$s->getId(),['body'=>'MCP test note'],true,'test-note-once');
+        // A chave precisa ser nova a cada execucao. O executor guarda o par
+        // chave->hash-do-payload num cache de 24 horas, e o payload carrega o id da
+        // conversa, que muda de uma execucao para a outra. Com uma chave fixa a segunda
+        // execucao do dia batia em "chave ja usada com outro payload" e a suite so voltava
+        // a passar depois de alguem apagar o cache -- uma falha que parecia intermitente e
+        // nao era.
+        //
+        // As duas chamadas continuam dividindo a MESMA chave, que e o que este teste
+        // afirma: repetir a mesma nota nao cria duas.
+        $once='test-note-'.bin2hex(random_bytes(8));
+        $note=$tool('note',$s->getId(),['body'=>'MCP test note'],true,$once);
+        $again=$tool('note',$s->getId(),['body'=>'MCP test note'],true,$once);
         self::assertSame($note['id'],$again['id']);self::assertCount(1,$this->em->getRepository(Note::class)->findAll());
     }
     public function testDocumentsUseDraftPublicationAndDoNotExposeCredentials():void
