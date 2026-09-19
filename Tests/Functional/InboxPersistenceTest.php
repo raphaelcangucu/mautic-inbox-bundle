@@ -104,7 +104,14 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         foreach ([$asset, $conversation, $inbound] as $entity) { $this->em->persist($entity); } $this->em->flush();
         $graph = $this->createMock(\MauticPlugin\MauticMetaBundle\Infrastructure\MetaGraphClientInterface::class);
         $graph->expects(self::once())->method('post')->with($asset->getConnection(), $asset->getExternalId().'/messages', self::callback(fn(array $payload): bool => '553184326486' === $payload['to'] && 'Resposta humana' === $payload['text']['body']))->willReturn(['messages' => [['id' => 'offline-wamid-accepted', 'message_status' => 'accepted']]]);
-        $sender = new \MauticPlugin\MauticMetaBundle\Application\WhatsApp\WhatsAppSender($graph, $this->em, new \MauticPlugin\MauticMetaBundle\Application\WhatsApp\PhoneNormalizer(), static::getContainer()->get(\MauticPlugin\MauticMetaBundle\Application\Contact\IdentityManager::class), static::getContainer()->get(\MauticPlugin\MauticMetaBundle\Application\Safety\OutboundPolicy::class));
+        // O envio de WhatsApp passou a escolher o transporte pelo tipo do asset, para o
+        // canal por QR Code nao cair calado no Graph sem credencial de Graph. O mock
+        // continua sendo o Graph e continua afirmando a mesma chamada; so o caminho ate
+        // ele ganhou um degrau.
+        $transports = new \MauticPlugin\MauticMetaBundle\Infrastructure\TransportResolver([
+            AssetType::WhatsAppPhoneNumber->value => new \MauticPlugin\MauticMetaBundle\Infrastructure\GraphTransport($graph),
+        ]);
+        $sender = new \MauticPlugin\MauticMetaBundle\Application\WhatsApp\WhatsAppSender($transports, $this->em, new \MauticPlugin\MauticMetaBundle\Application\WhatsApp\PhoneNormalizer(), static::getContainer()->get(\MauticPlugin\MauticMetaBundle\Application\Contact\IdentityManager::class), static::getContainer()->get(\MauticPlugin\MauticMetaBundle\Application\Safety\OutboundPolicy::class));
         $sender->sendText($asset, '553184326486', 'Resposta humana', false, null, true);
         $saved = $this->em->getRepository(MetaMessage::class)->findOneBy(['externalId' => 'offline-wamid-accepted']);
         $this->em->refresh($saved);
