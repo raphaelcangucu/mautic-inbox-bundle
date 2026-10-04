@@ -16,6 +16,10 @@
   import type { PushUiState } from "../shared/types";
   import AutomationView from "./AutomationView.svelte";
   import { WebChatRealtime } from "./webchatRealtime";
+  import {
+    webchatTimelineItem,
+    type WebChatMessageEvent,
+  } from "./webchatTimeline";
   import { inboxBootstrap, translator } from "../shared/bootstrap";
   import {
     endpoint,
@@ -127,6 +131,7 @@
   let webchatRealtime: WebChatRealtime | null = null;
   let webchatTyping = false;
   let webchatTypingTimer: number | undefined;
+  let webchatRefreshTimer: number | undefined;
   let fallbackTimer: number | undefined;
   let reconnectTimer: number | undefined;
   let liveStatusKey = "mautic.inbox.ui.connecting_dc8abc";
@@ -227,19 +232,31 @@
           webchatTyping = false;
         else if (event.type === "message.created") {
           webchatTyping = false;
-          const message = event.message as
-            | { id?: number; direction?: string }
-            | undefined;
+          const message = event.message as WebChatMessageEvent | undefined;
+          const item = message ? webchatTimelineItem(message) : null;
+          if (item) {
+            loja.aplicarItens({
+              conversationId: detail.id,
+              items: [item],
+              mode: "merge",
+            });
+            sincronizar();
+          }
           if (
             message?.direction === "visitor" &&
             message.id &&
             !document.hidden
           )
             webchatRealtime?.read(message.id);
-          void Promise.all([
-            loadTimeline(detail.id, selectionRevision),
-            loadList(false, true),
-          ]);
+          clearTimeout(webchatRefreshTimer);
+          webchatRefreshTimer = window.setTimeout(
+            () =>
+              void Promise.all([
+                loadTimeline(detail.id, selectionRevision),
+                loadList(false, true),
+              ]),
+            120,
+          );
         } else if (
           event.type === "message.delivered" ||
           event.type === "message.read"
@@ -983,6 +1000,7 @@
     clearTimeout(searchTimer);
     clearTimeout(feedbackTimer);
     clearTimeout(reconnectTimer);
+    clearTimeout(webchatRefreshTimer);
     clearTimeout(webchatTypingTimer);
     clearInterval(fallbackTimer);
   });
