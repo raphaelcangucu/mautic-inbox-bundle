@@ -56,6 +56,8 @@ test("AI Svelte workspace keeps every admin action and active production hook", 
       `missing ${action} action`,
     );
   }
+  assert.match(app, /\["install", "import-auth"\]\.includes\(action\)/);
+  assert.doesNotMatch(app, /\["install", "import-auth", "validate"\]/);
   for (const id of [
     "ai-new-doc",
     "ai-doc-list",
