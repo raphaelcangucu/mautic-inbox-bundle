@@ -4,6 +4,8 @@
     facebook: "M14 21v-9h3l1-4h-4V6c0-1 1-2 2-2h2V1h-3c-4 0-5 3-5 5v2H7v4h3v9",
     inbox: "M4 4h16v16H4z M4 14h5l2 3h2l2-3h5",
     chat: "M20 11a8 8 0 0 1-8 8H6l-4 3V11a9 9 0 0 1 18 0z",
+    webchat:
+      "M4 3h16a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2h-7l-4 3v-3H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z M7 8h10 M7 12h7",
     comment: "M4 4h16v12H9l-5 4z M8 8h8 M8 12h5",
     bolt: "M13 2L5 14h6l-1 8 9-13h-6z",
     search: "M21 21l-5-5 M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0",

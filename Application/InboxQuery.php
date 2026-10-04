@@ -41,6 +41,7 @@ final class InboxQuery
         private CorePermissions $permissions,
         private MessagePresentation $presentation,
         private ReplyAvailability $replyAvailability,
+        private ChannelTransportRegistry $channelTransports,
         #[\Symfony\Component\DependencyInjection\Attribute\Autowire(service: 'mautic.helper.twig.avatar')]
         private \Mautic\LeadBundle\Twig\Helper\AvatarHelper $avatars,
     ) {
@@ -75,7 +76,7 @@ final class InboxQuery
         }
         $channel = trim((string) ($filters['channel'] ?? ''));
         if ('' !== $channel) {
-            if (!in_array($channel, ['whatsapp', 'instagram', 'facebook'], true)) { throw new InboxException('mautic.inbox.ui.invalid_channel_df77fb'); }
+            if (!in_array($channel, ['whatsapp', 'instagram', 'facebook', 'webchat'], true)) { throw new InboxException('mautic.inbox.ui.invalid_channel_df77fb'); }
             $qb->andWhere('c.channel = :channel')->setParameter('channel', $channel);
         }
         $kind = (string) ($filters['kind'] ?? 'private');
@@ -102,11 +103,13 @@ final class InboxQuery
         $items = array_map(fn (ConversationState $state): array => $this->conversation($state), $states);
         $last = [] === $states ? null : $states[array_key_last($states)];
 
-        return [
+        $summary = [
             'items' => $items,
             'next_cursor' => $hasMore && $last instanceof ConversationState ? $this->encodeCursor($last->getConversation()->getLastMessageAt(), (int) $last->getId()) : null,
             'counts' => $this->queueCounts($user, $kind),
         ];
+
+        return $summary;
     }
 
     /** @return array<string,mixed> */
@@ -328,16 +331,12 @@ final class InboxQuery
                 default => $participant,
             };
         }
-        return [
+        $summary = [
             'contact_handle' => $handle,
             'avatar_url' => $profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null),
             'preview' => $preview,
             'id' => (int) $state->getId(), 'conversation_id' => (int) $c->getId(), 'version' => $state->getVersion(),
-            // O tipo vai junto porque `channel` nao distingue os dois WhatsApp: o
-            // homologado e a sessao por QR chegam ambos como "whatsapp", e quem olha a
-            // lista precisa saber de qual dos dois a conversa veio -- um tem janela de
-            // 24h e modelos, o outro nao tem nem um nem outro.
-            'channel' => $c->getChannel(), 'asset' => ['id' => $c->getAsset()->getId(), 'name' => $c->getAsset()->getName(), 'handle' => $c->getAsset()->getUsername(), 'phone' => $c->getAsset()->getPhoneNumber(), 'type' => $c->getAsset()->getType()->value],
+            'channel' => $c->getChannel(), 'asset' => ['id' => $c->getAsset()->getId(), 'name' => $c->getAsset()->getName(), 'handle' => $c->getAsset()->getUsername(), 'phone' => $c->getAsset()->getPhoneNumber()],
             'recipient' => $participant, 'contact_name' => $displayName,
             'conversation_kind' => $public ? ('reel' === ($identity['origin_media']['kind'] ?? null) ? $this->translator->trans('mautic.inbox.ui.reel_comment_6f7cab') : $this->translator->trans('mautic.inbox.ui.public_comment_4a1398')) : ('facebook' === $c->getChannel() ? 'Messenger' : $this->translator->trans('mautic.inbox.ui.private_message_e7efc2')),
             'reply_public' => $public && 'facebook' === $c->getChannel(),
@@ -346,6 +345,10 @@ final class InboxQuery
             'human_takeover' => $state->isHumanTakeover(), 'snoozed_until' => $state->getSnoozedUntil()?->format(DATE_ATOM),
             'last_message_at' => $c->getLastMessageAt()->format(DATE_ATOM), 'updated_at' => $state->getDateModified()->format(DATE_ATOM),
         ];
+
+        $transport = $this->channelTransports->for($c);
+
+        return null === $transport ? $summary : array_replace($summary, $transport->conversationMetadata($state));
     }
 
     /**
@@ -369,7 +372,7 @@ final class InboxQuery
             $job = 'outbound' === $entity->getDirection()
                 ? $this->entityManager->getRepository(MetaOutboundJob::class)->findOneBy(['messageLogId' => $entity->getId()])
                 : null;
-            $jobPayload = $job instanceof MetaOutboundJob ? $job->getPayload() : [];
+            $jobPayload = $job instanceof MetaOutboundJob ? $job->getPayload() : $entity->getPayload();
             $ai = 'inbox_ai' === ($jobPayload['_origin'] ?? null) ? [
                 'agent' => trim((string) ($jobPayload['_ai_agent_name'] ?? '')) ?: 'AI',
                 'key' => (string) ($jobPayload['_ai_agent_key'] ?? ''),

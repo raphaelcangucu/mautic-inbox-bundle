@@ -41,21 +41,15 @@
           month: "short",
         }).format(date);
   };
-  // O canal por QR nao e homologado: nao tem janela de 24h nem modelos, e cai e volta
-  // sozinho. Ele chega no mesmo `channel` do numero oficial, entao so o tipo do asset
-  // separa os dois — e quem trabalha na lista o dia inteiro precisa ver de qual deles a
-  // conversa veio antes de abrir.
-  const QR_SESSION = "whatsapp_qr_session";
-  const channelLabel = (value: string, assetType?: string) =>
-    assetType === QR_SESSION
-      ? "WhatsApp · QR"
-      : (
-          {
-            whatsapp: "WhatsApp",
-            instagram: "Instagram",
-            facebook: "Facebook",
-          } as Record<string, string>
-        )[value] || value;
+  const channelLabel = (value: string) =>
+    (
+      ({
+        whatsapp: "WhatsApp",
+        instagram: "Instagram",
+        facebook: "Facebook",
+        webchat: "Web Chat",
+      }) as Record<string, string>
+    )[value] || value;
 </script>
 
 <section
@@ -120,7 +114,9 @@
           ><option value="">{t("mautic.inbox.ui.all_channels_44265e")}</option
           ><option value="whatsapp">WhatsApp</option><option value="instagram"
             >Instagram</option
-          ><option value="facebook">Facebook / Messenger</option></select
+          ><option value="facebook">Facebook / Messenger</option><option
+            value="webchat">Web Chat</option
+          ></select
         ></label
       >
       <label class="inbox-check"
@@ -165,7 +161,7 @@
               >
             </div>
             <div class="inbox-list-meta">
-              {channelLabel(item.channel, item.asset.type)} · {item.asset.handle
+              {channelLabel(item.channel)} · {item.asset.handle
                 ? `@${item.asset.handle}`
                 : item.asset.phone || item.asset.name}
             </div>

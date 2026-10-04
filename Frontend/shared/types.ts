@@ -7,9 +7,6 @@ export interface Asset {
   handle?: string;
   phone?: string;
   channel?: Channel;
-  // Opcional porque uma conversa guardada no cache antes desta versao volta sem ele, e a
-  // lista precisa continuar desenhando o que ja tinha.
-  type?: string;
 }
 export interface Assignee {
   id: number;
@@ -57,6 +54,15 @@ export interface Conversation {
   reply_hint?: string;
   reply_public?: boolean;
   human_takeover?: boolean;
+  realtime?: { token: string; url: string; expires_at: string } | null;
+  webchat?: {
+    page_url?: string | null;
+    site_origin?: string;
+    referrer?: string | null;
+    utm?: Record<string, string>;
+    visitor_last_read_message_id?: number | null;
+    agent_last_read_message_id?: number | null;
+  };
 }
 export interface Attachment {
   type: string;

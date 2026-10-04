@@ -35,6 +35,16 @@ final class AiService {
    $state->setAssignee(null)->setHumanTakeover(true)->setLifecycle('open')->setNeedsResponse(true)->setVersion($state->getVersion()+1);$this->em->persist($state);$this->em->persist((new EventLog())->setConversation($state->getConversation())->setActor($actor)->setEventType('ai_assigned')->setDetails(['agent'=>$agent['name']]));$this->em->flush();
   });
  }
+ public function assignSystem(ConversationState $state,string $key): bool {
+  $agent=$this->store->get('agent',$key);$health=$this->store->get('health','pi');
+  if(!$agent||!$this->allowed($state,$agent)||empty($health['validated'])||$state->getAssignee())return false;
+  return $this->integration->runHumanTransition($state,function()use($state,$key,$agent):bool{
+   $this->em->refresh($state);$previous=$this->store->get('assignment',(string)$state->getId());
+   if($previous&&in_array($previous['status']??'', ['active','queued','finishing'],true))return true;
+   $this->store->put('assignment',(string)$state->getId(),['agent'=>$key,'name'=>$agent['name'],'actor'=>0,'nonce'=>bin2hex(random_bytes(16)),'status'=>'active','count'=>$previous['count']??0,'offtopic'=>$previous['offtopic']??0,'transfers'=>$previous['transfers']??0,'context'=>$this->store->context($agent),'limit'=>$this->effectiveLimit($agent),'assigned_at'=>gmdate(DATE_ATOM)]);
+   $state->setAssignee(null)->setHumanTakeover(true)->setLifecycle('open')->setNeedsResponse(true)->setVersion($state->getVersion()+1);$this->em->persist($state);$this->em->persist((new EventLog())->setConversation($state->getConversation())->setEventType('ai_assigned')->setDetails(['agent'=>$agent['name'],'automatic'=>true]));$this->em->flush();return true;
+  });
+ }
  public function reset(ConversationState $state,User $actor,int $version): void {
   $this->integration->runHumanTransition($state,function()use($state,$actor,$version){
    $this->em->refresh($state);if($state->getVersion()!==$version)throw new InboxException('mautic.inbox.ai.conflict',409);

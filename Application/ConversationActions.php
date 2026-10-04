@@ -18,8 +18,6 @@ use MauticPlugin\MauticInboxBundle\Entity\OutboundRequestRepository;
 use MauticPlugin\MauticInboxBundle\Integration\MetaInboxIntegration;
 use MauticPlugin\MauticMetaBundle\Application\Queue\ImmediateOutboundDispatcher;
 use MauticPlugin\MauticMetaBundle\Application\Queue\OutboundQueue;
-use MauticPlugin\MauticMetaBundle\Domain\AssetType;
-use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
 use MauticPlugin\MauticMetaBundle\Entity\MetaConversation;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessage;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessageRepository;
@@ -37,30 +35,8 @@ final class ConversationActions
         private ReplyAvailability $replyAvailability,
         private WhatsAppTemplates $templates,
         private ImmediateOutboundDispatcher $immediateDispatcher,
+        private ChannelTransportRegistry $channelTransports,
     ) {
-    }
-
-    /**
-     * Quantas tentativas o envio do atendente pede a fila do conector.
-     *
-     * Quem escolhe e a caixa, nao a fila: a fila so sabe esperar, e com uma unica
-     * tentativa o primeiro fracasso ja e terminal, entao o backoff de canal
-     * temporariamente indisponivel nunca chega a ser usado.
-     *
-     * A sessao por QR nao e homologada e perde o pareamento sozinha -- isso e rotina, nao
-     * excecao, e o numero volta por conta propria. A fila espera
-     * min(7200, 2 ** (tentativa - 1) * 30) segundos depois de cada fracasso, e so
-     * reagenda enquanto sobrar tentativa; somando as esperas, a n-esima tentativa cai em
-     * 0s, 30s, 1m30, 3m30, 7m30, 15m30, 31m30, 1h03m30 e 2h07m30. A oitava ainda para
-     * dentro da primeira hora, com o numero possivelmente fora do ar; a nona e a primeira
-     * que cruza as duas horas em que a resposta ainda pode sair.
-     *
-     * O canal homologado fica de fora: quando ele recusa, recusou por um motivo que
-     * repetir nao conserta, e repetir seria mensagem duplicada no cliente.
-     */
-    public static function sendAttempts(MetaAsset $asset): int
-    {
-        return AssetType::WhatsAppQrSession === $asset->getType() ? 9 : 1;
     }
 
     public function take(ConversationState $state, User $user, int $version): ConversationState
@@ -176,6 +152,17 @@ final class ConversationActions
             // external API call. Only human WhatsApp text is eligible; templates
             // and automation remain on the durable queue.
             $this->immediateDispatcher->dispatch($outbound->getJob());
+        } elseif (null !== ($transport = $this->channelTransports->for($state->getConversation()))) {
+            try {
+                $transport->sendHuman($state, $outbound);
+            } catch (\Throwable $exception) {
+                $outbound->setStatus('failed')->setFailureReason('Não foi possível entregar a mensagem pelo canal.');
+                $state->setNeedsResponse(true)->setVersion($state->getVersion() + 1);
+                $this->entityManager->persist($outbound);
+                $this->entityManager->persist($state);
+                $this->entityManager->flush();
+                throw new InboxException('Não foi possível entregar a mensagem pelo canal.', 502);
+            }
         }
 
         return $outbound;
@@ -264,10 +251,6 @@ final class ConversationActions
             }
             $payload = ['recipient' => $recipient, 'text' => $failedRequest->getBody()];
         }
-        // Uma tentativa, inclusive no canal por QR: quem apertou "tentar de novo" pediu
-        // uma tentativa e esta olhando para o resultado dela. Uma serie automatica por
-        // cima disso entrega a mensagem horas depois, quando o atendente ja desistiu
-        // deste caminho e atendeu por outro.
         $job = $this->queue->enqueue($asset, $operation, $payload + [
             '_origin' => 'inbox_human',
             '_inbox_conversation_id' => $state->getConversation()->getId(),
@@ -300,6 +283,9 @@ final class ConversationActions
         if ('resolved' === $state->getLifecycle()) {
             throw new InboxException('mautic.inbox.ui.reopen_the_conversation_before_replying_cd5de7', 409);
         }
+        if (null !== $this->channelTransports->for($state->getConversation())) {
+            return $this->replyExternalLocked($state, $author, $body, $requestId, $template);
+        }
         $asset = $state->getConversation()->getAsset();
         if ('active' !== $asset->getStatus() || !$asset->isPublished()) {
             throw new InboxException('mautic.inbox.ui.this_conversation_s_channel_is_not_available_for_sending_8627bd', 409);
@@ -326,7 +312,7 @@ final class ConversationActions
             'text' => $body,
             '_origin' => 'inbox_human',
             '_inbox_conversation_id' => $state->getConversation()->getId(),
-        ], $state->getConversation()->getContact(), self::sendAttempts($asset), 'inbox:'.$requestId);
+        ], $state->getConversation()->getContact(), 1, 'inbox:'.$requestId);
         $request = (new OutboundRequest())->setConversation($state->getConversation())->setAuthor($author)->setRequestId($requestId)->setBody($body)->setJob($job)->setStatus('pending');
         $state->setNeedsResponse(false)->setHumanTakeover(true)->setVersion($state->getVersion() + 1);
         $this->entityManager->persist($request);
@@ -342,6 +328,48 @@ final class ConversationActions
             $this->immediateDispatcher->supports($job) ? 'reply_requested' : 'reply_queued',
             ['request_id' => $requestId],
         );
+
+        return $request;
+    }
+
+    private function replyExternalLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template): OutboundRequest
+    {
+        if (null !== $template) {
+            throw new InboxException('Modelos não estão disponíveis para este canal.', 409);
+        }
+        $body = $this->body($body);
+        if (!preg_match('/^[A-Za-z0-9_-]{16,64}$/', $requestId)) {
+            throw new InboxException('mautic.inbox.ui.invalid_send_identifier_6d8e69');
+        }
+        $existing = $this->outboundRequests->findOneBy(['requestId' => $requestId]);
+        if ($existing instanceof OutboundRequest) {
+            if ($existing->getConversation()->getId() !== $state->getConversation()->getId()
+                || $existing->getAuthor()->getId() !== $author->getId()
+                || $existing->getBody() !== $body) {
+                throw new InboxException('mautic.inbox.ui.send_identifier_already_used_419540', 409);
+            }
+
+            return $existing;
+        }
+        if (null !== ($reason = $this->replyAvailability->reason($state))) {
+            throw new InboxException($reason, 409);
+        }
+
+        $request = (new OutboundRequest())
+            ->setConversation($state->getConversation())
+            ->setAuthor($author)
+            ->setRequestId($requestId)
+            ->setBody($body)
+            ->setStatus('pending');
+        $state->setNeedsResponse(false)->setHumanTakeover(true)->setVersion($state->getVersion() + 1);
+        $this->entityManager->persist($request);
+        $this->entityManager->persist($state);
+        $draft = $this->drafts->findOneBy(['conversation' => $state->getConversation(), 'user' => $author, 'mode' => 'reply']);
+        if ($draft instanceof Draft) {
+            $this->entityManager->remove($draft);
+        }
+        $this->entityManager->flush();
+        $this->log($state, $author, 'reply_requested', ['request_id' => $requestId, 'channel' => $state->getConversation()->getChannel()]);
 
         return $request;
     }

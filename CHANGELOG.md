@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0
+
+- Adiciona um contrato de transporte para canais externos ao Meta Bundle.
+- Permite que plugins de canal reutilizem Inbox, atribuição, notas, rascunhos e agentes de IA.
+- Inclui metadados de tempo real por conversa e suporte ao canal Web Chat.
+
 ## Nao lancado
 
 - Adiciona a fundacao criptografica do Web Push sobre ext-openssl, sem dependencia de Composer.

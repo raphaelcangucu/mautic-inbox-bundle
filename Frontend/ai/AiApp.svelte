@@ -152,7 +152,7 @@
 
   async function runPiAction(action: string): Promise<void> {
     if (
-      ["install", "import-auth", "validate"].includes(action) &&
+      ["install", "import-auth"].includes(action) &&
       !window.confirm(t("confirm"))
     ) {
       feedback = "";
