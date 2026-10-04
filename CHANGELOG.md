@@ -5,6 +5,10 @@
 - Adiciona um contrato de transporte para canais externos ao Meta Bundle.
 - Permite que plugins de canal reutilizem Inbox, atribuição, notas, rascunhos e agentes de IA.
 - Inclui metadados de tempo real por conversa e suporte ao canal Web Chat.
+- Publica digitação da IA com nome do agente e reconcilia mensagens, leitura e sessão da IA em tempo real.
+- Recarrega o estado do agente após respostas e encerramento sem exigir atualização manual da página.
+- Pré-carrega relatórios de rodadas no contexto permitido e preserva a causa real de falhas do Pi/Codex.
+- Valida Web Chat em produção com resposta contextual, limite ilimitado e encerramento pelo agente.
 
 ## Nao lancado
 

@@ -132,6 +132,7 @@
   let webchatTyping = false;
   let webchatTypingTimer: number | undefined;
   let webchatRefreshTimer: number | undefined;
+  let webchatAiRefreshTimer: number | undefined;
   let fallbackTimer: number | undefined;
   let reconnectTimer: number | undefined;
   let liveStatusKey = "mautic.inbox.ui.connecting_dc8abc";
@@ -230,7 +231,13 @@
           webchatTyping = true;
         else if (event.type === "typing.stopped" && event.role === "visitor")
           webchatTyping = false;
-        else if (event.type === "message.created") {
+        else if (event.type === "typing.stopped" && event.role === "agent") {
+          clearTimeout(webchatAiRefreshTimer);
+          webchatAiRefreshTimer = window.setTimeout(
+            () => void loadAi(detail.id, false),
+            120,
+          );
+        } else if (event.type === "message.created") {
           webchatTyping = false;
           const message = event.message as WebChatMessageEvent | undefined;
           const item = message ? webchatTimelineItem(message) : null;
@@ -254,9 +261,19 @@
               void Promise.all([
                 loadTimeline(detail.id, selectionRevision),
                 loadList(false, true),
+                message?.direction === "ai"
+                  ? loadAi(detail.id, false)
+                  : Promise.resolve(),
               ]),
             120,
           );
+          if (message?.direction !== "visitor") {
+            clearTimeout(webchatAiRefreshTimer);
+            webchatAiRefreshTimer = window.setTimeout(
+              () => void loadAi(detail.id, false),
+              900,
+            );
+          }
         } else if (
           event.type === "message.delivered" ||
           event.type === "message.read"
@@ -1001,6 +1018,7 @@
     clearTimeout(feedbackTimer);
     clearTimeout(reconnectTimer);
     clearTimeout(webchatRefreshTimer);
+    clearTimeout(webchatAiRefreshTimer);
     clearTimeout(webchatTypingTimer);
     clearInterval(fallbackTimer);
   });

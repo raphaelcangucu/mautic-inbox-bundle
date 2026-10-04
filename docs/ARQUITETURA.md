@@ -10,8 +10,12 @@
 | Responsável, resolução, adiamento e tomada humana | Inbox Bundle |
 | Notas internas, rascunhos, respostas prontas e log de atendimento | Inbox Bundle |
 | Contexto de comentários e pedidos de resposta humana | Inbox Bundle, referenciando entidades Meta |
+| Contrato de envio, leitura, digitação e metadados para canais externos | Inbox Bundle |
+| Sessões, mensagens e gateway WebSocket do site | Web Chat Bundle |
 
 O Inbox não replica um segundo cadastro de credenciais ou transporte Meta. Usa serviços do conector no mesmo container Symfony e referências às entidades persistidas pelo conector.
+
+Plugins externos registram uma implementação de `ChannelTransportInterface`. A conversa continua usando o estado, as ações humanas e a sessão da IA do Inbox, enquanto o plugin do canal executa envio, leitura e eventos em tempo real. O `MauticWebChatBundle` é a primeira implementação e conserva suas próprias tabelas de widgets, sessões e mensagens.
 
 ## Fluxo de entrada e saída
 
@@ -57,6 +61,8 @@ As permissões atuais são por papel, não por ativo. A API de apresentação n�
 
 O bundle registra os callbacks esperados pelo carregamento AJAX do Mautic, monta cada tela uma única vez e desmonta componentes cujo ponto de montagem foi removido. Assim, navegações internas não acumulam listeners, conexões SSE ou timers.
 
-O SSE sinaliza alterações; o navegador busca o conteúdo pela API interna. O stream dura aproximadamente 15 segundos, libera a sessão e usa heartbeats, com reconexão e fallback silencioso. Não é um servidor WebSocket dedicado: cada conexão de stream ocupa capacidade do servidor PHP enquanto está aberta. Dimensione workers e proxy conforme a quantidade de atendentes.
+Para os canais Meta, o SSE sinaliza alterações e o navegador busca o conteúdo pela API interna. O stream dura aproximadamente 15 segundos, libera a sessão e usa heartbeats, com reconexão e fallback silencioso. Cada conexão de stream ocupa capacidade do servidor PHP enquanto está aberta.
+
+Canais externos podem acrescentar um transporte em tempo real próprio. O Web Chat usa um gateway WebSocket em Node.js para mensagens, presença, digitação, entrega e leitura, mantendo recuperação HTTP. O frontend reconcilia esses eventos na mesma lista e timeline sem desmontar o editor.
 
 Alertas usam cursor de mensagens recebidas separado dos filtros. A primeira carga estabelece uma referência silenciosa. O favicon acumula alertas até a conversa ser aberta; áudio requer interação e respeita a preferência local por usuário. Deduplicação entre abas usa recursos do navegador quando disponíveis.

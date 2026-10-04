@@ -22,3 +22,22 @@ test("the Pi runtime preloads an explicit Brasileirão round before model turns"
   assert.match(source, /Fonte CMS pré-carregada para esta rodada/);
   assert.match(source, /turn_start[\s\S]{0,80}turns > 6/);
 });
+
+test("an AI realtime reply refreshes the assignment counter and state", async () => {
+  const source = await read("Frontend/inbox/InboxApp.svelte");
+  const start = source.indexOf('event.type === "message.created"');
+  const end = source.indexOf('event.type === "message.delivered"', start);
+  const body = source.slice(start, end);
+  assert.match(
+    body,
+    /message\?\.direction === "ai"[\s\S]*loadAi\(detail\.id, false\)/,
+  );
+  assert.match(
+    body,
+    /message\?\.direction !== "visitor"[\s\S]*window\.setTimeout\([\s\S]*loadAi\(detail\.id, false\)[\s\S]*900/,
+  );
+  assert.match(
+    source,
+    /event\.type === "typing\.stopped" && event\.role === "agent"[\s\S]*loadAi\(detail\.id, false\)/,
+  );
+});

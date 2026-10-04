@@ -106,6 +106,8 @@ O pacote opcional [`raphaelcangucu/mautic-webchat-bundle`](https://github.com/ra
 
 O gateway WebSocket e as tabelas de sessão pertencem ao plugin Web Chat. Removê-lo não altera os transportes Meta do Inbox.
 
+A validação da versão 1.3 cobriu, em produção, digitação do visitante no Inbox, digitação nomeada do agente no widget, confirmação de entrega e leitura, consulta de relatório pelo agente, perguntas de acompanhamento e encerramento da conversa pela IA. [Assista ao vídeo end-to-end no repositório do Web Chat](https://github.com/raphaelcangucu/mautic-webchat-bundle/blob/main/docs/video/mautic-webchat-e2e.mp4).
+
 ## Segurança e comportamento
 
 - Toda mutação exige permissão e token CSRF.
