@@ -25,6 +25,8 @@ interface ChannelTransportInterface
     /** @param array<string,mixed> $metadata */
     public function sendAi(ConversationState $state, string $body, array $metadata): void;
 
+    public function setTyping(ConversationState $state, bool $active, string $name): void;
+
     /** @return array<string,mixed> Values override the standard Inbox summary. */
     public function conversationMetadata(ConversationState $state): array;
 

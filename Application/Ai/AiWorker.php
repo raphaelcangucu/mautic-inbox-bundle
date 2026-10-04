@@ -90,6 +90,8 @@ final class AiWorker
         foreach (array_reverse($history) as $message) {
             $messages[] = $message->getDirection().': '.mb_substr((string) $this->presentation->present($message)['body'], 0, 1500);
         }
+        $transport = $this->channelTransports->for($state->getConversation());
+        $transport?->setTyping($state, true, (string) ($agent['name'] ?? 'Assistente'));
         try {
             $reply = $this->pi->call('run', [
                 'funnel' => (new FunnelContext())->read($state),
@@ -112,6 +114,8 @@ final class AiWorker
                 $fresh['reason'] = 'execution_failed';
                 $this->store->put('assignment', (string) $id, $fresh);
             }
+        } finally {
+            $transport?->setTyping($state, false, (string) ($agent['name'] ?? 'Assistente'));
         }
     }
 
