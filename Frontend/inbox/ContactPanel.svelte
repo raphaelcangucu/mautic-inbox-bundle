@@ -21,6 +21,7 @@
         whatsapp: "WhatsApp",
         instagram: "Instagram",
         facebook: "Facebook",
+        webchat: "Web Chat",
       }) as Record<string, string>
     )[value] || value;
   const safeSocial = (value?: string) => {

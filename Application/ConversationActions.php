@@ -35,6 +35,7 @@ final class ConversationActions
         private ReplyAvailability $replyAvailability,
         private WhatsAppTemplates $templates,
         private ImmediateOutboundDispatcher $immediateDispatcher,
+        private ChannelTransportRegistry $channelTransports,
     ) {
     }
 
@@ -151,6 +152,17 @@ final class ConversationActions
             // external API call. Only human WhatsApp text is eligible; templates
             // and automation remain on the durable queue.
             $this->immediateDispatcher->dispatch($outbound->getJob());
+        } elseif (null !== ($transport = $this->channelTransports->for($state->getConversation()))) {
+            try {
+                $transport->sendHuman($state, $outbound);
+            } catch (\Throwable $exception) {
+                $outbound->setStatus('failed')->setFailureReason('Não foi possível entregar a mensagem pelo canal.');
+                $state->setNeedsResponse(true)->setVersion($state->getVersion() + 1);
+                $this->entityManager->persist($outbound);
+                $this->entityManager->persist($state);
+                $this->entityManager->flush();
+                throw new InboxException('Não foi possível entregar a mensagem pelo canal.', 502);
+            }
         }
 
         return $outbound;
@@ -271,6 +283,9 @@ final class ConversationActions
         if ('resolved' === $state->getLifecycle()) {
             throw new InboxException('mautic.inbox.ui.reopen_the_conversation_before_replying_cd5de7', 409);
         }
+        if (null !== $this->channelTransports->for($state->getConversation())) {
+            return $this->replyExternalLocked($state, $author, $body, $requestId, $template);
+        }
         $asset = $state->getConversation()->getAsset();
         if ('active' !== $asset->getStatus() || !$asset->isPublished()) {
             throw new InboxException('mautic.inbox.ui.this_conversation_s_channel_is_not_available_for_sending_8627bd', 409);
@@ -313,6 +328,48 @@ final class ConversationActions
             $this->immediateDispatcher->supports($job) ? 'reply_requested' : 'reply_queued',
             ['request_id' => $requestId],
         );
+
+        return $request;
+    }
+
+    private function replyExternalLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template): OutboundRequest
+    {
+        if (null !== $template) {
+            throw new InboxException('Modelos não estão disponíveis para este canal.', 409);
+        }
+        $body = $this->body($body);
+        if (!preg_match('/^[A-Za-z0-9_-]{16,64}$/', $requestId)) {
+            throw new InboxException('mautic.inbox.ui.invalid_send_identifier_6d8e69');
+        }
+        $existing = $this->outboundRequests->findOneBy(['requestId' => $requestId]);
+        if ($existing instanceof OutboundRequest) {
+            if ($existing->getConversation()->getId() !== $state->getConversation()->getId()
+                || $existing->getAuthor()->getId() !== $author->getId()
+                || $existing->getBody() !== $body) {
+                throw new InboxException('mautic.inbox.ui.send_identifier_already_used_419540', 409);
+            }
+
+            return $existing;
+        }
+        if (null !== ($reason = $this->replyAvailability->reason($state))) {
+            throw new InboxException($reason, 409);
+        }
+
+        $request = (new OutboundRequest())
+            ->setConversation($state->getConversation())
+            ->setAuthor($author)
+            ->setRequestId($requestId)
+            ->setBody($body)
+            ->setStatus('pending');
+        $state->setNeedsResponse(false)->setHumanTakeover(true)->setVersion($state->getVersion() + 1);
+        $this->entityManager->persist($request);
+        $this->entityManager->persist($state);
+        $draft = $this->drafts->findOneBy(['conversation' => $state->getConversation(), 'user' => $author, 'mode' => 'reply']);
+        if ($draft instanceof Draft) {
+            $this->entityManager->remove($draft);
+        }
+        $this->entityManager->flush();
+        $this->log($state, $author, 'reply_requested', ['request_id' => $requestId, 'channel' => $state->getConversation()->getChannel()]);
 
         return $request;
     }

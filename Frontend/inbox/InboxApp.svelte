@@ -15,6 +15,7 @@
   import type { PendingMessage } from "../shared/store/types";
   import type { PushUiState } from "../shared/types";
   import AutomationView from "./AutomationView.svelte";
+  import { WebChatRealtime } from "./webchatRealtime";
   import { inboxBootstrap, translator } from "../shared/bootstrap";
   import {
     endpoint,
@@ -123,6 +124,9 @@
   };
   const timers: number[] = [];
   let stream: EventSource | null = null;
+  let webchatRealtime: WebChatRealtime | null = null;
+  let webchatTyping = false;
+  let webchatTypingTimer: number | undefined;
   let fallbackTimer: number | undefined;
   let reconnectTimer: number | undefined;
   let liveStatusKey = "mautic.inbox.ui.connecting_dc8abc";
@@ -186,6 +190,9 @@
     // O cache da conversa NAO e apagado: sair dela e parar de renderizar, e e justamente o que
     // faz a proxima abertura nao custar rede nenhuma.
     selected = null;
+    webchatRealtime?.close();
+    webchatRealtime = null;
+    webchatTyping = false;
     ai = null;
     sincronizar();
     root.classList.remove("has-selection");
@@ -199,9 +206,49 @@
   ): void {
     detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
     selected = detail;
+    connectWebChat(detail);
     root.classList.add("has-selection");
     if (update) history?.open(id, false);
     sincronizar();
+  }
+
+  function connectWebChat(detail: Conversation): void {
+    webchatRealtime?.close();
+    webchatRealtime = null;
+    webchatTyping = false;
+    if (detail.channel !== "webchat" || !detail.realtime) return;
+    webchatRealtime = new WebChatRealtime(detail, {
+      status: () => undefined,
+      event: (event) => {
+        if (selected?.id !== detail.id) return;
+        if (event.type === "typing.started" && event.role === "visitor")
+          webchatTyping = true;
+        else if (event.type === "typing.stopped" && event.role === "visitor")
+          webchatTyping = false;
+        else if (event.type === "message.created") {
+          webchatTyping = false;
+          const message = event.message as
+            | { id?: number; direction?: string }
+            | undefined;
+          if (
+            message?.direction === "visitor" &&
+            message.id &&
+            !document.hidden
+          )
+            webchatRealtime?.read(message.id);
+          void Promise.all([
+            loadTimeline(detail.id, selectionRevision),
+            loadList(false, true),
+          ]);
+        } else if (
+          event.type === "message.delivered" ||
+          event.type === "message.read"
+        ) {
+          void loadTimeline(detail.id, selectionRevision);
+        }
+      },
+    });
+    webchatRealtime.connect();
   }
 
   /**
@@ -494,6 +541,14 @@
     selected.drafts = selected.drafts || {};
     selected.drafts[draftMode] = body;
     selected = { ...selected };
+    if (mode === "reply" && selected.channel === "webchat") {
+      webchatRealtime?.typing(Boolean(composerBody.trim()));
+      clearTimeout(webchatTypingTimer);
+      webchatTypingTimer = window.setTimeout(
+        () => webchatRealtime?.typing(false),
+        1400,
+      );
+    }
     draftState = t("mautic.inbox.ui.saving_draft_1493aa");
     clearTimeout(draftTimers[key]);
     draftPending[key] = { id, mode: draftMode, body };
@@ -539,6 +594,9 @@
       isNote = sendMode === "note",
       key = `${id}:${sendMode}`,
       precisaAssumir = !isNote && Boolean(selected.can_take_and_reply);
+
+    webchatRealtime?.typing(false);
+    clearTimeout(webchatTypingTimer);
 
     clearTimeout(draftTimers[key]);
     delete draftPending[key];
@@ -907,6 +965,7 @@
     history?.dispose();
     alerts?.dispose();
     stream?.close();
+    webchatRealtime?.close();
     timers.forEach(clearInterval);
     Object.values(draftTimers).forEach(clearTimeout);
     Object.entries(draftPending).forEach(([key, pending]) => {
@@ -924,6 +983,7 @@
     clearTimeout(searchTimer);
     clearTimeout(feedbackTimer);
     clearTimeout(reconnectTimer);
+    clearTimeout(webchatTypingTimer);
     clearInterval(fallbackTimer);
   });
   $: if (
@@ -1101,6 +1161,7 @@
                   whatsapp: "WhatsApp",
                   instagram: "Instagram",
                   facebook: "Facebook",
+                  webchat: "Web Chat",
                 }[selected.channel] || selected.channel} · {selected.asset
                   .handle
                   ? `@${selected.asset.handle}`
@@ -1170,6 +1231,7 @@
               onAiSend={() => void sendAiPending()}
               onAiRegenerate={() => void resetAi()}
               onEmail={(endereco) => (emailAberto = endereco)}
+              remoteTyping={webchatTyping}
             /><ContactPanel
               {selected}
               users={config.users}

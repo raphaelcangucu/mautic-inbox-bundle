@@ -158,15 +158,16 @@ final class InboxController extends CommonController
         });
     }
 
-    public function state(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query, EntityManagerInterface $entityManager, ConversationManager $metaConversations): JsonResponse
+    public function state(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query, EntityManagerInterface $entityManager, ConversationManager $metaConversations, \MauticPlugin\MauticInboxBundle\Application\ChannelTransportRegistry $channelTransports): JsonResponse
     {
         $this->grantMutation($request, $permissions, 'edit');
-        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query, $entityManager, $metaConversations, $permissions): array {
+        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query, $entityManager, $metaConversations, $channelTransports, $permissions): array {
             $payload = $this->payload($request);
             $actor = $this->user($users);
             $state = $this->requireState($states, $stateId);
             if ('read' === ($payload['action'] ?? null)) {
-                $metaConversations->markRead($state->getConversation());
+                $transport = $channelTransports->for($state->getConversation());
+                null === $transport ? $metaConversations->markRead($state->getConversation()) : $transport->markRead($state);
                 return $query->detail($state, $actor);
             }
             $target = null;

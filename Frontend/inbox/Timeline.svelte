@@ -29,6 +29,7 @@
    * ligado a cada botao: delegar e o unico jeito de alcancar um no que o componente nao criou.
    */
   export let onEmail: (email: string) => void = () => {};
+  export let remoteTyping = false;
   export let aiCanAssign = false;
   export let aiRetryBusy = false;
   export let onAiSend: () => void;
@@ -126,6 +127,11 @@
         {t}
         retry={onRetryPending}
       />{/each}
+    {#if remoteTyping}<div class="inbox-remote-typing" role="status">
+        <span></span><span></span><span></span>{t(
+          "mautic.inbox.webchat.visitor_typing",
+        )}
+      </div>{/if}
   </div>
   {#if pending}<article
       id="inbox-ai-pending"

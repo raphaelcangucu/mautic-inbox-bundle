@@ -1,6 +1,6 @@
 # Atendimento omnicanal para Mautic
 
-Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, Instagram e Facebook. O `MauticMetaBundle` continua responsável por ativos, identidades, contatos, mensagens, webhooks e envios; o `MauticInboxBundle` organiza o atendimento humano, respostas imediatas, mídia recebida e agentes de IA executados pelo Pi/Codex.
+Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, Instagram, Facebook e canais instalados por outros plugins. O `MauticMetaBundle` continua responsável pelos canais Meta; o `MauticInboxBundle` organiza o atendimento humano, respostas imediatas, mídia recebida e agentes de IA executados pelo Pi/Codex.
 
 ## Recursos principais
 
@@ -11,7 +11,8 @@ Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, In
 - Atualização em tempo real por SSE, com recuperação por polling e preservação do editor.
 - URL compartilhável para cada conversa, com troca instantânea e navegação Voltar/Avançar sem recarregar a página.
 - Agentes de IA com contexto versionado, fontes controladas, indicação visual de autoria e execução e retomada humana segura.
-- Sessões de IA sem teto de mensagens. O contador é somente telemetria e pode ser reiniciado pela interface.
+- Limite opcional de respostas por sessão de IA. O padrão `0` é ilimitado e o contador pode ser reiniciado pela interface.
+- Contrato de transporte para canais externos, com metadados, envio humano e por IA, leitura e tempo real.
 
 ## Frontend Svelte 5
 
@@ -99,6 +100,12 @@ O limite de respostas pode ser configurado globalmente e por agente. O valor `0`
 
 O modelo só recebe ferramentas e fontes autorizadas. Credenciais do Pi e do CMS ficam fora do banco de documentos, das respostas HTTP e do repositório. Consulte [Agentes de atendimento com Pi](docs/AI-AGENTS.md) para instalação, permissões, fontes e diagnóstico.
 
+## Canal Web Chat
+
+O pacote opcional [`raphaelcangucu/mautic-webchat-bundle`](https://github.com/raphaelcangucu/mautic-webchat-bundle) usa o contrato de transporte da versão 1.3. Ele adiciona ao site um widget Svelte em tempo real e entrega as conversas neste mesmo Inbox, incluindo digitação, presença, confirmação de entrega e leitura, página de origem, UTMs e atribuição automática opcional a um agente de IA.
+
+O gateway WebSocket e as tabelas de sessão pertencem ao plugin Web Chat. Removê-lo não altera os transportes Meta do Inbox.
+
 ## Segurança e comportamento
 
 - Toda mutação exige permissão e token CSRF.
@@ -111,7 +118,7 @@ O modelo só recebe ferramentas e fontes autorizadas. Credenciais do Pi e do CMS
 - O polling usa cursores, limites e janelas de no máximo 24 horas. A atualização não escreve no editor.
 - A API da caixa retorna apenas campos de apresentação; tokens, respostas Meta completas e payloads brutos não são expostos.
 - Imagens, áudios, vídeos, documentos e figurinhas recebidos pelo WhatsApp são servidos por uma rota autenticada. Uma falha temporária ganha nova tentativa automática e uma ação manual de recarga.
-- Agentes de IA não têm teto de mensagens. O contador é apenas informativo; um reinício explícito invalida o trabalho anterior, zera a telemetria da sessão e mantém as permissões do canal.
+- Agentes de IA usam `0` como limite ilimitado. Um valor positivo aplica a trava; um reinício explícito invalida o trabalho anterior, zera a contagem e mantém as permissões do canal.
 
 ## Testes
 
@@ -151,4 +158,4 @@ O identificador do link representa o estado persistido da conversa no Inbox. Ele
 
 ## Compatibilidade e versão
 
-A versão `1.1.1` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+A versão `1.3.0` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).

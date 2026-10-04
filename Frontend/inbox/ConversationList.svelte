@@ -47,6 +47,7 @@
         whatsapp: "WhatsApp",
         instagram: "Instagram",
         facebook: "Facebook",
+        webchat: "Web Chat",
       }) as Record<string, string>
     )[value] || value;
 </script>
@@ -113,7 +114,9 @@
           ><option value="">{t("mautic.inbox.ui.all_channels_44265e")}</option
           ><option value="whatsapp">WhatsApp</option><option value="instagram"
             >Instagram</option
-          ><option value="facebook">Facebook / Messenger</option></select
+          ><option value="facebook">Facebook / Messenger</option><option
+            value="webchat">Web Chat</option
+          ></select
         ></label
       >
       <label class="inbox-check"

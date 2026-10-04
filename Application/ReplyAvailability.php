@@ -10,11 +10,18 @@ use MauticPlugin\MauticMetaBundle\Entity\MetaMessage;
 
 final class ReplyAvailability
 {
-    public function __construct(private EntityManagerInterface $entityManager, private \Symfony\Contracts\Translation\TranslatorInterface $translator) {}
+    public function __construct(
+        private EntityManagerInterface $entityManager,
+        private \Symfony\Contracts\Translation\TranslatorInterface $translator,
+        private ChannelTransportRegistry $channelTransports,
+    ) {}
     public function reason(ConversationState $state): ?string
     {
         $c = $state->getConversation();
         if ('resolved' === $state->getLifecycle()) { return $this->translator->trans('mautic.inbox.ui.this_conversation_is_resolved_reopen_it_to_reply_fd61b2'); }
+        if (null !== ($transport = $this->channelTransports->for($c))) {
+            return $transport->replyBlockedReason($state);
+        }
         if ('active' !== $c->getAsset()->getStatus() || !$c->getAsset()->isPublished()) { return $this->translator->trans('mautic.inbox.ui.the_channel_is_unavailable_review_the_connection_in_meta_a8f714'); }
         if ('facebook' === $c->getChannel() && false === ($c->getAsset()->getSettings()['facebook_reply_enabled'] ?? true)) { return $this->translator->trans('mautic.inbox.ui.the_facebook_connection_needs_additional_permissions_in_meta_befo_85248a'); }
         $repo = $this->entityManager->getRepository(MetaMessage::class);

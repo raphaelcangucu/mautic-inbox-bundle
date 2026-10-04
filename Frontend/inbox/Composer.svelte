@@ -165,9 +165,12 @@
     <span
       id="inbox-composer-channel"
       class="inbox-secondary inbox-composer-channel"
-      >{{ whatsapp: "WhatsApp", instagram: "Instagram", facebook: "Facebook" }[
-        selected.channel
-      ] || selected.channel}</span
+      >{{
+        whatsapp: "WhatsApp",
+        instagram: "Instagram",
+        facebook: "Facebook",
+        webchat: "Web Chat",
+      }[selected.channel] || selected.channel}</span
     >
   </div>
   {#if templateOpen && !note}<section
