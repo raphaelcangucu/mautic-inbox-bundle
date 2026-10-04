@@ -10,6 +10,8 @@ return [
     'version' => '1.3.0',
     'author' => 'Mautic',
     'routes' => ['main' => [
+        'mautic_inbox_mobile_device_authorize' => ['path' => '/inbox/mobile/device-authorize', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::authorizeDevice', 'method' => ['GET','POST']],
+        'mautic_inbox_mobile_authorize' => ['path' => '/inbox/mobile/authorize', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::authorize', 'method' => ['GET','POST']],
         'mautic_inbox_ai' => ['path'=>'/inbox/ai','controller'=>\MauticPlugin\MauticInboxBundle\Controller\AiController::class.'::index','method'=>'GET'],
         'mautic_inbox_ai_data' => ['path'=>'/inbox/ai/data','controller'=>\MauticPlugin\MauticInboxBundle\Controller\AiController::class.'::data','method'=>'GET'],
         'mautic_inbox_ai_action' => ['path'=>'/inbox/ai/action','controller'=>\MauticPlugin\MauticInboxBundle\Controller\AiController::class.'::action','method'=>'POST'],
@@ -43,6 +45,10 @@ return [
         'mautic_inbox_canned_delete' => ['path' => '/inbox/api/canned-responses/{responseId}', 'controller' => InboxController::class.'::deleteCanned', 'method' => 'DELETE', 'requirements' => ['responseId' => '\\d+']],
     ],
     'public' => [
+        'mautic_inbox_mobile_device' => ['path' => '/inbox/mobile/device', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::device', 'method' => 'POST'],
+        'mautic_inbox_mobile_config' => ['path' => '/inbox/mobile/config', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::config', 'method' => 'GET'],
+        'mautic_inbox_mobile_token' => ['path' => '/inbox/mobile/token', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::token', 'method' => 'POST'],
+        'mautic_inbox_mobile_api' => ['path' => '/inbox/mobile/api/{resource}', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileApiController::class.'::api', 'method' => ['GET','POST','PUT','DELETE'], 'requirements' => ['resource' => '[a-z0-9/-]+']],
         'mautic_inbox_service_worker' => ['path' => '/inbox-sw.js', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::serviceWorker', 'method' => 'GET'],
         'mautic_inbox_manifest' => ['path' => '/inbox-manifest.webmanifest', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::manifest', 'method' => 'GET'],
         'mautic_inbox_icon' => ['path' => '/inbox-icon-{name}.png', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::icon', 'method' => 'GET', 'requirements' => ['name' => '[0-9a-z-]+']],

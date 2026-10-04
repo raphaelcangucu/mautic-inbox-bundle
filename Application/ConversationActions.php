@@ -152,7 +152,7 @@ final class ConversationActions
             // external API call. Only human WhatsApp text is eligible; templates
             // and automation remain on the durable queue.
             $this->immediateDispatcher->dispatch($outbound->getJob());
-        } elseif (null !== ($transport = $this->channelTransports->for($state->getConversation()))) {
+        } elseif ('pending' === $outbound->getStatus() && null !== ($transport = $this->channelTransports->for($state->getConversation()))) {
             try {
                 $transport->sendHuman($state, $outbound);
             } catch (\Throwable $exception) {

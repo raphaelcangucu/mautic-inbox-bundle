@@ -1,0 +1,146 @@
+<?php
+
+declare(strict_types=1);
+
+namespace MauticPlugin\MauticInboxBundle\Controller;
+
+use Doctrine\ORM\EntityManagerInterface;
+use Mautic\CoreBundle\Controller\CommonController;
+use Mautic\CoreBundle\Helper\UserHelper;
+use Mautic\CoreBundle\Security\Permissions\CorePermissions;
+use Mautic\UserBundle\Entity\User;
+use MauticPlugin\MauticInboxBundle\Application\{ContactLinking,ConversationActions,InboxException,InboxQuery,WhatsAppTemplates,ChannelTransportRegistry};
+use MauticPlugin\MauticInboxBundle\Application\Ai\{AiService,AiStore};
+use MauticPlugin\MauticInboxBundle\Application\Mobile\{SessionStore,CannedResponses,ModerationStore,OperatorAssistant};
+use MauticPlugin\MauticInboxBundle\Entity\{ConversationState,ConversationStateRepository,CannedResponseRepository};
+use MauticPlugin\MauticMetaBundle\Application\Conversation\ConversationManager;
+use Symfony\Component\HttpFoundation\{JsonResponse,Request,Response};
+use Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorageInterface;
+use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
+
+/** Native bearer boundary. Business rules remain in the existing Inbox services. */
+final class MobileApiController extends CommonController
+{
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports): Response
+    {
+        $previous = $tokens->getToken();
+        try {
+            $header = $request->headers->get('Authorization', '');
+            if (!preg_match('/^Bearer ([a-f0-9]{64})$/D', $header, $match)) { return $this->error('Sessão necessária.', 'unauthorized', 401); }
+            try { $grant = $sessions->authenticate($match[1]); } catch (\DomainException) { return $this->error('Sessão expirada. Entre novamente.', 'unauthorized', 401); }
+            $user = $em->find(User::class, $grant['user']);
+            if (!$user instanceof User || !$user->isPublished() || !hash_equals($grant['fingerprint'], hash('sha256', (string) $user->getPassword()))) { return $this->error('Sessão revogada. Entre novamente.', 'unauthorized', 401); }
+            $tokens->setToken(new UsernamePasswordToken($user, 'main', $user->getRoles()));
+            if (!$permissions->isGranted(['inbox:conversations:view','meta:messages:view'])) { return $this->error('Seu usuário não tem acesso ao atendimento.', 'forbidden', 403); }
+            $method = $request->getMethod();
+            $decorate = function(array $raw) use ($user,$states,$query,$aiStore,$moderation,$permissions): array {
+                $state = $states->find((int) $raw['id']);
+                if (!$state) { return $raw; }
+                $raw = $query->detail($state,$user);
+                unset($raw['realtime'],$raw['webchat']['realtime']);
+                $raw['kind'] = str_starts_with($state->getConversation()->getRecipient(),'comment:') ? 'comments' : 'inbox';
+                $a=$aiStore->get('assignment',(string)$state->getId());
+                $raw['agent']=$a ? ['key'=>$a['agent']??'', 'name'=>$a['name']??'', 'status'=>$a['status']??'paused', 'count'=>$a['count']??0] : null;
+                $raw['moderation']=$raw['kind'] === 'comments' ? $moderation->flags($raw) : ['spam'=>false,'hidden'=>false,'blockedAuthor'=>false];
+                $raw['can_reply']=$raw['can_reply'] && $permissions->isGranted(['inbox:conversations:create','meta:messages:create']) && !$raw['moderation']['spam'] && !$raw['moderation']['blockedAuthor'];
+                return $raw;
+            };
+            if ($method === 'POST' && $resource === 'assistant/messages') {
+                if(strlen($request->getContent())>32768){return $this->error('Requisição inválida.','invalid_request',400);}
+                try{$payload=json_decode($request->getContent(),true,16,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
+                if(!is_array($payload)){return $this->error('JSON inválido.','invalid_request',400);}
+                return $this->data($assistant->reply($payload,$user));
+            }
+            if ($method === 'POST' && $resource === 'canned-responses') {
+                if (!$permissions->isGranted('inbox:templates:edit')) { return $this->error('Ação não autorizada.','forbidden',403); }
+                if (strlen($request->getContent()) > 16384) { return $this->error('Requisição inválida.','invalid_request',400); }
+                try { $payload=json_decode($request->getContent(),true,16,JSON_THROW_ON_ERROR); } catch (\JsonException) { return $this->error('JSON inválido.','invalid_request',400); }
+                if (!is_array($payload)) { return $this->error('JSON inválido.','invalid_request',400); }
+                return $this->data($canned->create($payload,$user,$cannedRepository,$em),201);
+            }
+            if ($method === 'GET' && preg_match('#^media/([1-9][0-9]*)$#D',$resource,$media)) { $response=$this->forward(InboxController::class.'::media',['messageId'=>(int)$media[1]]);$response->headers->set('Cache-Control','no-store, private');return $response; }
+
+            if ($method === 'DELETE' && $resource === 'session') { $sessions->revoke($match[1]); return $this->data(['revoked' => true]); }
+            if ($method === 'GET' && $resource === 'me') { return $this->data(['user' => ['id' => (int) $user->getId(), 'name' => $user->getName(), 'email' => $user->getEmail()]]); }
+            if ($method === 'GET' && $resource === 'operator-options') {
+                $agents = array_map(static fn (array $agent): array => ['key' => $agent['key'], 'name' => $agent['name']], $aiStore->all('agent'));
+                return $this->data(['users' => $query->users(), 'agents' => $agents]);
+            }
+            if ($method === 'GET' && $resource === 'canned-responses') { return $this->data(['items' => $query->cannedResponses()]); }
+            if ($method === 'GET' && $resource === 'conversations') { $list=$query->conversations($user,$request->query->all()); $list['items']=array_map($decorate,$list['items']); return $this->data($list); }
+            if ($method === 'GET' && $resource === 'notifications') {
+                $batch=$query->notifications($request->query->has('cursor')?$request->query->getInt('cursor'):null);
+                foreach($batch['notifications'] as &$notification){$state=$states->find((int)$notification['state_id']);if($state){$c=$decorate($query->summary($state));$notification['conversation']=$c;$notification['suppressed']=$c['moderation']['spam']||$c['moderation']['blockedAuthor'];}}unset($notification);
+                return $this->data($batch);
+            }
+            if ($method === 'GET' && $resource === 'updates') {
+                $id = $request->query->getInt('state_id'); $selected = $id ? $states->find($id) : null;
+                if ($id && !$selected) { return $this->error('Conversa não encontrada.', 'not_found', 404); }
+                $since = $request->query->getString('since') ?: gmdate(DATE_ATOM, time() - 60);
+                $updates=$query->poll($user,$since,$selected,$request->query->has('notification_cursor') ? $request->query->getInt('notification_cursor') : null); $updates['conversations']=array_map($decorate,$updates['conversations']); return $this->data($updates);
+            }
+            if (!preg_match('#^conversations/([1-9][0-9]*)(?:/(history|templates|take|state|reply|note|draft|ai|email-options|email-actions|moderation))?$#D', $resource, $parts)) {
+                return $this->error('Recurso não disponível nesta versão da API.', 'unsupported', 404);
+            }
+            $id = (int) $parts[1]; $operation = $parts[2] ?? ''; $state = $states->find($id);
+            if (!$state) { return $this->error('Conversa não encontrada.', 'not_found', 404); }
+            if ($method === 'GET') {
+                return match ($operation) {
+                    '' => $this->data($decorate($query->summary($state))),
+                    'history' => $this->data($query->timeline($state, $request->query->get('before'), $request->query->getInt('limit', 40))),
+                    'templates' => $this->data(['items' => $templates->catalog($state), 'blocked_reason' => ($reason = $templates->blockedReason($state)) ? $this->translator->trans($reason) : null]),
+                    'email-options' => $this->data($linking->options($state->getConversation(), $linking->email($request->query->getString('email')), $user)),
+                    'ai' => $this->forward(AiController::class.'::available', ['stateId' => $id]),
+                    default => $this->error('Método não permitido.', 'method_not_allowed', 405),
+                };
+            }
+            if (!in_array($method, ['POST','PUT'], true) || strlen($request->getContent()) > 65536) { return $this->error('Requisição inválida.', 'invalid_request', 400); }
+            try { $p = json_decode($request->getContent(), true, 32, JSON_THROW_ON_ERROR); } catch (\JsonException) { return $this->error('JSON inválido.', 'invalid_request', 400); }
+            if (!is_array($p)) { return $this->error('JSON inválido.', 'invalid_request', 400); }
+            $level = $operation === 'reply' ? 'create' : 'edit';
+            if (!$permissions->isGranted(['inbox:conversations:'.$level,'meta:messages:'.$level])) { return $this->error('Ação não autorizada para seu usuário.', 'forbidden', 403); }
+            if ($operation === 'reply') {
+                if ($moderation->flags($query->summary($state))['spam'] || $moderation->flags($query->summary($state))['blockedAuthor']) { return $this->error('Restaure o atendimento antes de responder.','moderated',422); }
+                if (isset($p['attachment'])) { return $this->error('Upload de mídia não disponível nesta instância.', 'unsupported_media', 422); }
+                $conversation = $state->getConversation();
+                $comment = str_starts_with($conversation->getRecipient(), 'comment:');
+                $expectedMode = $comment && $conversation->getChannel() === 'facebook' ? 'public' : 'private';
+                if ($comment && isset($p['reply_mode']) && $p['reply_mode'] !== $expectedMode) { return $this->error('Este canal não oferece esse modo de resposta.', 'unsupported_reply_mode', 422); }
+                $out = $actions->reply($state, $user, (string) ($p['body'] ?? ''), (string) ($p['request_id'] ?? ''), isset($p['template_id']) ? ['id' => (int) $p['template_id'], 'variables' => $p['variables'] ?? []] : null);
+                return $this->data(['request_id' => $out->getRequestId(), 'status' => $out->getStatus(), 'item' => $query->outboundItem($out), 'summary' => $decorate($query->summary($state))], 202);
+            }
+            if ($operation === 'moderation') {
+                if (!str_starts_with($state->getConversation()->getRecipient(),'comment:')) { return $this->error('Moderação disponível em comentários.','not_comment',422); }
+                $em->refresh($state);
+                if ($state->getVersion() !== (int)($p['version']??0)) { return $this->error('A conversa mudou. Atualize antes de continuar.','version_conflict',409); }
+                try { $moderation->apply($query->summary($state),(string)($p['action']??''),(int)$user->getId()); } catch (\DomainException) { return $this->error('Ação de moderação indisponível.','unsupported_moderation',422); }
+            }
+            elseif ($operation === 'take') { $actions->take($state, $user, (int) ($p['version'] ?? 0)); }
+            elseif ($operation === 'state') {
+                if (($p['action'] ?? '') === 'read') { $transport=$transports->for($state->getConversation());null === $transport ? $metaConversations->markRead($state->getConversation()) : $transport->markRead($state); }
+                else {
+                    $target = isset($p['target_user_id']) ? $em->find(User::class, (int) $p['target_user_id']) : null;
+                    if (isset($p['target_user_id']) && (!$target instanceof User || !in_array((int) $target->getId(), array_column($query->users(), 'id'), true))) { throw new InboxException('mautic.inbox.ui.person_not_found_603a16'); }
+                    try { $until = !empty($p['until']) ? new \DateTimeImmutable((string) $p['until']) : null; } catch (\Exception) { return $this->error('Data inválida.', 'invalid_date', 422); }
+                    $actions->transition($state, $user, (int) ($p['version'] ?? 0), (string) ($p['action'] ?? ''), $target, $until);
+                }
+            }
+            elseif ($operation === 'note') { $note = $actions->note($state, $user, (string) ($p['body'] ?? '')); return $this->data(['id' => $note->getId(), 'saved' => true], 201); }
+            elseif ($operation === 'draft' && $method === 'PUT') { $draft = $actions->saveDraft($state, $user, (string) ($p['mode'] ?? ''), (string) ($p['body'] ?? '')); return $this->data(['saved' => true, 'updated_at' => $draft->getDateModified()->format(DATE_ATOM)]); }
+            elseif ($operation === 'ai') {
+                if (!$permissions->isGranted(['inbox:conversations:create','meta:messages:create'])) { return $this->error('Ação não autorizada.', 'forbidden', 403); }
+                if (($p['action'] ?? '') === 'reset') { $ai->reset($state, $user, (int) ($p['version'] ?? 0)); }
+                else { $ai->assign($state, $user, (string) ($p['agent'] ?? $p['key'] ?? ''), (int) ($p['version'] ?? 0)); }
+            }
+            elseif ($operation === 'email-actions') {
+                $linking->apply($state->getConversation(), $linking->email((string) ($p['email'] ?? '')), (int) ($p['contact_id'] ?? 0), (bool) ($p['save_email'] ?? false), !empty($p['campaign_id']) ? (int) $p['campaign_id'] : null, !empty($p['segment_id']) ? (int) $p['segment_id'] : null, $user);
+            }
+            else { return $this->error('Método não permitido.', 'method_not_allowed', 405); }
+            return $this->data($decorate($query->summary($state)));
+        } catch (InboxException $e) { return $this->error($this->translator->trans($e->getMessage()), $e->httpStatus === 409 ? 'version_conflict' : 'inbox_error', $e->httpStatus); }
+        finally { $tokens->setToken($previous); }
+    }
+
+    private function data(array $value, int $status = 200): JsonResponse { return new JsonResponse($value, $status, ['Cache-Control' => 'no-store','X-Content-Type-Options' => 'nosniff']); }
+    private function error(string $message, string $code, int $status): JsonResponse { return $this->data(['error' => $message, 'code' => $code], $status); }
+}
