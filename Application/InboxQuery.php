@@ -331,7 +331,7 @@ final class InboxQuery
                 default => $participant,
             };
         }
-        return [
+        $summary = [
             'contact_handle' => $handle,
             'avatar_url' => $profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null),
             'preview' => $preview,
