@@ -475,7 +475,7 @@
         method: "POST",
         body: JSON.stringify({ agent, version: selected.version }),
       });
-      await select(id, false);
+      await refreshSelected();
     } catch (error) {
       showError((error as Error).message, "ai");
     } finally {
@@ -491,7 +491,7 @@
         method: "POST",
         body: JSON.stringify({ action: "reset", version: selected.version }),
       });
-      await select(id, false);
+      await refreshSelected();
       showSuccess(t("mautic.inbox.ai.reset_success"));
     } catch (error) {
       showError((error as Error).message, "ai");
@@ -512,7 +512,7 @@
           version: selected.version,
         }),
       });
-      await select(id, false);
+      await refreshSelected();
       showSuccess(t("mautic.inbox.ai.sent_now"));
       await loadList(false, true);
     } catch (error) {
