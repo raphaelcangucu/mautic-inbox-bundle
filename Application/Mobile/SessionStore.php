@@ -146,6 +146,23 @@ final class SessionStore
         });
     }
 
+    /** Read the current renewable grant; access-token rotation keeps the same session. */
+    public function activeSession(string $session): ?array
+    {
+        $file = $this->directory.'/sessions.json';
+        if (!is_file($file)) { return null; }
+        $handle = fopen($file, 'r');
+        if (!$handle) { return null; }
+        try {
+            if (!flock($handle, LOCK_SH)) { return null; }
+            $data = json_decode(stream_get_contents($handle), true, 32, JSON_THROW_ON_ERROR);
+            foreach ($data['refresh'] ?? [] as $grant) {
+                if (($grant['session'] ?? '') === $session && $grant['expires'] > time()) { return $grant; }
+            }
+            return null;
+        } finally { flock($handle, LOCK_UN); fclose($handle); }
+    }
+
     public function revoke(string $token): void
     {
         $this->transaction(function (array &$data) use ($token): void {

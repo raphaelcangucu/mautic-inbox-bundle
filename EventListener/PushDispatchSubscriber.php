@@ -38,6 +38,7 @@ final class PushDispatchSubscriber implements EventSubscriberInterface
         private VapidKeyStore $keys,
         private UrlGeneratorInterface $router,
         private LoggerInterface $logger,
+        private \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $native,
     ) {
     }
 
@@ -46,6 +47,8 @@ final class PushDispatchSubscriber implements EventSubscriberInterface
         return [
             KernelEvents::TERMINATE  => ['dispatch', 0],
             ConsoleEvents::TERMINATE => ['dispatch', 0],
+            // A persistent Messenger worker must flush after each handled message.
+            'Symfony\\Component\\Messenger\\Event\\WorkerMessageHandledEvent' => ['dispatch', 0],
         ];
     }
 
@@ -55,6 +58,8 @@ final class PushDispatchSubscriber implements EventSubscriberInterface
         if ([] === $pending) {
             return;
         }
+
+        try { $this->native->enqueue($pending); } catch (\Throwable) { $this->logger->error('inbox.native_push: queue unavailable'); }
 
         try {
             if (!$this->keys->isConfigured()) {

@@ -87,7 +87,7 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
 
         // So registra a intencao. Nenhuma rede, nenhuma criptografia, nenhuma excecao possivel
         // aqui dentro: o envio sai depois do kernel.terminate, com a resposta ja entregue.
-        $this->notifications->add((int) $state->getId(), $this->contactName($message), $this->preview($message));
+        $this->notifications->add((int) $state->getId(), $this->contactName($message), $this->preview($message), (int) $message->getId());
     }
 
     private function contactName(MetaMessage $message): string

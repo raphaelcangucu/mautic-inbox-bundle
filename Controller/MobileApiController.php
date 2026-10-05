@@ -21,7 +21,7 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 /** Native bearer boundary. Business rules remain in the existing Inbox services. */
 final class MobileApiController extends CommonController
 {
-    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports): Response
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push): Response
     {
         $previous = $tokens->getToken();
         try {
@@ -33,6 +33,19 @@ final class MobileApiController extends CommonController
             $tokens->setToken(new UsernamePasswordToken($user, 'main', $user->getRoles()));
             if (!$permissions->isGranted(['inbox:conversations:view','meta:messages:view'])) { return $this->error('Seu usuário não tem acesso ao atendimento.', 'forbidden', 403); }
             $method = $request->getMethod();
+            if (in_array($resource, ['push/device','push/test'], true)) {
+                try {
+                    if ($resource === 'push/device' && $method === 'GET') { return $this->data($push->status($grant,$request->query->getString('installation'))); }
+                    if (strlen($request->getContent()) > 4096) { throw new \DomainException('invalid_request'); }
+                    $p=json_decode($request->getContent(),true,16,JSON_THROW_ON_ERROR);
+                    if (!is_array($p) || array_is_list($p)) { throw new \DomainException('invalid_request'); }
+                    if ($resource === 'push/device' && $method === 'PUT') { return $this->data($push->register($grant,$p)); }
+                    if ($resource === 'push/device' && $method === 'DELETE') { $push->remove($grant,(string)($p['installation'] ?? '')); return $this->data(['removed'=>true]); }
+                    if ($resource === 'push/test' && $method === 'POST') { $push->test($grant,(string)($p['installation'] ?? '')); return $this->data(['queued'=>true],202); }
+                    return $this->error('Método não permitido.','method_not_allowed',405);
+                } catch (\DomainException|\JsonException $error) { return $this->error('Registro de push inválido ou indisponível.',$error instanceof \JsonException ? 'invalid_request' : $error->getMessage(),400); }
+            }
+
             $decorate = function(array $raw) use ($user,$states,$query,$aiStore,$moderation,$permissions): array {
                 $state = $states->find((int) $raw['id']);
                 if (!$state) { return $raw; }

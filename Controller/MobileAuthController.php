@@ -19,14 +19,14 @@ final class MobileAuthController extends CommonController
 {
     public const REDIRECT = 'mautic-inbox-demo://oauth/callback';
 
-    public function config(Request $request): JsonResponse
+    public function config(Request $request, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\ApnsConfiguration $push): JsonResponse
     {
         $origin = $request->getSchemeAndHttpHost().$request->getBaseUrl();
         return $this->jsonPrivate([
             'version' => 1, 'name' => 'Mautic Inbox', 'origin' => $origin,
             'api_base' => $origin.'/inbox/mobile/api', 'authorization_endpoint' => $request->getSchemeAndHttpHost().$this->generateUrl('mautic_inbox_mobile_authorize'),
             'magic_code_endpoint' => $origin.'/inbox/mobile/magic-code', 'token_endpoint' => $origin.'/inbox/mobile/token', 'redirect_uri' => self::REDIRECT,
-            'capabilities' => ['channels' => ['whatsapp','instagram','facebook','webchat'], 'auth' => 'email_code_pkce', 'magic_code_login' => true, 'operator_session' => true, 'transfer' => true, 'snooze' => true, 'notes' => true, 'templates' => true, 'canned' => true, 'crm' => true, 'agents' => true, 'media_upload' => false, 'moderation' => true, 'push_remote' => false],
+            'capabilities' => ['channels' => ['whatsapp','instagram','facebook','webchat'], 'auth' => 'email_code_pkce', 'magic_code_login' => true, 'operator_session' => true, 'transfer' => true, 'snooze' => true, 'notes' => true, 'templates' => true, 'canned' => true, 'crm' => true, 'agents' => true, 'media_upload' => false, 'moderation' => true, 'push_remote' => $push->configured('production') || $push->configured('development'), 'push_transport' => 'apns'],
         ]);
     }
 
