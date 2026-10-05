@@ -87,6 +87,55 @@ final class SessionStore
         });
     }
 
+    /** The email code is keyed by a secret held only by this requesting app. */
+    public function startMagic(string $email, string $address, string $challenge, int $user, string $fingerprint): array
+    {
+        return $this->transaction(function (array &$data) use ($email, $address, $challenge, $user, $fingerprint): array {
+            $now = time();
+            $emailHash = hash('sha256', strtolower($email));
+            $keys = ['email:'.$emailHash => 5, 'ip:'.hash('sha256', $address) => 20, 'global' => 1000];
+            foreach ($keys as $key => $limit) {
+                $rate = $data['magic_rates'][$key] ?? ['count' => 0, 'expires' => $now + 3600, 'last' => 0];
+                if ($rate['expires'] < $now) { $rate = ['count' => 0, 'expires' => $now + 3600, 'last' => 0]; }
+                if ($rate['count'] >= $limit || (str_starts_with($key, 'email:') && $rate['last'] > $now - 60)) { throw new \DomainException('rate_limited'); }
+            }
+            foreach ($keys as $key => $limit) {
+                $rate = $data['magic_rates'][$key] ?? ['count' => 0, 'expires' => $now + 3600, 'last' => 0];
+                if ($rate['expires'] < $now) { $rate = ['count' => 0, 'expires' => $now + 3600, 'last' => 0]; }
+                $rate['count']++; $rate['last'] = $now; $data['magic_rates'][$key] = $rate;
+            }
+            // A resend from this app invalidates its previous code, without affecting another device.
+            foreach ($data['magic'] as $key => $old) {
+                if ($old['email_hash'] === $emailHash && $old['challenge'] === $challenge) { unset($data['magic'][$key]); }
+            }
+            $id = bin2hex(random_bytes(32)); $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $data['magic'][hash('sha256', $id)] = ['user' => $user, 'fingerprint' => $fingerprint, 'email_hash' => $emailHash, 'challenge' => $challenge, 'code_hash' => hash_hmac('sha256', $code, $id), 'expires' => $now + 300, 'attempts' => 0];
+            return ['request_id' => $id, 'code' => $code, 'expires_in' => 300, 'resend_after' => 60];
+        });
+    }
+
+    public function cancelMagic(string $id): void
+    {
+        $this->transaction(function (array &$data) use ($id): void { unset($data['magic'][hash('sha256', $id)]); });
+    }
+
+    public function exchangeMagic(string $id, string $code, string $verifier): array
+    {
+        // Return errors from the transaction so failed-attempt counters are committed.
+        return $this->transaction(function (array &$data) use ($id, $code, $verifier): array {
+            $key = hash('sha256', $id); $grant = $data['magic'][$key] ?? null;
+            if (!$grant || $grant['expires'] <= time() || $grant['attempts'] >= 5) { return ['error' => 'invalid_grant']; }
+            $data['magic'][$key]['attempts']++;
+            $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
+            if (!preg_match('/^[0-9]{6}$/D', $code) || !preg_match('/^[A-Za-z0-9._~-]{43,128}$/D', $verifier) || !hash_equals($grant['challenge'], $challenge) || !hash_equals($grant['code_hash'], hash_hmac('sha256', $code, $id)) || $grant['user'] < 1) {
+                if ($data['magic'][$key]['attempts'] >= 5) { unset($data['magic'][$key]); }
+                return ['error' => 'invalid_grant'];
+            }
+            unset($data['magic'][$key]);
+            return $this->issue($data, $grant) + ['email_hash' => $grant['email_hash']];
+        });
+    }
+
     public function authenticate(string $token): array
     {
         if (!preg_match('/^[a-f0-9]{64}$/D', $token)) { throw new \DomainException('invalid_token'); }
@@ -128,8 +177,8 @@ final class SessionStore
         try {
             $raw = stream_get_contents($handle);
             $data = '' === $raw ? [] : json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
-            $data += ['codes' => [], 'access' => [], 'refresh' => [], 'devices' => [], 'user_codes' => [], 'rates' => []];
-            foreach (['codes', 'access', 'refresh', 'devices', 'rates'] as $kind) { foreach ($data[$kind] as $key => $grant) { if ($grant['expires'] < time()) { if ($kind === 'devices') { unset($data['user_codes'][$grant['user_code']]); } unset($data[$kind][$key]); } } }
+            $data += ['codes' => [], 'access' => [], 'refresh' => [], 'devices' => [], 'user_codes' => [], 'rates' => [], 'magic' => [], 'magic_rates' => []];
+            foreach (['codes', 'access', 'refresh', 'devices', 'rates', 'magic', 'magic_rates'] as $kind) { foreach ($data[$kind] as $key => $grant) { if ($grant['expires'] < time()) { if ($kind === 'devices') { unset($data['user_codes'][$grant['user_code']]); } unset($data[$kind][$key]); } } }
             $result = $operation($data);
             $json = json_encode($data, JSON_THROW_ON_ERROR);
             rewind($handle); if (!ftruncate($handle, 0) || fwrite($handle, $json) !== strlen($json)) { throw new \RuntimeException('mobile_storage_unavailable'); }

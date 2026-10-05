@@ -45,6 +45,7 @@ return [
         'mautic_inbox_canned_delete' => ['path' => '/inbox/api/canned-responses/{responseId}', 'controller' => InboxController::class.'::deleteCanned', 'method' => 'DELETE', 'requirements' => ['responseId' => '\\d+']],
     ],
     'public' => [
+        'mautic_inbox_mobile_magic_code' => ['path' => '/inbox/mobile/magic-code', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::magicCode', 'method' => 'POST'],
         'mautic_inbox_mobile_device' => ['path' => '/inbox/mobile/device', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::device', 'method' => 'POST'],
         'mautic_inbox_mobile_config' => ['path' => '/inbox/mobile/config', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::config', 'method' => 'GET'],
         'mautic_inbox_mobile_token' => ['path' => '/inbox/mobile/token', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::token', 'method' => 'POST'],

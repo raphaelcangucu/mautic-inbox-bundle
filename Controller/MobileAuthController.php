@@ -9,6 +9,8 @@ use Mautic\CoreBundle\Controller\CommonController;
 use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\UserBundle\Entity\User;
+use Mautic\EmailBundle\Helper\MailHelper;
+use Psr\Log\LoggerInterface;
 use MauticPlugin\MauticInboxBundle\Application\Mobile\SessionStore;
 use Symfony\Component\HttpFoundation\{JsonResponse,RedirectResponse,Request,Response};
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
@@ -23,8 +25,8 @@ final class MobileAuthController extends CommonController
         return $this->jsonPrivate([
             'version' => 1, 'name' => 'Mautic Inbox', 'origin' => $origin,
             'api_base' => $origin.'/inbox/mobile/api', 'authorization_endpoint' => $request->getSchemeAndHttpHost().$this->generateUrl('mautic_inbox_mobile_authorize'),
-            'token_endpoint' => $origin.'/inbox/mobile/token', 'redirect_uri' => self::REDIRECT,
-            'capabilities' => ['channels' => ['whatsapp','instagram','facebook','webchat'], 'auth' => 'authorization_code_pkce', 'operator_session' => true, 'transfer' => true, 'snooze' => true, 'notes' => true, 'templates' => true, 'canned' => true, 'crm' => true, 'agents' => true, 'media_upload' => false, 'moderation' => true, 'push_remote' => false],
+            'magic_code_endpoint' => $origin.'/inbox/mobile/magic-code', 'token_endpoint' => $origin.'/inbox/mobile/token', 'redirect_uri' => self::REDIRECT,
+            'capabilities' => ['channels' => ['whatsapp','instagram','facebook','webchat'], 'auth' => 'email_code_pkce', 'magic_code_login' => true, 'operator_session' => true, 'transfer' => true, 'snooze' => true, 'notes' => true, 'templates' => true, 'canned' => true, 'crm' => true, 'agents' => true, 'media_upload' => false, 'moderation' => true, 'push_remote' => false],
         ]);
     }
 
@@ -55,20 +57,56 @@ final class MobileAuthController extends CommonController
         try {
             if (strlen($request->getContent()) > 4096) { return $this->jsonPrivate(['error' => 'invalid_request'], 400); }
             $p = str_contains($request->headers->get('Content-Type',''), 'application/json') ? json_decode($request->getContent(), true, 16, JSON_THROW_ON_ERROR) : $request->request->all();
-            if (!is_array($p)) { throw new \DomainException('invalid_request'); }
+            if (!is_array($p) || array_is_list($p)) { throw new \DomainException('invalid_request'); }
+            foreach (['grant_type','request_id','code','code_verifier','redirect_uri','refresh_token','device_code'] as $field) { if (isset($p[$field]) && !is_string($p[$field])) { throw new \DomainException('invalid_request'); } }
             $tokens = match ($p['grant_type'] ?? '') {
                 'authorization_code' => $store->exchange((string) ($p['code'] ?? ''), (string) ($p['code_verifier'] ?? ''), (string) ($p['redirect_uri'] ?? '')),
+                'email_code' => $store->exchangeMagic((string) ($p['request_id'] ?? ''), (string) ($p['code'] ?? ''), (string) ($p['code_verifier'] ?? '')),
                 'refresh_token' => $store->refresh((string) ($p['refresh_token'] ?? '')),
                 'urn:ietf:params:oauth:grant-type:device_code' => $store->exchangeDevice((string) ($p['device_code'] ?? ''), (string) ($p['code_verifier'] ?? '')),
                 default => throw new \DomainException('unsupported_grant_type'),
             };
             if (isset($tokens['error'])) { return $this->jsonPrivate($tokens, 400); }
             $user = $em->find(User::class, $tokens['user_id']);
-            if (!$user instanceof User || !$user->isPublished() || !hash_equals($tokens['fingerprint'], hash('sha256', (string) $user->getPassword()))) { $store->revoke($tokens['access_token']); throw new \DomainException('invalid_grant'); }
-            unset($tokens['user_id'], $tokens['fingerprint']);
+            if (!$user instanceof User || !$user->isPublished() || (isset($tokens['email_hash']) && !hash_equals($tokens['email_hash'], hash('sha256', strtolower((string) $user->getEmail())))) || !hash_equals($tokens['fingerprint'], hash('sha256', (string) $user->getPassword()))) { $store->revoke($tokens['access_token']); throw new \DomainException('invalid_grant'); }
+            unset($tokens['user_id'], $tokens['fingerprint'], $tokens['email_hash']);
             $tokens['user'] = ['id' => (int) $user->getId(), 'name' => $user->getName() ?: $user->getUsername(), 'email' => $user->getEmail()];
             return $this->jsonPrivate($tokens);
         } catch (\JsonException|\DomainException $e) { return $this->jsonPrivate(['error' => $e instanceof \JsonException ? 'invalid_request' : $e->getMessage()], 400); }
+    }
+
+    public function magicCode(Request $request, SessionStore $store, EntityManagerInterface $em, MailHelper $mailHelper, LoggerInterface $logger): JsonResponse
+    {
+        try {
+            if (strlen($request->getContent()) > 2048) { throw new \DomainException('invalid_request'); }
+            $p = json_decode($request->getContent(), true, 8, JSON_THROW_ON_ERROR);
+            if (!is_array($p) || !is_string($p['email'] ?? null)) { throw new \DomainException('invalid_request'); }
+            $email = strtolower(trim($p['email'])); $challenge = $p['code_challenge'] ?? '';
+            if (strlen($email) > 254 || !filter_var($email, FILTER_VALIDATE_EMAIL) || !is_string($challenge) || !preg_match('/^[A-Za-z0-9_-]{43}$/D', $challenge)) { throw new \DomainException('invalid_request'); }
+            // Read-only lookup of operators; this never creates a user or a contact.
+            $matches = $em->getRepository(User::class)->createQueryBuilder('u')->where('LOWER(u.email) = :email')->andWhere('u.isPublished = true')->setParameter('email', $email)->setMaxResults(2)->getQuery()->getResult();
+            $user = count($matches) === 1 && $matches[0] instanceof User ? $matches[0] : null;
+            $grant = $store->startMagic($email, $request->getClientIp() ?? 'unknown', $challenge, $user ? (int) $user->getId() : 0, $user ? hash('sha256', (string) $user->getPassword()) : '');
+            if ($user) {
+                try {
+                    $instance = htmlspecialchars($request->getHost(), ENT_QUOTES, 'UTF-8');
+                    $mailer = $mailHelper->getMailer();
+                    $mailer->setTo([(string) $user->getEmail() => $user->getName() ?: $user->getUsername()]);
+                    $mailer->setSubject('Seu código de acesso ao Mautic Inbox');
+                    $mailer->setBody('<h2>Entrar no Mautic Inbox</h2><p>Instância: '.$instance.'</p><p>Seu código: <strong style="font-size:28px;letter-spacing:6px">'.$grant['code'].'</strong></p><p>Válido por 5 minutos, somente no aparelho que o solicitou. Ao confirmar, o app usará as permissões do seu usuário e manterá uma sessão renovável por até 30 dias. Você pode encerrá-la ao sair do app.</p><p>Não compartilhe este código. Se não solicitou o acesso, ignore este e-mail.</p>', 'text/html', 'UTF-8', true);
+                    $mailer->setPlainText('Mautic Inbox — '.$request->getHost()."\nCódigo de acesso: ".$grant['code']."\nValidade: 5 minutos, somente neste aparelho. Sessão renovável por até 30 dias. Não compartilhe o código. Se não solicitou, ignore este e-mail.");
+                    if (!$mailer->send()) { throw new \RuntimeException('mail_not_accepted'); }
+                } catch (\Throwable) {
+                    $store->cancelMagic($grant['request_id']);
+                    $logger->error('Inbox mobile magic code: transactional mail unavailable.');
+                }
+            }
+            // Identical response for unknown, ambiguous, unpublished users and mail failures.
+            unset($grant['code']);
+            return $this->jsonPrivate($grant + ['message' => 'Se este e-mail pertence a um usuário ativo desta instância, você receberá um código de acesso.'], 202);
+        } catch (\JsonException|\DomainException $e) {
+            return $this->jsonPrivate(['error' => $e instanceof \JsonException ? 'invalid_request' : $e->getMessage()], $e->getMessage() === 'rate_limited' ? 429 : 400);
+        }
     }
 
     public function device(Request $request, SessionStore $store): JsonResponse

@@ -78,3 +78,9 @@ Base snapshot do Inbox 1.3 em commit70e2364. Esta extensão precisa do Mautic7, 
 Arquivos/rotas PHP ficam no plugin; `Runtime/mobile-assistant.mjs` deve ir ao diretório configurado no PiClient. Não copie `auth.json` ou bearer do servidor para o app. O diretório `var/inbox-mobile` deve apontar para storage persistente protegido do servidor, fora do webroot público, com permissões0700/arquivos0600. Nenhum schema foi adicionado.
 
 Preserve backup dos arquivos/cache anteriores e use o processo normal de deploy/PHP-FPM para carregar os novos serviços. Não use instalação/teste como justificativa para executar fixtures ou testes destrutivos no banco de produção.
+
+## Login por código de e-mail (0.3.1)
+
+GET /inbox/mobile/config anuncia magic_code_login e magic_code_endpoint. POST /inbox/mobile/magic-code recebe email/code_challenge S256 e retorna request_id secreto, expires_in=300/resend_after=60, nunca o código. MailHelper envia para um único operador ativo encontrado pelo e-mail, com nome da instância e aviso de sessão 30 dias. POST /inbox/mobile/token com grant_type=email_code, request_id, code, code_verifier troca o código por sessão normal. Verifica operador ativo, fingerprint de senha e e-mail atual. Código é de uso único, 5 tentativas; reenvio no mesmo PKCE invalida o anterior. Não cria contato/usuário. Resposta genérica também para e-mail desconhecido/inativo/ambíguo e falha de mailer. Limites 5/h e-mail, 20/h IP, 1000/h global. Solicitações/limites e hashes protegidos no mesmo storage privado com flock. HMAC do código usa o segredo de solicitação não persistido; PKCE e secreto ficam em memória no app. Sem esquema ou testes no banco de produção.
+
+28 contratos do app e testes PHP puros passaram. Descoberta e respostas públicas foram verificadas na instância implantada. Recebimento de código/login nativo aguardam cadastro solicitado, cuja senha inicial precisa ser definida pelo operador no formulário do Mautic.
