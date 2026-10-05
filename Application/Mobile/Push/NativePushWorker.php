@@ -27,7 +27,15 @@ final class NativePushWorker
             $raw=$state ? $this->query->summary($state) : null;
             if ($job['state']) {
                 $flags=$raw ? $this->moderation->flags($raw) : [];
-                if (!$state || ($device['preferences']['grouped'] && $state->getLastInboundMessageId() !== $job['message']) || ($state->getAssignee() && (int)$state->getAssignee()->getId() !== (int)$user->getId()) || ($raw['unread'] ?? 0) <= 0 || $state->getLifecycle() === 'snoozed' || !empty($flags['spam']) || !empty($flags['blockedAuthor']) || ($device['preferences']['suppressOpen'] && $device['foreground'] && $device['seen'] > time()-60 && $device['open'] === $job['state'])) { $this->finish($id,$job,null,null); ++$counts['skipped']; continue; }
+                $conversation = $state ? [
+                    'lifecycle' => $state->getLifecycle(),
+                    'assigneeId' => $state->getAssignee()?->getId(),
+                    'lastInboundId' => $state->getLastInboundMessageId(),
+                    'unread' => $raw['unread'] ?? 0,
+                    'spam' => !empty($flags['spam']),
+                    'blockedAuthor' => !empty($flags['blockedAuthor']),
+                ] : [];
+                if (!self::conversationEligible($device, $job, $conversation, (int) $user->getId(), time())) { $this->finish($id,$job,null,null); ++$counts['skipped']; continue; }
             }
             $payload=self::payload($device,$raw,$job['state']);
             $collapse=hash('sha256',$device['accountId'].':'.($device['preferences']['grouped'] ? $job['state'] : $id));
@@ -43,6 +51,20 @@ final class NativePushWorker
     {
         $active=$user->getActivePermissions();
         return $user->isAdmin() || $this->permissions->isGranted($active['inbox'] ?? [], 'conversations', 'view') || $this->permissions->isGranted($active['meta'] ?? [], 'messages', 'view');
+    }
+    /** Recheck the current conversation when a queued alert is about to leave. */
+    public static function conversationEligible(array $device, array $job, array $conversation, int $operatorId, int $now): bool
+    {
+        if (($conversation['lifecycle'] ?? null) !== 'open' || ($conversation['unread'] ?? 0) <= 0 || !empty($conversation['spam']) || !empty($conversation['blockedAuthor'])) {
+            return false;
+        }
+        if (isset($conversation['assigneeId']) && (int) $conversation['assigneeId'] !== $operatorId) {
+            return false;
+        }
+        if ($device['preferences']['grouped'] && ($conversation['lastInboundId'] ?? null) !== $job['message']) {
+            return false;
+        }
+        return !($device['preferences']['suppressOpen'] && $device['foreground'] && $device['seen'] > $now - 60 && $device['open'] === $job['state']);
     }
     public static function payload(array $device, ?array $raw, int $state): array
     {
