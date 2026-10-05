@@ -136,16 +136,16 @@ final class ConversationActions
         return $draft;
     }
 
-    public function reply(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null): OutboundRequest
+    public function reply(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null): OutboundRequest
     {
-        $outbound = $this->inboxIntegration->runHumanTransition($state, fn (): OutboundRequest => $this->entityManager->wrapInTransaction(function () use ($state, $author, $body, $requestId, $template): OutboundRequest {
+        $outbound = $this->inboxIntegration->runHumanTransition($state, fn (): OutboundRequest => $this->entityManager->wrapInTransaction(function () use ($state, $author, $body, $requestId, $template, $replyMode): OutboundRequest {
                 $locked = $this->entityManager->find(ConversationState::class, $state->getId(), LockMode::PESSIMISTIC_WRITE);
                 if (!$locked instanceof ConversationState) {
                     throw new InboxException('mautic.inbox.ui.conversation_not_found_61bc81', 404);
                 }
 
                 $this->entityManager->refresh($locked, LockMode::PESSIMISTIC_WRITE);
-                return $this->replyLocked($locked, $author, $body, $requestId, $template);
+                return $this->replyLocked($locked, $author, $body, $requestId, $template, $replyMode);
             }));
         if ($outbound->getJob()) {
             // The local request and conversation state are committed before any
@@ -275,8 +275,11 @@ final class ConversationActions
         return [$request, true];
     }
 
-    private function replyLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null): OutboundRequest
+    private function replyLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null): OutboundRequest
     {
+        $conversation = $state->getConversation();
+        $replyMode = ReplyMode::resolve($conversation->getChannel(), $conversation->getRecipient(), $replyMode);
+        $publicInstagram = ReplyMode::instagramPublic($conversation->getChannel(), $conversation->getRecipient(), $replyMode);
         if ($state->getAssignee()?->getId() !== $author->getId()) {
             throw new InboxException('mautic.inbox.ui.assign_the_conversation_to_yourself_before_replying_52b660', 409);
         }
@@ -299,14 +302,14 @@ final class ConversationActions
         }
         $existing = $this->outboundRequests->findOneBy(['requestId' => $requestId]);
         if ($existing instanceof OutboundRequest) {
-            if ($existing->getConversation()->getId() !== $state->getConversation()->getId() || $existing->getAuthor()->getId() !== $author->getId() || $existing->getBody() !== $body || ($existing->getJob()?->getPayload()['_template_id'] ?? null) !== ($prepared['payload']['_template_id'] ?? null) || ($existing->getJob()?->getPayload()['components'] ?? []) !== ($prepared['payload']['components'] ?? [])) {
+            if ($existing->getConversation()->getId() !== $state->getConversation()->getId() || $existing->getAuthor()->getId() !== $author->getId() || $existing->getBody() !== $body || ($existing->getJob()?->getPayload()['_template_id'] ?? null) !== ($prepared['payload']['_template_id'] ?? null) || ($existing->getJob()?->getPayload()['components'] ?? []) !== ($prepared['payload']['components'] ?? []) || ($conversation->getChannel() === 'instagram' && str_starts_with($conversation->getRecipient(),'comment:') && ($existing->getJob()?->getOperation() === 'instagram_public_reply') !== $publicInstagram)) {
                 throw new InboxException('mautic.inbox.ui.send_identifier_already_used_419540', 409);
             }
             return $existing;
         }
 
-        if (!$prepared && null !== ($reason = $this->replyAvailability->reason($state))) { throw new InboxException($reason, 409); }
-        [$operation, $recipient] = $this->outboundTarget($state->getConversation());
+        if (!$prepared && null !== ($reason = $this->replyAvailability->reason($state, $replyMode))) { throw new InboxException($reason, 409); }
+        [$operation, $recipient] = $publicInstagram ? ['instagram_public_reply', substr($conversation->getRecipient(),8)] : $this->outboundTarget($conversation);
         $job = $this->queue->enqueue($asset, $prepared ? 'whatsapp_template' : $operation, ($prepared['payload'] ?? []) + [
             'recipient' => $recipient,
             'text' => $body,
@@ -419,7 +422,7 @@ final class ConversationActions
         }
         if (str_starts_with($conversation->getRecipient(), 'comment:')) {
             $alreadySent = $this->messages->findOneBy(['conversation' => $conversation, 'direction' => 'outbound', 'messageType' => 'private_reply', 'status' => ['accepted', 'sent', 'delivered', 'read', 'pending', 'processing', 'uncertain']]);
-            if ($alreadySent instanceof MetaMessage || $this->outboundRequests->findOneBy(['conversation' => $conversation, 'status' => ['pending', 'processing', 'waiting', 'uncertain', 'sent', 'accepted', 'delivered', 'read']]) instanceof OutboundRequest) {
+            if ($alreadySent instanceof MetaMessage || $this->replyAvailability->hasPrivateRequest($conversation)) {
                 throw new InboxException('mautic.inbox.ui.a_private_reply_has_already_been_sent_or_requested_wait_for_the_p_028b40', 409);
             }
             return ['instagram_private_reply', substr($conversation->getRecipient(), 8)];
@@ -441,5 +444,10 @@ final class ConversationActions
     {
         $this->entityManager->persist((new EventLog())->setConversation($state->getConversation())->setActor($actor)->setEventType($type)->setDetails($details));
         $this->entityManager->flush();
+    }
+
+    public function publicReplyBlockedReason(ConversationState $state): ?string
+    {
+        return $this->replyAvailability->reason($state, 'public');
     }
 }

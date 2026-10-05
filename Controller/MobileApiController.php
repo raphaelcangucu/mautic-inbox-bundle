@@ -46,7 +46,7 @@ final class MobileApiController extends CommonController
                 } catch (\DomainException|\JsonException $error) { return $this->error('Registro de push inválido ou indisponível.',$error instanceof \JsonException ? 'invalid_request' : $error->getMessage(),400); }
             }
 
-            $decorate = function(array $raw) use ($user,$states,$query,$aiStore,$moderation,$permissions): array {
+            $decorate = function(array $raw) use ($user,$states,$query,$aiStore,$moderation,$permissions,$actions): array {
                 $state = $states->find((int) $raw['id']);
                 if (!$state) { return $raw; }
                 $raw = $query->detail($state,$user);
@@ -56,6 +56,14 @@ final class MobileApiController extends CommonController
                 $raw['agent']=$a ? ['key'=>$a['agent']??'', 'name'=>$a['name']??'', 'status'=>$a['status']??'paused', 'count'=>$a['count']??0] : null;
                 $raw['moderation']=$raw['kind'] === 'comments' ? $moderation->flags($raw) : ['spam'=>false,'hidden'=>false,'blockedAuthor'=>false];
                 $raw['can_reply']=$raw['can_reply'] && $permissions->isGranted(['inbox:conversations:create','meta:messages:create']) && !$raw['moderation']['spam'] && !$raw['moderation']['blockedAuthor'];
+                if ($raw['kind'] === 'comments' && $state->getConversation()->getChannel() === 'instagram') {
+                    $allowed=$permissions->isGranted(['inbox:conversations:create','meta:messages:create']) && !$raw['moderation']['spam'] && !$raw['moderation']['blockedAuthor'];
+                    $publicReason=$actions->publicReplyBlockedReason($state);
+                    $raw['reply_modes']=[
+                        'public'=>['available'=>$allowed && $publicReason === null,'can_reply'=>$allowed && $publicReason === null && $state->getAssignee()?->getId() === $user->getId(),'blocked_reason'=>$publicReason],
+                        'private'=>['available'=>$allowed && $raw['reply_blocked_reason'] === null,'can_reply'=>$raw['can_reply'],'blocked_reason'=>$raw['reply_blocked_reason']],
+                    ];
+                }
                 return $raw;
             };
             if ($method === 'POST' && $resource === 'assistant/messages') {
@@ -118,9 +126,9 @@ final class MobileApiController extends CommonController
                 if (isset($p['attachment'])) { return $this->error('Upload de mídia não disponível nesta instância.', 'unsupported_media', 422); }
                 $conversation = $state->getConversation();
                 $comment = str_starts_with($conversation->getRecipient(), 'comment:');
-                $expectedMode = $comment && $conversation->getChannel() === 'facebook' ? 'public' : 'private';
-                if ($comment && isset($p['reply_mode']) && $p['reply_mode'] !== $expectedMode) { return $this->error('Este canal não oferece esse modo de resposta.', 'unsupported_reply_mode', 422); }
-                $out = $actions->reply($state, $user, (string) ($p['body'] ?? ''), (string) ($p['request_id'] ?? ''), isset($p['template_id']) ? ['id' => (int) $p['template_id'], 'variables' => $p['variables'] ?? []] : null);
+                if (isset($p['reply_mode']) && !is_string($p['reply_mode'])) { return $this->error('Modo de resposta inválido.', 'unsupported_reply_mode', 422); }
+                $replyMode=\MauticPlugin\MauticInboxBundle\Application\ReplyMode::resolve($conversation->getChannel(),$conversation->getRecipient(),$p['reply_mode']??null);
+                $out = $actions->reply($state, $user, (string) ($p['body'] ?? ''), (string) ($p['request_id'] ?? ''), isset($p['template_id']) ? ['id' => (int) $p['template_id'], 'variables' => $p['variables'] ?? []] : null, $replyMode);
                 return $this->data(['request_id' => $out->getRequestId(), 'status' => $out->getStatus(), 'item' => $query->outboundItem($out), 'summary' => $decorate($query->summary($state))], 202);
             }
             if ($operation === 'moderation') {
