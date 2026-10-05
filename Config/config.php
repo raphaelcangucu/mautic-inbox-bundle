@@ -56,7 +56,6 @@ return [
         'mautic_inbox_icon' => ['path' => '/inbox-icon-{name}.png', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::icon', 'method' => 'GET', 'requirements' => ['name' => '[0-9a-z-]+']],
     ]],
     'menu' => ['main' => [
-        'mautic.inbox.mail_connections' => ['id' => 'mautic_inbox_mail_connections', 'route' => 'mautic_inbox_mail_connections', 'access' => 'admin', 'iconClass' => 'ri-mail-settings-line', 'priority' => 22],
         'mautic.inbox.menu' => ['id' => 'mautic_inbox', 'route' => 'mautic_inbox_index', 'access' => 'inbox:conversations:view', 'iconClass' => 'ri-customer-service-2-line', 'priority' => 21],
     ]],
 ];

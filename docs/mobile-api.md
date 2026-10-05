@@ -121,3 +121,10 @@ Foram cadastrados com as credenciais já autorizadas, diretamente entre arquivos
 **Configuração apenas:** este registro não é consumido pelo transportador atual e não executa fallback em envios. O login mobile continua usando seu perfil separado e o SMTP global/campanhas não foram alterados. Conectar o registro aos transportadores é uma etapa posterior, fora do escopo atual. Quando autorizada, a execução de fallback deve preservar o mesmo envio, cabeçalhos, anexos, rastreamento e deduplicação, e não redisparar uma mensagem cuja aceitação pelo provedor esteja incerta. Campos salvos não comprovam autenticação ou entrega do provedor.
 
 Validação: `Tests/Mail/connections.php` e `Tests/Mobile/temporary-smtp.php` são PHP puro em pastas descartáveis locais, sem banco, kernel ou rede. Passaram armazenamento privado, redação/preservação de credenciais, ausência de prazo, cadeias/ciclos/referências, rejeições atômicas, conflito de revisão e formatos de cada provedor. Sintaxe PHP/JavaScript e diff passaram. Browser real confirmou troca de campos SES/Mailgun, edição, persistência do fallback e sucesso com chave vazia. Desktop e largura390px conferidos: formulário empilha campos, tabela mantém rolagem horizontal contida. Backups dos arquivos/cache foram verificados antes do deploy. Nenhuma migração, schema ou teste de banco executado em produção.
+
+
+### Plugin de e-mail independente — 05/10/2026
+
+O cadastro foi extraído para `MauticMultiMailBundle` (Multi Mail), sem dependência do Inbox. A rota atual é `/s/mail-connections`; `/s/inbox/mail-connections` mantém redirecionamento para administradores. A configuração privada permanece na pasta compartilhada fora do document root, preservando as conexões e as credenciais existentes.
+
+O plugin registra o transporte nativo `multimail://<id-da-conexao>` para SMTP, SES, Resend, Mailgun, SendGrid, Postmark e Brevo. Cada conexão tem sua cadeia de fallback; recusas confirmadas permitem reserva, resultados incertos não são repetidos. O envio global é selecionado explicitamente nas configurações de e-mail do Mautic. O login mobile mantém sua configuração atual.
