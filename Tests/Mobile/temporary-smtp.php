@@ -45,6 +45,18 @@ try {
     $selection = ['login' => 'resend', 'expires_at' => time() + 3600];
     saveSettings($selectionPath, $selection);
     check($settings->read() === $resend, 'Select Resend with its own username, domain sender and reply address');
+    $withoutExpiry = $resend;
+    unset($withoutExpiry['expires_at']);
+    saveSettings($resendPath, $withoutExpiry);
+    saveSettings($selectionPath, ['login' => 'resend']);
+    check($settings->read() === $withoutExpiry, 'Operator-managed profile and selection have no automatic deadline');
+    saveSettings($resendPath, array_replace($withoutExpiry, ['expires_at' => null]));
+    refused(fn() => $settings->read());
+    saveSettings($resendPath, $withoutExpiry);
+    saveSettings($selectionPath, ['login' => 'resend', 'expires_at' => null]);
+    refused(fn() => $settings->read());
+    saveSettings($resendPath, $resend);
+    saveSettings($selectionPath, $selection);
     chmod($resendPath, 0644);
     refused(fn() => $settings->read());
     chmod($resendPath, 0600);

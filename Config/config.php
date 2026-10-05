@@ -10,6 +10,7 @@ return [
     'version' => '1.3.0',
     'author' => 'Mautic',
     'routes' => ['main' => [
+        'mautic_inbox_mail_connections' => ['path' => '/inbox/mail-connections', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MailConnectionsController::class.'::index', 'method' => ['GET', 'POST']],
         'mautic_inbox_mobile_device_authorize' => ['path' => '/inbox/mobile/device-authorize', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::authorizeDevice', 'method' => ['GET','POST']],
         'mautic_inbox_mobile_authorize' => ['path' => '/inbox/mobile/authorize', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MobileAuthController::class.'::authorize', 'method' => ['GET','POST']],
         'mautic_inbox_ai' => ['path'=>'/inbox/ai','controller'=>\MauticPlugin\MauticInboxBundle\Controller\AiController::class.'::index','method'=>'GET'],
@@ -55,6 +56,7 @@ return [
         'mautic_inbox_icon' => ['path' => '/inbox-icon-{name}.png', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::icon', 'method' => 'GET', 'requirements' => ['name' => '[0-9a-z-]+']],
     ]],
     'menu' => ['main' => [
+        'mautic.inbox.mail_connections' => ['id' => 'mautic_inbox_mail_connections', 'route' => 'mautic_inbox_mail_connections', 'access' => 'admin', 'iconClass' => 'ri-mail-settings-line', 'priority' => 22],
         'mautic.inbox.menu' => ['id' => 'mautic_inbox', 'route' => 'mautic_inbox_index', 'access' => 'inbox:conversations:view', 'iconClass' => 'ri-customer-service-2-line', 'priority' => 21],
     ]],
 ];

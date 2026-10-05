@@ -6,7 +6,7 @@ namespace MauticPlugin\MauticInboxBundle\Application\Mobile;
 
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
-/** Optional, short-lived credentials kept outside the document root and compiled container. */
+/** Optional private credentials kept outside the document root and compiled container. */
 final class TemporarySmtpSettings
 {
     public function __construct(#[Autowire('%kernel.project_dir%')] private readonly string $projectDir)
@@ -20,7 +20,7 @@ final class TemporarySmtpSettings
         $selection = $this->readPrivateFile($directory, 'mailer-selection.json');
         $profile = $selection['login'] ?? 'dreamhost';
         if ($selection !== null && (!isset($selection['login']) || !is_string($profile) || !in_array($profile, ['dreamhost', 'resend'], true)
-            || !is_int($selection['expires_at'] ?? null) || $selection['expires_at'] <= time())) {
+            || !$this->validExpiry($selection))) {
             throw new \RuntimeException('Invalid or expired mailer selection.');
         }
         $settings = $this->readPrivateFile($directory, $profile === 'resend' ? 'resend.json' : 'mailer.json');
@@ -31,7 +31,7 @@ final class TemporarySmtpSettings
 
             return null;
         }
-        if (!is_int($settings['expires_at'] ?? null) || $settings['expires_at'] <= time()) {
+        if (!$this->validExpiry($settings)) {
             throw new \RuntimeException('Temporary SMTP settings expired or invalid.');
         }
         foreach (['host', 'username', 'password', 'from_email', 'from_name'] as $key) {
@@ -59,6 +59,12 @@ final class TemporarySmtpSettings
         }
 
         return $settings;
+    }
+
+    private function validExpiry(array $value): bool
+    {
+        return !array_key_exists('expires_at', $value)
+            || (is_int($value['expires_at']) && $value['expires_at'] > time());
     }
 
     private function readPrivateFile(string $directory, string $filename): ?array
