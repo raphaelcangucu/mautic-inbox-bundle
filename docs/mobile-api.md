@@ -128,3 +128,9 @@ Validação: `Tests/Mail/connections.php` e `Tests/Mobile/temporary-smtp.php` s�
 O cadastro foi extraído para `MauticMultiMailBundle` (Multi Mail), sem dependência do Inbox. A rota atual é `/s/mail-connections`; `/s/inbox/mail-connections` mantém redirecionamento para administradores. A configuração privada permanece na pasta compartilhada fora do document root, preservando as conexões e as credenciais existentes.
 
 O plugin registra o transporte nativo `multimail://<id-da-conexao>` para SMTP, SES, Resend, Mailgun, SendGrid, Postmark e Brevo. Cada conexão tem sua cadeia de fallback; recusas confirmadas permitem reserva, resultados incertos não são repetidos. O envio global é selecionado explicitamente nas configurações de e-mail do Mautic. O login mobile mantém sua configuração atual.
+
+### Contexto da publicação
+
+GET /inbox/mobile/conversations/{stateId}/publication?refresh=1 usa a mesma sessão bearer e verificação de acesso à conversa. Responde items/available; consulta Instagram/Facebook somente quando solicitado, com cache protegido de 15 minutos. Descrição, imagem e permalink de origem são independentes do texto do comentário. Links ficam restritos à plataforma HTTPS; imagens a seus CDNs. A lista usa apenas cache de metadados e não chama o Graph por atendimento. Falha no Graph devolve o contexto disponível sem expor credenciais. Nenhuma alteração de schema.
+
+Verificação isolada: php Tests/Standalone/publication.php (sem conexão com banco).

@@ -21,7 +21,7 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 /** Native bearer boundary. Business rules remain in the existing Inbox services. */
 final class MobileApiController extends CommonController
 {
-    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push): Response
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications): Response
     {
         $previous = $tokens->getToken();
         try {
@@ -92,7 +92,7 @@ final class MobileApiController extends CommonController
                 $since = $request->query->getString('since') ?: gmdate(DATE_ATOM, time() - 60);
                 $updates=$query->poll($user,$since,$selected,$request->query->has('notification_cursor') ? $request->query->getInt('notification_cursor') : null); $updates['conversations']=array_map($decorate,$updates['conversations']); return $this->data($updates);
             }
-            if (!preg_match('#^conversations/([1-9][0-9]*)(?:/(history|templates|take|state|reply|note|draft|ai|email-options|email-actions|moderation))?$#D', $resource, $parts)) {
+            if (!preg_match('#^conversations/([1-9][0-9]*)(?:/(history|templates|take|state|reply|note|draft|ai|email-options|email-actions|moderation|publication))?$#D', $resource, $parts)) {
                 return $this->error('Recurso não disponível nesta versão da API.', 'unsupported', 404);
             }
             $id = (int) $parts[1]; $operation = $parts[2] ?? ''; $state = $states->find($id);
@@ -101,6 +101,7 @@ final class MobileApiController extends CommonController
                 return match ($operation) {
                     '' => $this->data($decorate($query->summary($state))),
                     'history' => $this->data($query->timeline($state, $request->query->get('before'), $request->query->getInt('limit', 40))),
+                    'publication' => $this->data($publications->resolve($state,$query->origins($state),$request->query->getBoolean('refresh'))),
                     'templates' => $this->data(['items' => $templates->catalog($state), 'blocked_reason' => ($reason = $templates->blockedReason($state)) ? $this->translator->trans($reason) : null]),
                     'email-options' => $this->data($linking->options($state->getConversation(), $linking->email($request->query->getString('email')), $user)),
                     'ai' => $this->forward(AiController::class.'::available', ['stateId' => $id]),

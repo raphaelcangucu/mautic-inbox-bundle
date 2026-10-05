@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace MauticPlugin\MauticInboxBundle\Application;
 
 use Doctrine\ORM\EntityManagerInterface;
+use MauticPlugin\MauticInboxBundle\Contract\BatchChannelTransportInterface;
 use Mautic\CampaignBundle\Entity\Event;
 use Mautic\CampaignBundle\Entity\EventRepository;
 use Mautic\UserBundle\Entity\User;
@@ -31,6 +32,10 @@ final class InboxQuery
         EventLog::class => ['event', 1],
     ];
 
+    /** Request-local list projections. Null values are cached too. */
+    private array $latestMessages = [];
+    private array $latestInbound = [];
+
     public function __construct(
         private EntityManagerInterface $entityManager,
         private \Symfony\Contracts\Translation\TranslatorInterface $translator,
@@ -42,6 +47,7 @@ final class InboxQuery
         private MessagePresentation $presentation,
         private ReplyAvailability $replyAvailability,
         private ChannelTransportRegistry $channelTransports,
+        private \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications,
         #[\Symfony\Component\DependencyInjection\Attribute\Autowire(service: 'mautic.helper.twig.avatar')]
         private \Mautic\LeadBundle\Twig\Helper\AvatarHelper $avatars,
     ) {
@@ -100,6 +106,7 @@ final class InboxQuery
         $states = $qb->orderBy('c.lastMessageAt', 'DESC')->addOrderBy('s.id', 'DESC')->setMaxResults($limit + 1)->getQuery()->getResult();
         $hasMore = count($states) > $limit;
         $states = array_slice($states, 0, $limit);
+        $this->warmConversationList($states);
         $items = array_map(fn (ConversationState $state): array => $this->conversation($state), $states);
         $last = [] === $states ? null : $states[array_key_last($states)];
 
@@ -305,14 +312,40 @@ final class InboxQuery
         return ['notifications' => $rows, 'notification_cursor' => $rows ? (int) end($rows)['id'] : $cursor, 'notifications_more' => $more];
     }
 
+    /** @param list<ConversationState> $states */
+    private function warmConversationList(array $states): void
+    {
+        $ids = array_map(static fn (ConversationState $state): int => (int) $state->getConversation()->getId(), $states);
+        $this->latestMessages = $this->latestInbound = array_fill_keys($ids, null);
+        if ([] === $ids) return;
+        // Two queries for the entire page; preserve date ordering and ID tie-breaks.
+        $base = 'SELECT m FROM '.MetaMessage::class.' m WHERE IDENTITY(m.conversation) IN (:ids)';
+        $newer = 'SELECT newer.id FROM '.MetaMessage::class.' newer WHERE newer.conversation = m.conversation AND (newer.dateAdded > m.dateAdded OR (newer.dateAdded = m.dateAdded AND newer.id > m.id))';
+        $latest = $this->entityManager->createQuery($base.' AND NOT EXISTS ('.$newer.')')->setParameter('ids', $ids)->getResult();
+        $inbound = $this->entityManager->createQuery($base." AND m.direction = 'inbound' AND NOT EXISTS (".$newer." AND newer.direction = 'inbound')")->setParameter('ids', $ids)->getResult();
+        foreach ($latest as $message) $this->latestMessages[(int) $message->getConversation()->getId()] = $message;
+        foreach ($inbound as $message) $this->latestInbound[(int) $message->getConversation()->getId()] = $message;
+        $groups = [];
+        foreach ($states as $state) {
+            $transport = $this->channelTransports->for($state->getConversation());
+            if ($transport instanceof BatchChannelTransportInterface) {
+                $key = spl_object_id($transport);
+                $groups[$key]['transport'] = $transport;
+                $groups[$key]['states'][] = $state;
+            }
+        }
+        // At most one prefetch per provider, never one query per conversation.
+        foreach ($groups as $group) $group['transport']->warmConversationMetadata($group['states']);
+    }
+
     /** @return array<string,mixed> */
     private function conversation(ConversationState $state): array
     {
         $c = $state->getConversation();
         $contact = $c->getContact();
-        $latest = $this->entityManager->getRepository(MetaMessage::class)->findOneBy(['conversation' => $c], ['dateAdded' => 'DESC', 'id' => 'DESC']);
+        $latest = array_key_exists((int) $c->getId(), $this->latestMessages) ? $this->latestMessages[(int) $c->getId()] : $this->entityManager->getRepository(MetaMessage::class)->findOneBy(['conversation' => $c], ['dateAdded' => 'DESC', 'id' => 'DESC']);
         $preview = $latest instanceof MetaMessage ? mb_substr($this->timelineItem($latest, 'message', 4)['body'], 0, 180) : '';
-        $inbound = $this->entityManager->getRepository(MetaMessage::class)->findOneBy(['conversation' => $c, 'direction' => 'inbound'], ['dateAdded' => 'DESC', 'id' => 'DESC']);
+        $inbound = array_key_exists((int) $c->getId(), $this->latestInbound) ? $this->latestInbound[(int) $c->getId()] : $this->entityManager->getRepository(MetaMessage::class)->findOneBy(['conversation' => $c, 'direction' => 'inbound'], ['dateAdded' => 'DESC', 'id' => 'DESC']);
         $identity = $inbound?->getPayload() ?? [];
         $participantName = $identity['contact']['profile']['name'] ?? $identity['commenterName'] ?? '';
         $participantName = is_string($participantName) ? $participantName : '';
@@ -390,7 +423,7 @@ final class InboxQuery
     }
 
     /** @return list<array<string,mixed>> */
-    private function origins(ConversationState $state): array
+    public function origins(ConversationState $state): array
     {
         $contexts = $this->entityManager->createQueryBuilder()->select('context')->from(CommentContext::class, 'context')
             ->where('context.publicConversation = :conversation OR context.privateConversation = :conversation')
@@ -404,12 +437,14 @@ final class InboxQuery
             $related = $public ? $context->getPrivateConversation() : $context->getPublicConversation();
             $relatedState = null === $related ? null : $this->entityManager->getRepository(ConversationState::class)->findOneBy(['conversation' => $related]);
             $payload = $context->getMessage()->getPayload();
+            $cached = $this->publications->cached((int)$state->getConversation()->getAsset()->getId(),$context->getMediaId());
+            $url = \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext::link($cached['permalink'] ?? $url,$state->getConversation()->getChannel());
             $title = $this->translator->trans('mautic.inbox.ui.post_b172b7').$context->getMediaId();
             foreach ($this->automationRules() as $rule) { if ((string) $rule['media_id'] === $context->getMediaId() && (int) $rule['asset_id'] === $state->getConversation()->getAsset()->getId()) { $title = $rule['campaign']; break; } }
-            $image = $payload['origin_media']['image'] ?? null;
+            $image = $cached['image'] ?? $payload['origin_media']['image'] ?? null;
             $host = is_string($image) ? parse_url($image, PHP_URL_HOST) : null;
             $image = is_string($host) && str_starts_with($image, 'https://') && (str_ends_with($host, '.cdninstagram.com') || str_ends_with($host, '.fbcdn.net')) ? $image : null;
-            $items[] = ['image' => $image, 'caption' => $payload['origin_media']['caption'] ?? null, 'title' => $payload['origin_media']['caption'] ?? $title, 'media_id' => $context->getMediaId(), 'comment_id' => $context->getCommentId(), 'author' => $payload['commenterName'] ?? $context->getParticipantId(), 'body' => is_string($payload['text'] ?? null) ? mb_substr($payload['text'], 0, 500) : $this->translator->trans('mautic.inbox.ui.comment_on_the_post_4b4a80'), 'permalink' => $url, 'related_state_id' => $relatedState?->getId(), 'related_kind' => $public ? 'private' : 'comments'];
+            $items[] = ['image' => $image, 'caption' => $cached['caption'] ?? $payload['origin_media']['caption'] ?? null, 'title' => $cached['caption'] ?? $payload['origin_media']['caption'] ?? $title, 'media_id' => $context->getMediaId(), 'comment_id' => $context->getCommentId(), 'author' => $payload['commenterName'] ?? $context->getParticipantId(), 'body' => is_string($payload['text'] ?? null) ? mb_substr($payload['text'], 0, 500) : $this->translator->trans('mautic.inbox.ui.comment_on_the_post_4b4a80'), 'permalink' => $url, 'related_state_id' => $relatedState?->getId(), 'related_kind' => $public ? 'private' : 'comments'];
         }
         return $items;
     }
