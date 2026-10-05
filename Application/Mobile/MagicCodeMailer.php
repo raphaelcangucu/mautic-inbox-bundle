@@ -44,6 +44,9 @@ final class MagicCodeMailer
         $transport->getStream()->setTimeout(20);
         $message = (new Email())->from(new Address($settings['from_email'], $settings['from_name']))
             ->to(new Address($email, $name))->subject($subject)->text($text)->html($html);
+        if (isset($settings['reply_to'])) {
+            $message->replyTo(new Address($settings['reply_to'], $settings['from_name']));
+        }
         try {
             $transport->send($message);
         } finally {
