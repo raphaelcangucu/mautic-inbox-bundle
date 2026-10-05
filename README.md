@@ -104,7 +104,7 @@ O modelo só recebe ferramentas e fontes autorizadas. Credenciais do Pi e do CMS
 
 O pacote opcional [`raphaelcangucu/mautic-webchat-bundle`](https://github.com/raphaelcangucu/mautic-webchat-bundle) usa o contrato de transporte da versão 1.3. Ele adiciona ao site um widget Svelte em tempo real e entrega as conversas neste mesmo Inbox, incluindo digitação, presença, confirmação de entrega e leitura, página de origem, UTMs e atribuição automática opcional a um agente de IA.
 
-O gateway WebSocket e as tabelas de sessão pertencem ao plugin Web Chat. Removê-lo não altera os transportes Meta do Inbox.
+O broker PHP SSE e as tabelas de sessão pertencem ao plugin Web Chat. Removê-lo não altera os transportes Meta do Inbox.
 
 A validação da versão 1.3 cobriu, em produção, digitação do visitante no Inbox, digitação nomeada do agente no widget, confirmação de entrega e leitura, consulta de relatório pelo agente, perguntas de acompanhamento e encerramento da conversa pela IA. [Assista ao vídeo end-to-end no repositório do Web Chat](https://github.com/raphaelcangucu/mautic-webchat-bundle/blob/main/docs/video/mautic-webchat-e2e.mp4).
 
@@ -161,3 +161,7 @@ O identificador do link representa o estado persistido da conversa no Inbox. Ele
 ## Compatibilidade e versão
 
 A versão `1.3.0` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+
+### Tempo real e consultas (1.4)
+
+O WebChat recebe atualizações por EventSource/SSE e envia digitação e leitura por POST autenticado. O transporte do chat roda em PHP CLI separado do FPM. A lista carrega últimas mensagens e identidades em duas consultas por página; provedores podem implementar `BatchChannelTransportInterface` para buscar metadados em lote. Os índices `inbox_message_latest` e `inbox_message_inbound` são registrados na metadata do Doctrine. Para bases existentes, aplique apenas os índices documentados no WebChat, com backup verificado, sem executar atualização genérica de schema.

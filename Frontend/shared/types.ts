@@ -54,7 +54,13 @@ export interface Conversation {
   reply_hint?: string;
   reply_public?: boolean;
   human_takeover?: boolean;
-  realtime?: { token: string; url: string; expires_at: string } | null;
+  realtime?: {
+    token: string;
+    url: string;
+    event_url?: string;
+    transport?: string;
+    expires_at: string;
+  } | null;
   webchat?: {
     page_url?: string | null;
     site_origin?: string;

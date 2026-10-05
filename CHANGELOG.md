@@ -80,3 +80,11 @@
 - Atribuição, transferência, resolução, adiamento, notas e rascunhos.
 - Integração com a fila Meta e bloqueio de automações durante a tomada humana.
 - Nomes e fotos, prévias de mídia, formatação segura, SSE e alertas sonoros/visuais.
+
+## 1.4.0
+
+- Replace the WebChat operator's WebSocket client with SSE + scoped HTTP commands.
+- Deduplicate read receipts, throttle typing and expire stale indicators.
+- Fetch list message previews and identities in batches; expose an optional channel metadata prefetch contract.
+- Register indexes for conversation/date and conversation/direction/date queries.
+- Preserve existing Meta channels, AI controls, attachments, assignment, drafts and notifications.
