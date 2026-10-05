@@ -9,7 +9,7 @@ use Mautic\CoreBundle\Controller\CommonController;
 use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\UserBundle\Entity\User;
-use Mautic\EmailBundle\Helper\MailHelper;
+use MauticPlugin\MauticInboxBundle\Application\Mobile\MagicCodeMailer;
 use Psr\Log\LoggerInterface;
 use MauticPlugin\MauticInboxBundle\Application\Mobile\SessionStore;
 use Symfony\Component\HttpFoundation\{JsonResponse,RedirectResponse,Request,Response};
@@ -75,7 +75,7 @@ final class MobileAuthController extends CommonController
         } catch (\JsonException|\DomainException $e) { return $this->jsonPrivate(['error' => $e instanceof \JsonException ? 'invalid_request' : $e->getMessage()], 400); }
     }
 
-    public function magicCode(Request $request, SessionStore $store, EntityManagerInterface $em, MailHelper $mailHelper, LoggerInterface $logger): JsonResponse
+    public function magicCode(Request $request, SessionStore $store, EntityManagerInterface $em, MagicCodeMailer $mailer, LoggerInterface $logger): JsonResponse
     {
         try {
             if (strlen($request->getContent()) > 2048) { throw new \DomainException('invalid_request'); }
@@ -89,13 +89,7 @@ final class MobileAuthController extends CommonController
             $grant = $store->startMagic($email, $request->getClientIp() ?? 'unknown', $challenge, $user ? (int) $user->getId() : 0, $user ? hash('sha256', (string) $user->getPassword()) : '');
             if ($user) {
                 try {
-                    $instance = htmlspecialchars($request->getHost(), ENT_QUOTES, 'UTF-8');
-                    $mailer = $mailHelper->getMailer();
-                    $mailer->setTo([(string) $user->getEmail() => $user->getName() ?: $user->getUsername()]);
-                    $mailer->setSubject('Seu código de acesso ao Mautic Inbox');
-                    $mailer->setBody('<h2>Entrar no Mautic Inbox</h2><p>Instância: '.$instance.'</p><p>Seu código: <strong style="font-size:28px;letter-spacing:6px">'.$grant['code'].'</strong></p><p>Válido por 5 minutos, somente no aparelho que o solicitou. Ao confirmar, o app usará as permissões do seu usuário e manterá uma sessão renovável por até 30 dias. Você pode encerrá-la ao sair do app.</p><p>Não compartilhe este código. Se não solicitou o acesso, ignore este e-mail.</p>', 'text/html', 'UTF-8', true);
-                    $mailer->setPlainText('Mautic Inbox — '.$request->getHost()."\nCódigo de acesso: ".$grant['code']."\nValidade: 5 minutos, somente neste aparelho. Sessão renovável por até 30 dias. Não compartilhe o código. Se não solicitou, ignore este e-mail.");
-                    if (!$mailer->send()) { throw new \RuntimeException('mail_not_accepted'); }
+                    $mailer->send((string) $user->getEmail(), $user->getName() ?: $user->getUsername(), $request->getHost(), $grant['code']);
                 } catch (\Throwable) {
                     $store->cancelMagic($grant['request_id']);
                     $logger->error('Inbox mobile magic code: transactional mail unavailable.');
