@@ -130,6 +130,7 @@
   let stream: EventSource | null = null;
   let webchatRealtime: WebChatRealtime | null = null;
   let webchatTyping = false;
+  let webchatTypingExpiry = 0;
   let webchatTypingTimer: number | undefined;
   let webchatRefreshTimer: number | undefined;
   let webchatAiRefreshTimer: number | undefined;
@@ -197,6 +198,7 @@
     // faz a proxima abertura nao custar rede nenhuma.
     selected = null;
     webchatRealtime?.close();
+    clearTimeout(webchatTypingExpiry);
     webchatRealtime = null;
     webchatTyping = false;
     ai = null;
@@ -220,16 +222,29 @@
 
   function connectWebChat(detail: Conversation): void {
     webchatRealtime?.close();
+    clearTimeout(webchatTypingExpiry);
     webchatRealtime = null;
     webchatTyping = false;
     if (detail.channel !== "webchat" || !detail.realtime) return;
     webchatRealtime = new WebChatRealtime(detail, {
-      status: () => undefined,
+      status: (value) => {
+        if (value !== "online") webchatTyping = false;
+      },
       event: (event) => {
         if (selected?.id !== detail.id) return;
-        if (event.type === "typing.started" && event.role === "visitor")
+        if (event.type === "auth.expired" || event.type === "sync.required") {
+          void select(detail.id, false);
+        } else if (
+          event.type === "typing.started" &&
+          event.role === "visitor"
+        ) {
           webchatTyping = true;
-        else if (event.type === "typing.stopped" && event.role === "visitor")
+          clearTimeout(webchatTypingExpiry);
+          webchatTypingExpiry = window.setTimeout(
+            () => (webchatTyping = false),
+            6000,
+          );
+        } else if (event.type === "typing.stopped" && event.role === "visitor")
           webchatTyping = false;
         else if (event.type === "typing.stopped" && event.role === "agent") {
           clearTimeout(webchatAiRefreshTimer);
