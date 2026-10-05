@@ -41,7 +41,7 @@ Todas as rotas abaixo começam em `/inbox/mobile/api/`. Header: `Authorization: 
 | GET/POST `canned-responses` | Respostas prontas persistidas; edição exige permissão |
 | GET `notifications?cursor=…` | Eventos reais com state_id e flags de supressão |
 | GET `media/{id}` | Proxy privado existente sob identidade do operador |
-| POST `conversations/{id}/moderation` | Spam/restore/block/unblock, versionamento e registro do ator |
+| POST `conversations/{id}/moderation` | Spam/restore/block/unblock no atendimento; hide/show no Instagram, versionamento e registro do ator |
 | POST `assistant/messages` | Pi e MCP de leitura sob permissões do operador |
 
 Rejeições mantêm status HTTP de autenticação/permissão/conflito/validação. O app não converte erro de rede em sucesso. `202` indica aceitação; `pending/sent/delivered/read` vêm do histórico. Um `request_id` estável permite reconciliar resultados incertos. Foi corrigido o replay sequencial no transporte externo para não redisparar um outbound já processado. Concorrência simultânea de dois clientes com o mesmo ID ainda exige teste específico.
@@ -134,3 +134,12 @@ O plugin registra o transporte nativo `multimail://<id-da-conexao>` para SMTP, S
 GET /inbox/mobile/conversations/{stateId}/publication?refresh=1 usa a mesma sessão bearer e verificação de acesso à conversa. Responde items/available; consulta Instagram/Facebook somente quando solicitado, com cache protegido de 15 minutos. Descrição, imagem e permalink de origem são independentes do texto do comentário. Links ficam restritos à plataforma HTTPS; imagens a seus CDNs. A lista usa apenas cache de metadados e não chama o Graph por atendimento. Falha no Graph devolve o contexto disponível sem expor credenciais. Nenhuma alteração de schema.
 
 Verificação isolada: php Tests/Standalone/publication.php (sem conexão com banco).
+
+
+### Moderação do Instagram (0.3.10)
+
+`spam`/`restore` e `block`/`unblock` são marcadores do atendimento mobile desta instância. O bloqueio de autor é limitado à mesma conta/canal e não bloqueia o perfil na rede social. `hide`/`show` chamam a API Graph pelo cliente oficial do plugin Meta, sem expor credenciais ao aplicativo.
+
+A API verifica a correspondência entre comentário, mídia e conta Instagram ativa antes de escrever. Comentários da própria conta e relações de origem incompatíveis são recusados. O marcador `hidden` só é gravado após a confirmação `hidden=true` da rede. Uma resposta de sucesso inicial seguida de ausência de confirmação permanece como falha verificável; não implica remoção ou ocultação confirmada.
+
+As ações exigem sessão, permissão de edição, comentário público e a versão atual do atendimento. Não há exclusão permanente, alteração de esquema ou aplicação automática de moderação a outros canais. As mensagens originais permanecem no Mautic.

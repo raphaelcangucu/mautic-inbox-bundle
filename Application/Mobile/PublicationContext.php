@@ -50,6 +50,31 @@ final class PublicationContext
         $origins[0]=array_replace($origin,array_filter($cached,static fn($value)=>$value !== null && $value !== ''));
         return ['items'=>$origins,'available'=>$available];
     }
+    /** Reversible Instagram hide, using the plugin's credential vault and rate limiter. */
+    public function hideInstagram(ConversationState $state, array $origins, bool $hidden): void
+    {
+        $conversation=$state->getConversation();$asset=$conversation->getAsset();$origin=$origins[0] ?? [];
+        $comment=(string)($origin['comment_id'] ?? '');$media=(string)($origin['media_id'] ?? '');
+        if ($conversation->getChannel() !== 'instagram' || !$asset->isPublished() || $asset->getStatus() !== 'active' || !str_starts_with($conversation->getRecipient(),'comment:') || !preg_match('/^[0-9]{5,40}$/D',$comment) || !preg_match('/^[0-9]{5,40}$/D',$media)) {
+            throw new \DomainException('unsupported_moderation');
+        }
+        $connection=$asset->getConnection();
+        $owner=(new \MauticPlugin\MauticMetaBundle\Application\Instagram\InstagramAccountResolver($this->graph))->resolve($asset);
+        $remote=$this->graph->get($connection,$comment,['fields'=>'id,hidden,media,from']);
+        $publication=$this->graph->get($connection,$media,['fields'=>'id,owner']);
+        self::assertInstagramOwner($remote,$publication,$comment,$media,$owner);
+        if (isset($remote['hidden']) && $remote['hidden'] === $hidden) { return; }
+        $result=$this->graph->post($connection,$comment,['hide'=>$hidden]);
+        if (($result['success'] ?? false) !== true) { throw new \DomainException('moderation_not_confirmed'); }
+        $after=$this->graph->get($connection,$comment,['fields'=>'id,hidden']);
+        if (($after['id'] ?? '') !== $comment || ($after['hidden'] ?? null) !== $hidden) { throw new \DomainException('moderation_not_confirmed'); }
+    }
+    public static function assertInstagramOwner(array $comment,array $media,string $commentId,string $mediaId,string $ownerId): void
+    {
+        if (($comment['id'] ?? '') !== $commentId || ($comment['media']['id'] ?? '') !== $mediaId || ($media['id'] ?? '') !== $mediaId || ($media['owner']['id'] ?? '') !== $ownerId || ($comment['from']['id'] ?? '') === $ownerId) {
+            throw new \DomainException('moderation_scope_mismatch');
+        }
+    }
     private function path(int $asset,string $media): string { return $this->directory.'/'.hash('sha256',$asset.':'.$media).'.json'; }
     private function store(int $asset,string $media,array $metadata): void
     {

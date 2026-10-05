@@ -127,7 +127,30 @@ final class MobileApiController extends CommonController
                 if (!str_starts_with($state->getConversation()->getRecipient(),'comment:')) { return $this->error('Moderação disponível em comentários.','not_comment',422); }
                 $em->refresh($state);
                 if ($state->getVersion() !== (int)($p['version']??0)) { return $this->error('A conversa mudou. Atualize antes de continuar.','version_conflict',409); }
-                try { $moderation->apply($query->summary($state),(string)($p['action']??''),(int)$user->getId()); } catch (\DomainException) { return $this->error('Ação de moderação indisponível.','unsupported_moderation',422); }
+                try {
+                    $action=(string)($p['action']??'');
+                    if (in_array($action,['hide','show'],true)) {
+                        $detail=$query->detail($state,$user);
+                        $publications->hideInstagram($state,$detail['origins'] ?? [],$action === 'hide');
+                    }
+                    $moderation->apply($query->summary($state),$action,(int)$user->getId());
+                } catch (\DomainException $error) {
+                    $reasons=[
+                        'moderation_scope_mismatch'=>'A publicação registrada não coincide com a origem atual do comentário. Revise o vínculo antes de moderar.',
+                        'moderation_not_confirmed'=>'O Instagram recebeu a solicitação, mas ainda não confirmou a alteração. Atualize e tente novamente.',
+                        'unsupported_moderation'=>'Esta moderação não está disponível para o comentário selecionado.',
+                    ];
+                    $code=isset($reasons[$error->getMessage()]) ? $error->getMessage() : 'unsupported_moderation';
+                    return $this->error($reasons[$code],$code,422);
+                }
+                catch (\MauticPlugin\MauticMetaBundle\Infrastructure\MetaGraphApiException $error) {
+                    $details=$error->details();
+                    if (($details['code'] ?? null) === 100 && ($details['error_subcode'] ?? null) === 33) {
+                        return $this->error('O Instagram não disponibiliza este comentário para a conexão atual. Ele permanece no Spam.','social_comment_unavailable',422);
+                    }
+                    return $this->error('O Instagram não confirmou esta moderação. Confira a conexão antes de tentar novamente.','moderation_unavailable',502);
+                }
+                catch (\Throwable) { return $this->error('Não foi possível confirmar a moderação na rede. Atualize antes de tentar novamente.','moderation_unavailable',502); }
             }
             elseif ($operation === 'take') { $actions->take($state, $user, (int) ($p['version'] ?? 0)); }
             elseif ($operation === 'state') {

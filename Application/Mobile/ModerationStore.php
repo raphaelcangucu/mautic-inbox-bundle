@@ -4,7 +4,7 @@ declare(strict_types=1);
 namespace MauticPlugin\MauticInboxBundle\Application\Mobile;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
-/** Inbox-only moderation. The original social comment is always preserved. */
+/** Local flags. Instagram hiding is applied only after a verified Graph operation. */
 final class ModerationStore
 {
     public function __construct(#[Autowire('%kernel.project_dir%')] private string $projectDir) {}
@@ -12,17 +12,19 @@ final class ModerationStore
     public function flags(array $conversation): array
     {
         return $this->transaction(function(array &$data) use ($conversation): array {
-            return ['spam' => !empty($data['spam'][(string) $conversation['id']]), 'hidden' => false, 'blockedAuthor' => !empty($data['authors'][$this->author($conversation)])];
+            return ['spam' => !empty($data['spam'][(string) $conversation['id']]), 'hidden' => !empty($data['hidden'][(string) $conversation['id']]), 'blockedAuthor' => !empty($data['authors'][$this->author($conversation)])];
         });
     }
     public function apply(array $conversation, string $action, int $actor): void
     {
-        if (!in_array($action, ['spam','restore','block','unblock'], true)) { throw new \DomainException('unsupported_moderation'); }
+        if (!in_array($action, ['spam','restore','block','unblock','hide','show'], true)) { throw new \DomainException('unsupported_moderation'); }
         $this->transaction(function(array &$data) use ($conversation,$action,$actor): void {
             $id = (string) $conversation['id']; $author = $this->author($conversation);
             if ($action === 'spam') { $data['spam'][$id] = true; }
             elseif ($action === 'restore') { unset($data['spam'][$id]); }
             elseif ($action === 'block') { $data['authors'][$author] = true; }
+            elseif ($action === 'hide') { $data['hidden'][$id] = true; }
+            elseif ($action === 'show') { unset($data['hidden'][$id]); }
             else { unset($data['authors'][$author]); }
             $data['audit'][] = ['state_id' => (int) $id, 'actor' => $actor, 'action' => $action, 'at' => gmdate(DATE_ATOM)];
             $data['audit'] = array_slice($data['audit'], -5000);
