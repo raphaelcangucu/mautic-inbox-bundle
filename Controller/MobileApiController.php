@@ -21,7 +21,7 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 /** Native bearer boundary. Business rules remain in the existing Inbox services. */
 final class MobileApiController extends CommonController
 {
-    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications): Response
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory): Response
     {
         $previous = $tokens->getToken();
         try {
@@ -56,6 +56,8 @@ final class MobileApiController extends CommonController
                 $raw['agent']=$a ? ['key'=>$a['agent']??'', 'name'=>$a['name']??'', 'status'=>$a['status']??'paused', 'count'=>$a['count']??0] : null;
                 $raw['moderation']=$raw['kind'] === 'comments' ? $moderation->flags($raw) : ['spam'=>false,'hidden'=>false,'blockedAuthor'=>false];
                 $raw['can_reply']=$raw['can_reply'] && $permissions->isGranted(['inbox:conversations:create','meta:messages:create']) && !$raw['moderation']['spam'] && !$raw['moderation']['blockedAuthor'];
+                $raw['can_take']=$raw['can_take'] && $permissions->isGranted(['inbox:conversations:edit','meta:messages:edit']);
+                $raw['can_take_and_reply']=$raw['can_take_and_reply'] && $raw['can_take'] && $permissions->isGranted(['inbox:conversations:create','meta:messages:create']) && !$raw['moderation']['spam'] && !$raw['moderation']['blockedAuthor'];
                 if ($raw['kind'] === 'comments' && $state->getConversation()->getChannel() === 'instagram') {
                     $allowed=$permissions->isGranted(['inbox:conversations:create','meta:messages:create']) && !$raw['moderation']['spam'] && !$raw['moderation']['blockedAuthor'];
                     $publicReason=$actions->publicReplyBlockedReason($state);
@@ -63,6 +65,7 @@ final class MobileApiController extends CommonController
                         'public'=>['available'=>$allowed && $publicReason === null,'can_reply'=>$allowed && $publicReason === null && $state->getAssignee()?->getId() === $user->getId(),'blocked_reason'=>$publicReason],
                         'private'=>['available'=>$allowed && $raw['reply_blocked_reason'] === null,'can_reply'=>$raw['can_reply'],'blocked_reason'=>$raw['reply_blocked_reason']],
                     ];
+                    $raw['can_take_and_reply']=$raw['can_take'] && $state->getAssignee()?->getId() !== $user->getId() && ($raw['reply_modes']['public']['available'] || $raw['reply_modes']['private']['available']);
                 }
                 return $raw;
             };
@@ -99,6 +102,20 @@ final class MobileApiController extends CommonController
                 if ($id && !$selected) { return $this->error('Conversa não encontrada.', 'not_found', 404); }
                 $since = $request->query->getString('since') ?: gmdate(DATE_ATOM, time() - 60);
                 $updates=$query->poll($user,$since,$selected,$request->query->has('notification_cursor') ? $request->query->getInt('notification_cursor') : null); $updates['conversations']=array_map($decorate,$updates['conversations']); return $this->data($updates);
+            }
+            if ($method === 'GET' && $resource === 'contacts') { return $this->data($directory->search($user,$request->query->all())); }
+            if ($method === 'GET' && $resource === 'contacts/campaigns') { return $this->data(['items'=>$directory->campaigns($user)]); }
+            if (preg_match('#^contacts/([1-9][0-9]*)(?:/(start))?$#D',$resource,$contactRoute)) {
+                $contactId=(int)$contactRoute[1];
+                if ($method === 'GET' && empty($contactRoute[2])) { return $this->data($directory->detail($contactId,$user)); }
+                if ($method === 'POST' && ($contactRoute[2]??'') === 'start') {
+                    if(strlen($request->getContent())>4096){return $this->error('Requisição inválida.','invalid_request',400);}
+                    try{$payload=json_decode($request->getContent(),true,8,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
+                    if(!is_array($payload)||array_is_list($payload)){return $this->error('Requisição inválida.','invalid_request',400);}
+                    $started=$directory->start($contactId,$user,$payload);
+                    return $this->data($decorate($query->summary($started)));
+                }
+                return $this->error('Método não permitido.','method_not_allowed',405);
             }
             if (!preg_match('#^conversations/([1-9][0-9]*)(?:/(history|templates|take|state|reply|note|draft|ai|email-options|email-actions|moderation|publication))?$#D', $resource, $parts)) {
                 return $this->error('Recurso não disponível nesta versão da API.', 'unsupported', 404);

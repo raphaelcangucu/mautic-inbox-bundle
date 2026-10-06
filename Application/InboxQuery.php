@@ -140,7 +140,8 @@ final class InboxQuery
             'origins' => $this->origins($state),
             'drafts' => $drafts,
             'can_reply' => null === $blockedReason && $assignedToMe,
-            'can_take_and_reply' => null === $blockedReason && null === $state->getAssignee(),
+            'can_take' => AssignmentPolicy::canTake($state->getAssignee()?->getId(), (int) $user->getId(), $user->isAdmin()),
+            'can_take_and_reply' => null === $blockedReason && !$assignedToMe && AssignmentPolicy::canTake($state->getAssignee()?->getId(), (int) $user->getId(), $user->isAdmin()),
             'reply_blocked_reason' => $blockedReason,
             'reply_hint' => $blockedReason ?? (!$assignedToMe ? (null === $state->getAssignee() ? $this->translator->trans('mautic.inbox.ui.write_your_reply_sending_it_will_assign_this_conversation_to_you__52d1da') : $this->translator->trans('mautic.inbox.ui.conversation_assigned_to_name_transfer_it_to_yourself_before_repl_21d227', ['%name%' => $state->getAssignee()->getName()])) : $this->translator->trans('mautic.inbox.ui.your_reply_will_be_sent_by_account_3734ba', ['%account%' => $conversation->getAsset()->getName()])),
         ];

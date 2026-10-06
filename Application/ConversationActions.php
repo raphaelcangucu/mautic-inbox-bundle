@@ -46,12 +46,18 @@ final class ConversationActions
 
     private function takeLocked(ConversationState $state, User $user, int $version): ConversationState
     {
-        $updated = $this->entityManager->createQueryBuilder()->update(ConversationState::class, 's')
+        if (!AssignmentPolicy::canTake($state->getAssignee()?->getId(), (int) $user->getId(), $user->isAdmin())) {
+            throw new InboxException('mautic.inbox.ui.this_conversation_has_already_been_assigned_or_changed_by_someone_7ef320', 409);
+        }
+        $qb = $this->entityManager->createQueryBuilder()->update(ConversationState::class, 's')
             ->set('s.assignee', ':user')->set('s.humanTakeover', ':yes')->set('s.lifecycle', ':open')
             ->set('s.snoozedUntil', ':none')->set('s.version', 's.version + 1')->set('s.dateModified', ':now')
-            ->where('s.id = :id')->andWhere('s.version = :version')->andWhere('(s.assignee IS NULL OR s.assignee = :user)')
-            ->setParameters(['user' => $user, 'yes' => true, 'open' => 'open', 'none' => null, 'now' => new \DateTimeImmutable(), 'id' => $state->getId(), 'version' => $version])
-            ->getQuery()->execute();
+            ->where('s.id = :id')->andWhere('s.version = :version')
+            ->setParameters(['user' => $user, 'yes' => true, 'open' => 'open', 'none' => null, 'now' => new \DateTimeImmutable(), 'id' => $state->getId(), 'version' => $version]);
+        // Keep the ownership predicate for ordinary operators, including races.
+        // Administrators still need the current version and an explicit take action.
+        if (!$user->isAdmin()) { $qb->andWhere('(s.assignee IS NULL OR s.assignee = :user)'); }
+        $updated = $qb->getQuery()->execute();
         if (1 !== $updated) {
             throw new InboxException('mautic.inbox.ui.this_conversation_has_already_been_assigned_or_changed_by_someone_7ef320', 409);
         }
