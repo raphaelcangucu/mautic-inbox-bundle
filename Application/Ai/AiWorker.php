@@ -94,6 +94,7 @@ final class AiWorker
         $transport?->setTyping($state, true, (string) ($agent['name'] ?? 'Assistente'));
         try {
             $reply = $this->pi->call('run', [
+                'locale' => $transport?->conversationMetadata($state)['webchat']['locale'] ?? null,
                 'funnel' => (new FunnelContext())->read($state),
                 'profile' => $agent['profile'] ?? 'macro-support',
                 'model' => $this->store->config()['model'],
