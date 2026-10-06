@@ -140,7 +140,7 @@ final class MobileApiController extends CommonController
                     'history' => $this->data($query->timeline($state, $request->query->get('before'), $request->query->getInt('limit', 40))),
                     'publication' => $this->data($publications->resolve($state,$query->origins($state),$request->query->getBoolean('refresh'))),
                     'templates' => $this->data(['items' => $templates->catalog($state), 'blocked_reason' => ($reason = $templates->blockedReason($state)) ? $this->translator->trans($reason) : null]),
-                    'email-options' => $this->data($linking->options($state->getConversation(), $linking->email($request->query->getString('email')), $user, $request->query->getBoolean('include_catalog', true))),
+                    'email-options' => $this->data($linking->options($state->getConversation(), (!$request->query->getBoolean('include_catalog', true) && '' === trim($request->query->getString('email'))) ? '' : $linking->email($request->query->getString('email')), $user, $request->query->getBoolean('include_catalog', true))),
                     'ai' => $this->forward(AiController::class.'::available', ['stateId' => $id]),
                     default => $this->error('Método não permitido.', 'method_not_allowed', 405),
                 };

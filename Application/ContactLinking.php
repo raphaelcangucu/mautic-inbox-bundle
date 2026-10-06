@@ -60,7 +60,7 @@ final class ContactLinking
     {
         $current = $conversation->getContact();
         $matches = [];
-        foreach ($this->byEmail($email) as $found) {
+        foreach ('' === $email ? [] : $this->byEmail($email) as $found) {
             // O contato da conversa nao entra como "outro": ele ja esta na tela, acima.
             if (null !== $current && null !== $current->getId() && $current->getId() === $found->getId()) {
                 continue;
