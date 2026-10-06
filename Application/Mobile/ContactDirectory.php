@@ -39,6 +39,14 @@ final class ContactDirectory
         if (!$this->allowed($user,'lead:leads:viewother')) { $qb->andWhere('COALESCE(l.owner_id, l.created_by) = :user')->setParameter('user',$user->getId()); }
         $q=mb_substr(trim((string)($filters['search']??'')),0,100);
         if (''!==$q) { $qb->andWhere("(LOWER(CONCAT(COALESCE(l.firstname,''),' ',COALESCE(l.lastname,''))) LIKE :query OR LOWER(l.email) LIKE :query OR l.phone LIKE :query OR l.mobile LIKE :query)")->setParameter('query','%'.mb_strtolower($q).'%'); }
+        $segment=(int)($filters['segment_id']??0);
+        if ($segment>0) {
+            $allowed=$this->allowed($user,'lead:lists:viewown') || $this->allowed($user,'lead:lists:viewother');
+            $check=$this->db->createQueryBuilder()->select('id')->from($this->table('lead_lists'))->where('id = :id')->andWhere('is_published = 1')->setParameter('id',$segment)->setMaxResults(1);
+            if (!$this->allowed($user,'lead:lists:viewother')) { $check->andWhere('created_by = :user')->setParameter('user',$user->getId()); }
+            if (!$allowed || false===$check->executeQuery()->fetchOne()) { throw new InboxException('Segmento indisponível para seu usuário.',403); }
+            $qb->andWhere('EXISTS (SELECT 1 FROM '.$this->table('lead_lists_leads').' sl WHERE sl.lead_id = l.id AND sl.leadlist_id = :segment AND sl.manually_removed = 0)')->setParameter('segment',$segment);
+        }
         $campaign=(int)($filters['campaign_id']??0);
         if ($campaign>0) {
             $allowed=$this->allowed($user,'campaign:campaigns:viewown') || $this->allowed($user,'campaign:campaigns:viewother');
