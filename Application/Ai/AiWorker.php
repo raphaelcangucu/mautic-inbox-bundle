@@ -91,9 +91,12 @@ final class AiWorker
             $messages[] = $message->getDirection().': '.mb_substr((string) $this->presentation->present($message)['body'], 0, 1500);
         }
         $transport = $this->channelTransports->for($state->getConversation());
+        $webchat = $transport?->conversationMetadata($state)['webchat'] ?? [];
         $transport?->setTyping($state, true, (string) ($agent['name'] ?? 'Assistente'));
         try {
             $reply = $this->pi->call('run', [
+                'locale' => $webchat['locale'] ?? null,
+                'page_context' => array_intersect_key($webchat, ['site_origin' => true, 'page_url' => true, 'page_title' => true]),
                 'funnel' => (new FunnelContext())->read($state),
                 'profile' => $agent['profile'] ?? 'macro-support',
                 'model' => $this->store->config()['model'],

@@ -1,3 +1,10 @@
+# Acesso limitado de operadores (6/10/2026)
+
+- Login/senha existente do Mautic com papel próprio para avaliação Apple.
+- Escopo de conversas próprias, fila aberta aguardando atendimento e supervisão explícita.
+- Proteção de leitura, ações, mídia, notificações, assistente e push sem migração.
+- Validação de banco somente em instalação descartável com guard do kernel real.
+
 # Changelog
 
 ## 1.3.0

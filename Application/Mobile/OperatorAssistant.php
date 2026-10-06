@@ -16,7 +16,7 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 final class OperatorAssistant
 {
-    public function __construct(private PiClient $pi, private EntityManagerInterface $em, private SearchCampaignsTool $campaigns, private FetchCampaignTool $campaign, private SearchContactsTool $contacts, private FetchContactTool $contact, private InboxQuery $inbox, private ConversationStateRepository $states, #[Autowire('%kernel.project_dir%')] private string $projectDir) {}
+    public function __construct(private PiClient $pi, private EntityManagerInterface $em, private SearchCampaignsTool $campaigns, private FetchCampaignTool $campaign, private SearchContactsTool $contacts, private FetchContactTool $contact, private InboxQuery $inbox, private ConversationStateRepository $states, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, #[Autowire('%kernel.project_dir%')] private string $projectDir) {}
     /** Public provider description only: no credentials, tools, model calls or CRM reads. */
     public function privacy(): array { return $this->run(['mode'=>'privacy']); }
     public function reply(array $payload,User $user): array
@@ -35,6 +35,9 @@ final class OperatorAssistant
         try {
             $history=[];foreach(array_slice((array)($payload['history']??[]),-6) as $turn){if(is_array($turn)&&in_array($turn['role']??'', ['user','assistant'],true)){$history[]=['role'=>$turn['role'],'text'=>mb_substr((string)($turn['text']??''),0,2000)];}}
             $selected=$this->states->find((int)($payload['conversation_id']??0));
+            $requested=(int)($payload['conversation_id']??0);
+            if ($requested && !$selected) throw new InboxException('mautic.inbox.ui.conversation_not_found_61bc81',404);
+            if ($selected) $this->access->assertView($selected,$user);
             $context=$selected?['id'=>(int)$selected->getId(),'name'=>$this->inbox->summary($selected)['contact_name']]:[];
             $plan=$this->run(['mode'=>'plan','message'=>$message,'history'=>$history,'context'=>$context]);
             $results=[];$names=[];
@@ -47,7 +50,7 @@ final class OperatorAssistant
                         'mautic_search_contacts'=>($this->contacts)($query,10,$page),
                         'mautic_fetch_campaign'=>$id>0?($this->campaign)($id,false):['error'=>'missing_id'],
                         'mautic_fetch_contact'=>$id>0?($this->contact)($id):['error'=>'missing_id'],
-                        'inbox_context'=>$selected?['conversation'=>$this->inbox->detail($selected,$user),'history'=>$this->inbox->timeline($selected,null,30)]:$this->inbox->conversations($user,['kind'=>'private','queue'=>'all','needs_response'=>true,'limit'=>20]),
+                        'inbox_context'=>$selected?['conversation'=>$this->inbox->detail($selected,$user),'history'=>$this->inbox->timeline($selected,null,30,$user)]:$this->inbox->conversations($user,['kind'=>'private','queue'=>'all','needs_response'=>true,'limit'=>20]),
                     };
                     // Ephemeral WebChat tokens are never provided to the model.
                     if($tool === 'mautic_search_campaigns' && isset($result['items'])){

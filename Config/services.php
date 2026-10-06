@@ -21,12 +21,14 @@ return function (ContainerConfigurator $configurator): void {
     $excludes[] = 'DependencyInjection/Compiler';
     $services->load('MauticPlugin\\MauticInboxBundle\\', '../')->exclude('../{'.implode(',', $excludes).'}');
     $services->load('MauticPlugin\\MauticInboxBundle\\Entity\\', '../Entity/*Repository.php')->tag(ServiceRepositoryCompilerPass::REPOSITORY_SERVICE_TAG);
+    $services->set(\MauticPlugin\MauticInboxBundle\EventListener\ChatQueryIndexes::class)->tag('doctrine.event_listener', ['event' => 'loadClassMetadata']);
     // O apelido e explicito porque a interface e o repositorio entram por chamadas de load
     // diferentes, e o apelido automatico do Symfony so vale dentro de uma mesma chamada.
     $services->alias(PushSettingStore::class, PushSettingRepository::class);
     $services->alias(PushDeviceStore::class, PushDeviceRepository::class);
     // Security/ esta na lista de exclusoes padrao do Mautic, entao esta classe precisa ser
     // registrada a mao — mesmo motivo pelo qual o Meta bundle registra o CredentialVault.
+    $services->set(\MauticPlugin\MauticInboxBundle\Security\ConversationAccess::class)->autowire();
     $services->set(InboxAccessCheck::class)->autowire();
     $services->alias(InboxAccess::class, InboxAccessCheck::class);
 };

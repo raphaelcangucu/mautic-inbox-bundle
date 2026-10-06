@@ -11,7 +11,7 @@ use MauticPlugin\MauticInboxBundle\Entity\ConversationStateRepository;
 
 final class NativePushWorker
 {
-    public function __construct(private PrivateStorage $storage, private ApnsSender $sender, private SessionStore $sessions, private EntityManagerInterface $em, private \Mautic\CoreBundle\Security\Permissions\CorePermissions $permissions, private ConversationStateRepository $states, private InboxQuery $query, private ModerationStore $moderation) {}
+    public function __construct(private PrivateStorage $storage, private ApnsSender $sender, private SessionStore $sessions, private EntityManagerInterface $em, private \Mautic\CoreBundle\Security\Permissions\CorePermissions $permissions, private ConversationStateRepository $states, private InboxQuery $query, private ModerationStore $moderation, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access) {}
     public function run(int $limit): array
     {
         $snapshot=$this->storage->transaction(static fn(array &$data): array => $data);
@@ -22,9 +22,12 @@ final class NativePushWorker
             $device=$this->storage->transaction(static fn(array &$data): ?array => $data['devices'][$job['device']] ?? null);
             $grant=$device ? $this->sessions->activeSession($device['session']) : null;
             $user=$grant ? $this->em->find(User::class,$grant['user']) : null;
+            if ($user instanceof User) $this->em->refresh($user);
             if (!$device || $job['expires'] <= time() || $device['session'] !== $job['session'] || !hash_equals($job['token_hash'],hash('sha256',$device['token'])) || $device['retired'] || !$device['preferences']['enabled'] || $device['preferences']['quiet'] || !$user instanceof User || !$user->isPublished() || !hash_equals($grant['fingerprint'],hash('sha256',(string)$user->getPassword())) || !$this->canView($user)) { $this->finish($id,$job,null,null); ++$counts['skipped']; continue; }
             $state=$job['state'] ? $this->states->find($job['state']) : null;
-            $raw=$state ? $this->query->summary($state) : null;
+            if ($state) { $this->em->refresh($state); $this->em->refresh($state->getConversation()); }
+            if ($state && !$this->access->canView($state,$user)) { $this->finish($id,$job,null,null); ++$counts['skipped']; continue; }
+            $raw=$state ? $this->query->summary($state,$user) : null;
             if ($job['state']) {
                 $flags=$raw ? $this->moderation->flags($raw) : [];
                 $conversation = $state ? [
@@ -49,8 +52,7 @@ final class NativePushWorker
     }
     private function canView(User $user): bool
     {
-        $active=$user->getActivePermissions();
-        return $user->isAdmin() || $this->permissions->isGranted($active['inbox'] ?? [], 'conversations', 'view') || $this->permissions->isGranted($active['meta'] ?? [], 'messages', 'view');
+        return $this->access->canViewInbox($user);
     }
     /** Recheck the current conversation when a queued alert is about to leave. */
     public static function conversationEligible(array $device, array $job, array $conversation, int $operatorId, int $now): bool

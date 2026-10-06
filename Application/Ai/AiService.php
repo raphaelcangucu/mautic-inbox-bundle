@@ -9,7 +9,8 @@ use Mautic\UserBundle\Entity\User;
 use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
 use MauticPlugin\MauticMetaBundle\Entity\MetaOutboundJob;
 final class AiService {
- public function __construct(private AiStore $store,private EntityManagerInterface $em,private PiClient $pi,private MetaInboxIntegration $integration){}
+ public function __construct(private AiStore $store,private EntityManagerInterface $em,private PiClient $pi,private MetaInboxIntegration $integration,private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access){}
+ public function assertConversationAccess(ConversationState $state,User $actor): void {$this->access->assertView($state,$actor);}
  public function assets(): array{return array_map(fn($a)=>['id'=>$a->getId(),'name'=>$a->getName(),'channel'=>$a->getType()->channel()->value,'external_id'=>$a->getExternalId()],array_values(array_filter($this->em->getRepository(MetaAsset::class)->findBy(['isPublished'=>true]),fn($a)=>$a->getType()!==\MauticPlugin\MauticMetaBundle\Domain\AssetType::WhatsAppBusinessAccount)));}
  public function permission(ConversationState $state): string{return $state->getConversation()->getAsset()->getId().':'.(str_starts_with($state->getConversation()->getRecipient(),'comment:')?'comment':'message');}
  /** @return array{allowed:bool,reason:?string} */
@@ -24,6 +25,7 @@ final class AiService {
  public function allowed(ConversationState $state,array $agent): bool{return $this->availability($state,$agent)['allowed'];}
  public function effectiveLimit(array $agent): int{return AiStore::effectiveLimit($this->store->config(),$agent);}
  public function assign(ConversationState $state,User $actor,string $key,int $version): void {
+  $this->access->assertView($state,$actor);
   $agent=$this->store->get('agent',$key);if(!$agent||!$this->allowed($state,$agent))throw new InboxException('mautic.inbox.ai.not_allowed',409);
   $health=$this->store->get('health','pi');if(empty($health['validated']))throw new InboxException('mautic.inbox.ai.validate_first',409);
   $this->integration->runHumanTransition($state,function()use($state,$actor,$key,$agent,$version){$this->em->refresh($state);if($state->getVersion()!==$version)throw new InboxException('mautic.inbox.ai.conflict',409);
@@ -46,6 +48,7 @@ final class AiService {
   });
  }
  public function reset(ConversationState $state,User $actor,int $version): void {
+  $this->access->assertView($state,$actor);
   $this->integration->runHumanTransition($state,function()use($state,$actor,$version){
    $this->em->refresh($state);if($state->getVersion()!==$version)throw new InboxException('mautic.inbox.ai.conflict',409);
    $assignment=$this->store->get('assignment',(string)$state->getId());if(!$assignment)throw new InboxException('mautic.inbox.ai.not_assigned',409);$wasQueued=in_array($assignment['status']??'', ['queued','finishing'],true);
@@ -70,6 +73,7 @@ final class AiService {
   return ['run_key'=>$run['key'],'text'=>(string)$run['text'],'status'=>$status,'raw_status'=>$rawStatus,'reason'=>$reason,'error'=>$error,'agent'=>(string)($run['agent']??''),'date'=>$run['date']??$run['failed_at']??null,'retryable'=>!in_array($status,['processing','uncertain','generating'],true)];
  }
  public function retryPending(ConversationState $state,User $actor,string $runKey,int $version): MetaOutboundJob {
+  $this->access->assertView($state,$actor);
   $job=$this->integration->runHumanTransition($state,function()use($state,$actor,$runKey,$version):MetaOutboundJob{
    $this->em->refresh($state);if($state->getVersion()!==$version)throw new InboxException('mautic.inbox.ai.conflict',409);
    $pending=$this->pendingReply($state);if(!$pending||$pending['run_key']!==$runKey)throw new InboxException('mautic.inbox.ai.reply_unavailable',409);

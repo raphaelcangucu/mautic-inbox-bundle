@@ -31,6 +31,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class InboxController extends CommonController
 {
+    private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $conversationAccess;
+    #[\Symfony\Contracts\Service\Attribute\Required]
+    public function setConversationAccess(\MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access): void { $this->conversationAccess=$access; }
+
     public function index(CorePermissions $permissions, UserHelper $users, InboxQuery $query, ?int $stateId = null): Response
     {
         $this->grant($permissions, 'view');
@@ -104,6 +108,9 @@ final class InboxController extends CommonController
         if (!$message instanceof MetaMessage || 'whatsapp' !== $message->getChannel() || 'inbound' !== $message->getDirection()) {
             return new Response('Arquivo indisponível.', Response::HTTP_NOT_FOUND);
         }
+        $state=$entityManager->getRepository(ConversationState::class)->findOneBy(['conversation'=>$message->getConversation()]);
+        if (!$state) return new Response('Arquivo indisponível.',404);
+        $this->conversationAccess->assertView($state);
         $type = $message->getMessageType();
         if (!in_array($type, ['image', 'audio', 'video', 'document', 'sticker'], true)) {
             return new Response('Arquivo indisponível.', Response::HTTP_NOT_FOUND);
@@ -165,10 +172,11 @@ final class InboxController extends CommonController
             $payload = $this->payload($request);
             $actor = $this->user($users);
             $state = $this->requireState($states, $stateId);
+            $before=$query->detail($state,$this->user($users));
             if ('read' === ($payload['action'] ?? null)) {
                 $transport = $channelTransports->for($state->getConversation());
                 null === $transport ? $metaConversations->markRead($state->getConversation()) : $transport->markRead($state);
-                return $query->detail($state, $actor);
+                return $query->afterTransition($state,$actor,$before);
             }
             $target = null;
             if (isset($payload['target_user_id'])) {
@@ -176,7 +184,7 @@ final class InboxController extends CommonController
                 if (!$target instanceof User) { throw new InboxException('mautic.inbox.ui.person_not_found_603a16'); }
                 $permission = $permissions->getPermissionObject('inbox');
                 $metaPermission = $permissions->getPermissionObject('meta');
-                if (!$target->isAdmin() && (!$permission->isGranted($target->getActivePermissions()['inbox'] ?? [], 'conversations', 'view') || !$metaPermission->isGranted($target->getActivePermissions()['meta'] ?? [], 'messages', 'view'))) {
+                if (!$this->conversationAccess->canViewInbox($target)) {
                     throw new InboxException('mautic.inbox.ui.this_person_does_not_have_access_to_the_support_inbox_b3f445');
                 }
             }
@@ -185,7 +193,7 @@ final class InboxController extends CommonController
                 try { $until = new \DateTimeImmutable((string) $payload['until']); } catch (\Throwable) { throw new InboxException('mautic.inbox.ui.invalid_snooze_date_13f58e'); }
             }
             $state = $actions->transition($state, $actor, (int) ($payload['version'] ?? 0), (string) ($payload['action'] ?? ''), $target, $until);
-            return $query->detail($state, $actor);
+            return $query->afterTransition($state,$actor,$before);
         });
     }
 
@@ -410,6 +418,7 @@ final class InboxController extends CommonController
     {
         $state = $states->find($id);
         if (!$state instanceof ConversationState) { throw new InboxException('mautic.inbox.ui.conversation_not_found_61bc81', 404); }
+         $this->conversationAccess->assertView($state);
         return $state;
     }
     /** @param callable():array<string,mixed> $callback */

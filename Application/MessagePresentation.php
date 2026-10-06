@@ -15,6 +15,7 @@ final class MessagePresentation
         private EntityManagerInterface $entityManager,
         private \Symfony\Contracts\Translation\TranslatorInterface $translator,
         private UrlGeneratorInterface $urlGenerator,
+        private ?AttachmentRegistry $attachmentMedia = null,
     ) {}
 
     public function present(MetaMessage $message): array
@@ -71,8 +72,8 @@ final class MessagePresentation
                 && 1 === preg_match('/^[0-9]{5,40}$/', $mediaId)
                 ? $this->urlGenerator->generate('mautic_inbox_media', ['messageId' => $message->getId()], UrlGeneratorInterface::ABSOLUTE_URL)
                 : null;
-            $url = $proxiedUrl ?? $this->url($media['link'] ?? $media['url'] ?? null);
-            $attachments[] = ['type' => $mediaType, 'label' => $media['filename'] ?? $label, 'url' => $url, 'available' => null !== $url];
+            $url = $this->attachmentMedia?->url($message, $mediaType) ?? $proxiedUrl ?? $this->url($media['link'] ?? $media['url'] ?? null);
+            $attachments[] = ['type' => $mediaType, 'label' => trim((string) ($media['filename'] ?? '')) ?: $label, 'url' => $url, 'available' => null !== $url];
             if ('' === $text) { $text = (string) ($media['caption'] ?? $label); }
         }
         foreach ($content['attachments'] ?? [] as $attachment) {

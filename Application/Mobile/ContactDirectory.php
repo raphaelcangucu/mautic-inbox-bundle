@@ -18,7 +18,7 @@ use MauticPlugin\MauticMetaBundle\Entity\{MetaAsset,MetaConversation};
 /** Bounded CRM reads; starting a chat creates context, never sends a message. */
 final class ContactDirectory
 {
-    public function __construct(private Connection $db, private EntityManagerInterface $em, private CorePermissions $permissions, private ConversationStateRepository $states, private PhoneNormalizer $phones, private ReplyAvailability $availability, private MetaInboxIntegration $integration) {}
+    public function __construct(private Connection $db, private EntityManagerInterface $em, private CorePermissions $permissions, private ConversationStateRepository $states, private PhoneNormalizer $phones, private ReplyAvailability $availability, private MetaInboxIntegration $integration, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access) {}
 
     private function table(string $name): string { return (defined('MAUTIC_TABLE_PREFIX') ? MAUTIC_TABLE_PREFIX : '').$name; }
     private function allowed(User $user, string $permission): bool { return $user->isAdmin() || $this->permissions->isGranted($permission); }
@@ -82,7 +82,9 @@ final class ContactDirectory
         $items=[];$qrAssets=[];
         $qrType=defined(AssetType::class.'::WhatsAppQrSession') ? constant(AssetType::class.'::WhatsAppQrSession') : null;
         $canStart=$this->allowed($user,'inbox:conversations:create') && $this->allowed($user,'meta:messages:create');
-        foreach ($this->states->createQueryBuilder('s')->join('s.conversation','c')->where('c.contact = :contact')->andWhere('c.recipient NOT LIKE :comments')->setParameter('contact',$contact)->setParameter('comments','comment:%')->orderBy('c.lastMessageAt','DESC')->setMaxResults(50)->getQuery()->getResult() as $state) {
+        $statesQuery=$this->states->createQueryBuilder('s')->join('s.conversation','c')->where('c.contact = :contact')->andWhere('c.recipient NOT LIKE :comments')->setParameter('contact',$contact)->setParameter('comments','comment:%')->orderBy('c.lastMessageAt','DESC')->setMaxResults(50);
+        $this->access->apply($statesQuery,$user);
+        foreach ($statesQuery->getQuery()->getResult() as $state) {
             $c=$state->getConversation();$reason=$this->availability->reason($state);
             $items[]=['key'=>'state:'.$state->getId(),'state_id'=>$state->getId(),'asset_id'=>$c->getAsset()->getId(),'channel'=>$c->getChannel(),'name'=>$c->getAsset()->getName(),'available'=>$canStart && null===$reason,'reason'=>$reason];
             if ($qrType && $qrType===$c->getAsset()->getType()) { $qrAssets[]=$c->getAsset()->getId(); }
@@ -115,8 +117,9 @@ final class ContactDirectory
             foreach($this->phones->equivalentRecipients($phone,(string)($asset->getSettings()['default_region']??'BR')) as $alias){$conversation=$repo->findOneBy(['asset'=>$asset,'channel'=>'whatsapp','recipient'=>$alias]);if($conversation){break;}}
             if($conversation && $conversation->getContact() && $conversation->getContact()->getId()!==$contact->getId()){throw new InboxException('Este telefone já está vinculado a outro contato. Revise o cadastro.',409);}
             if(!$conversation){$conversation=(new MetaConversation())->setAsset($asset)->setChannel('whatsapp')->setRecipient($phone);$this->em->persist($conversation);}
-            $conversation->setContact($contact);
             $state=$conversation->getId() ? $this->states->findOneBy(['conversation'=>$conversation]) : null;
+            if ($state) $this->access->assertView($state,$user);
+            $conversation->setContact($contact);
             if(!$state){$state=(new ConversationState())->setConversation($conversation)->setAssignee($user)->setHumanTakeover(true)->setNeedsResponse(false);$this->em->persist($state);$this->em->persist((new EventLog())->setConversation($conversation)->setActor($user)->setEventType('created')->setDetails(['source'=>'mobile_contact']));}
             $this->em->flush();return $state;
         });

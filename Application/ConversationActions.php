@@ -18,6 +18,8 @@ use MauticPlugin\MauticInboxBundle\Entity\OutboundRequestRepository;
 use MauticPlugin\MauticInboxBundle\Integration\MetaInboxIntegration;
 use MauticPlugin\MauticMetaBundle\Application\Queue\ImmediateOutboundDispatcher;
 use MauticPlugin\MauticMetaBundle\Application\Queue\OutboundQueue;
+use MauticPlugin\MauticMetaBundle\Domain\AssetType;
+use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
 use MauticPlugin\MauticMetaBundle\Entity\MetaConversation;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessage;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessageRepository;
@@ -36,7 +38,31 @@ final class ConversationActions
         private WhatsAppTemplates $templates,
         private ImmediateOutboundDispatcher $immediateDispatcher,
         private ChannelTransportRegistry $channelTransports,
+        private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access,
     ) {
+    }
+
+    /**
+     * Quantas tentativas o envio do atendente pede a fila do conector.
+     *
+     * Quem escolhe e a caixa, nao a fila: a fila so sabe esperar, e com uma unica
+     * tentativa o primeiro fracasso ja e terminal, entao o backoff de canal
+     * temporariamente indisponivel nunca chega a ser usado.
+     *
+     * A sessao por QR nao e homologada e perde o pareamento sozinha -- isso e rotina, nao
+     * excecao, e o numero volta por conta propria. A fila espera
+     * min(7200, 2 ** (tentativa - 1) * 30) segundos depois de cada fracasso, e so
+     * reagenda enquanto sobrar tentativa; somando as esperas, a n-esima tentativa cai em
+     * 0s, 30s, 1m30, 3m30, 7m30, 15m30, 31m30, 1h03m30 e 2h07m30. A oitava ainda para
+     * dentro da primeira hora, com o numero possivelmente fora do ar; a nona e a primeira
+     * que cruza as duas horas em que a resposta ainda pode sair.
+     *
+     * O canal homologado fica de fora: quando ele recusa, recusou por um motivo que
+     * repetir nao conserta, e repetir seria mensagem duplicada no cliente.
+     */
+    public static function sendAttempts(MetaAsset $asset): int
+    {
+        return AssetType::WhatsAppQrSession === $asset->getType() ? 9 : 1;
     }
 
     public function take(ConversationState $state, User $user, int $version): ConversationState
@@ -46,6 +72,7 @@ final class ConversationActions
 
     private function takeLocked(ConversationState $state, User $user, int $version): ConversationState
     {
+        $this->access->assertView($state,$user);
         if (!AssignmentPolicy::canTake($state->getAssignee()?->getId(), (int) $user->getId(), $user->isAdmin())) {
             throw new InboxException('mautic.inbox.ui.this_conversation_has_already_been_assigned_or_changed_by_someone_7ef320', 409);
         }
@@ -54,6 +81,7 @@ final class ConversationActions
             ->set('s.snoozedUntil', ':none')->set('s.version', 's.version + 1')->set('s.dateModified', ':now')
             ->where('s.id = :id')->andWhere('s.version = :version')
             ->setParameters(['user' => $user, 'yes' => true, 'open' => 'open', 'none' => null, 'now' => new \DateTimeImmutable(), 'id' => $state->getId(), 'version' => $version]);
+        $this->access->apply($qb,$user);
         // Keep the ownership predicate for ordinary operators, including races.
         // Administrators still need the current version and an explicit take action.
         if (!$user->isAdmin()) { $qb->andWhere('(s.assignee IS NULL OR s.assignee = :user)'); }
@@ -76,6 +104,7 @@ final class ConversationActions
 
     private function transitionLocked(ConversationState $state, User $actor, int $version, string $action, ?User $target = null, ?\DateTimeImmutable $until = null): ConversationState
     {
+        $this->access->assertView($state,$actor);
         if (!in_array($action, ['transfer', 'resolve', 'reopen', 'snooze', 'unassign'], true)) {
             throw new InboxException('mautic.inbox.ui.invalid_action_2ad361');
         }
@@ -92,6 +121,7 @@ final class ConversationActions
         $qb = $this->entityManager->createQueryBuilder()->update(ConversationState::class, 's')
             ->set('s.version', 's.version + 1')->set('s.dateModified', ':now')->where('s.id = :id')->andWhere('s.version = :version')
             ->setParameter('now', new \DateTimeImmutable())->setParameter('id', $state->getId())->setParameter('version', $version);
+        $this->access->apply($qb,$actor);
         if ('reopen' !== $action) { $qb->andWhere('s.assignee = :actor')->setParameter('actor', $actor); }
         match ($action) {
             'transfer' => $qb->set('s.assignee', ':target')->set('s.humanTakeover', ':yes')->set('s.lifecycle', ':open')->set('s.snoozedUntil', ':none')->setParameter('target', $target)->setParameter('yes', true)->setParameter('open', 'open')->setParameter('none', null),
@@ -113,6 +143,7 @@ final class ConversationActions
 
     public function note(ConversationState $state, User $author, string $body): Note
     {
+        $this->access->assertView($state,$author);
         $body = $this->body($body);
         $note = (new Note())->setConversation($state->getConversation())->setAuthor($author)->setBody($body);
         $this->entityManager->persist($note);
@@ -125,6 +156,7 @@ final class ConversationActions
 
     public function saveDraft(ConversationState $state, User $user, string $mode, string $body): Draft
     {
+        $this->access->assertView($state,$user);
         if (!in_array($mode, ['reply', 'note'], true)) {
             throw new InboxException('mautic.inbox.ui.invalid_draft_mode_5e9827');
         }
@@ -203,6 +235,7 @@ final class ConversationActions
     /** @return array{OutboundRequest,bool} */
     private function retryLocked(ConversationState $state, OutboundRequest $failedRequest, User $author, string $requestId): array
     {
+        $this->access->assertView($state,$author);
         if (!preg_match('/^[A-Za-z0-9_-]{16,64}$/', $requestId)) {
             throw new InboxException('mautic.inbox.ui.invalid_send_identifier_6d8e69');
         }
@@ -257,6 +290,10 @@ final class ConversationActions
             }
             $payload = ['recipient' => $recipient, 'text' => $failedRequest->getBody()];
         }
+        // Uma tentativa, inclusive no canal por QR: quem apertou "tentar de novo" pediu
+        // uma tentativa e esta olhando para o resultado dela. Uma serie automatica por
+        // cima disso entrega a mensagem horas depois, quando o atendente ja desistiu
+        // deste caminho e atendeu por outro.
         $job = $this->queue->enqueue($asset, $operation, $payload + [
             '_origin' => 'inbox_human',
             '_inbox_conversation_id' => $state->getConversation()->getId(),
@@ -283,6 +320,7 @@ final class ConversationActions
 
     private function replyLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null): OutboundRequest
     {
+        $this->access->assertView($state,$author);
         $conversation = $state->getConversation();
         $replyMode = ReplyMode::resolve($conversation->getChannel(), $conversation->getRecipient(), $replyMode);
         $publicInstagram = ReplyMode::instagramPublic($conversation->getChannel(), $conversation->getRecipient(), $replyMode);
@@ -321,7 +359,7 @@ final class ConversationActions
             'text' => $body,
             '_origin' => 'inbox_human',
             '_inbox_conversation_id' => $state->getConversation()->getId(),
-        ], $state->getConversation()->getContact(), 1, 'inbox:'.$requestId);
+        ], $state->getConversation()->getContact(), self::sendAttempts($asset), 'inbox:'.$requestId);
         $request = (new OutboundRequest())->setConversation($state->getConversation())->setAuthor($author)->setRequestId($requestId)->setBody($body)->setJob($job)->setStatus('pending');
         $state->setNeedsResponse(false)->setHumanTakeover(true)->setVersion($state->getVersion() + 1);
         $this->entityManager->persist($request);
@@ -343,6 +381,7 @@ final class ConversationActions
 
     private function replyExternalLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template): OutboundRequest
     {
+        $this->access->assertView($state,$author);
         if (null !== $template) {
             throw new InboxException('Modelos não estão disponíveis para este canal.', 409);
         }

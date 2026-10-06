@@ -50,6 +50,8 @@ final class InboxQuery
         private \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications,
         #[\Symfony\Component\DependencyInjection\Attribute\Autowire(service: 'mautic.helper.twig.avatar')]
         private \Mautic\LeadBundle\Twig\Helper\AvatarHelper $avatars,
+        private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access,
+        private ?ParticipantAvatarRegistry $participantAvatars = null,
     ) {
     }
 
@@ -61,6 +63,7 @@ final class InboxQuery
         $qb = $this->entityManager->createQueryBuilder()->select('s', 'c', 'a', 'contact', 'assignee')
             ->from(ConversationState::class, 's')->join('s.conversation', 'c')->join('c.asset', 'a')
             ->leftJoin('c.contact', 'contact')->leftJoin('s.assignee', 'assignee');
+        $this->access->apply($qb,$user);
         $queue = (string) ($filters['queue'] ?? 'mine');
         if ('mine' === $queue) {
             $qb->andWhere('s.assignee = :currentUser')->setParameter('currentUser', $user);
@@ -122,6 +125,7 @@ final class InboxQuery
     /** @return array<string,mixed> */
     public function detail(ConversationState $state, User $user): array
     {
+        $this->access->assertView($state,$user);
         $conversation = $state->getConversation();
         $contact = $conversation->getContact();
         $drafts = [];
@@ -148,8 +152,9 @@ final class InboxQuery
     }
 
     /** @return array{items:list<array<string,mixed>>,next_cursor:?string} */
-    public function timeline(ConversationState $state, ?string $before, int $limit = 40): array
+    public function timeline(ConversationState $state, ?string $before, int $limit = 40, ?User $user = null): array
     {
+        $this->access->assertView($state,$user);
         $limit = max(1, min(100, $limit));
         $cursor = $this->decodeTimeCursor($before);
         $conversation = $state->getConversation();
@@ -202,9 +207,16 @@ final class InboxQuery
      *
      * @return array<string,mixed>
      */
-    public function summary(ConversationState $state): array
+    public function summary(ConversationState $state, ?User $user = null): array
     {
+        $this->access->assertView($state,$user);
         return $this->conversation($state);
+    }
+
+    public function afterTransition(ConversationState $state, User $user, array $before): array
+    {
+        if ($this->access->canView($state,$user)) return $this->detail($state,$user);
+        return array_replace($before,['id'=>$state->getId(),'version'=>$state->getVersion(),'assignee'=>null,'can_reply'=>false,'can_take'=>false,'can_take_and_reply'=>false,'access_revoked'=>true]);
     }
 
     /** @return list<array{id:int,name:string,body:string,enabled:bool}> */
@@ -238,12 +250,9 @@ final class InboxQuery
     public function users(): array
     {
         $users = $this->entityManager->getRepository(User::class)->findBy(['isPublished' => true], ['firstName' => 'ASC'], 200);
-        $permission = $this->permissions->getPermissionObject('inbox');
-        $metaPermission = $this->permissions->getPermissionObject('meta');
-        $users = array_values(array_filter($users, static function (User $user) use ($permission, $metaPermission): bool {
+        $users = array_values(array_filter($users, function (User $user): bool {
             if ($user->isAdmin()) { return true; }
-            return $permission->isGranted($user->getActivePermissions()['inbox'] ?? [], 'conversations', 'view')
-                && $metaPermission->isGranted($user->getActivePermissions()['meta'] ?? [], 'messages', 'view');
+            return $this->access->canViewInbox($user);
         }));
         return array_map(static fn (User $user): array => ['id' => (int) $user->getId(), 'name' => $user->getName() ?: (string) $user->getUsername()], $users);
     }
@@ -272,9 +281,12 @@ final class InboxQuery
         try { $from = new \DateTimeImmutable($since); } catch (\Throwable) { throw new InboxException('mautic.inbox.ui.invalid_update_marker_cedfb7'); }
         if ($from < new \DateTimeImmutable('-24 hours')) { $from = new \DateTimeImmutable('-24 hours'); }
         $until = new \DateTimeImmutable();
-        $states = $this->entityManager->createQueryBuilder()->select('s', 'c')->from(ConversationState::class, 's')->join('s.conversation', 'c')
+        if ($selected) $this->access->assertView($selected,$user);
+        $qb = $this->entityManager->createQueryBuilder()->select('s', 'c')->from(ConversationState::class, 's')->join('s.conversation', 'c')
             ->where('(s.dateModified > :from OR c.lastMessageAt > :from)')->andWhere('s.dateModified <= :until')->setParameter('from', $from)->setParameter('until', $until)
-            ->orderBy('s.dateModified', 'ASC')->setMaxResults(51)->getQuery()->getResult();
+            ->orderBy('s.dateModified', 'ASC')->setMaxResults(51);
+        $this->access->apply($qb,$user);
+        $states=$qb->getQuery()->getResult();
         $hasMore = count($states) > 50;
         $states = array_slice($states, 0, 50);
         $timeline = [];
@@ -293,16 +305,17 @@ final class InboxQuery
         }
         $next = $hasMore && [] !== $states ? end($states)->getDateModified() : $until;
 
-        $notifications = $this->notifications($notificationCursor);
+        $notifications = $this->notifications($notificationCursor,$user);
         return ['conversations' => array_map(fn (ConversationState $state): array => $this->conversation($state), $states), 'timeline' => $timeline, 'next_since' => $next->format(DATE_ATOM), 'has_more' => $hasMore] + $notifications;
     }
 
     /** Incoming IDs are independent of UI filters, read state and historical message timestamps. */
-    public function notifications(?int $cursor): array
+    public function notifications(?int $cursor, User $user): array
     {
         $qb = $this->entityManager->createQueryBuilder()->from(MetaMessage::class, 'm')
             ->join(ConversationState::class, 'notificationState', 'WITH', 'notificationState.conversation = m.conversation')
             ->where("m.direction = 'inbound'");
+        $this->access->apply($qb,$user,'notificationState');
         if (null === $cursor) {
             return ['notifications' => [], 'notification_cursor' => (int) $qb->select('MAX(m.id)')->getQuery()->getSingleScalarResult(), 'notifications_more' => false];
         }
@@ -367,10 +380,14 @@ final class InboxQuery
         }
         $summary = [
             'contact_handle' => $handle,
-            'avatar_url' => $profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null),
+            'avatar_url' => $this->participantAvatars?->url($c) ?? ($profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null)),
             'preview' => $preview,
             'id' => (int) $state->getId(), 'conversation_id' => (int) $c->getId(), 'version' => $state->getVersion(),
-            'channel' => $c->getChannel(), 'asset' => ['id' => $c->getAsset()->getId(), 'name' => $c->getAsset()->getName(), 'handle' => $c->getAsset()->getUsername(), 'phone' => $c->getAsset()->getPhoneNumber()],
+            // O tipo vai junto porque `channel` nao distingue os dois WhatsApp: o
+            // homologado e a sessao por QR chegam ambos como "whatsapp", e quem olha a
+            // lista precisa saber de qual dos dois a conversa veio -- um tem janela de
+            // 24h e modelos, o outro nao tem nem um nem outro.
+            'channel' => $c->getChannel(), 'asset' => ['id' => $c->getAsset()->getId(), 'name' => $c->getAsset()->getName(), 'handle' => $c->getAsset()->getUsername(), 'phone' => $c->getAsset()->getPhoneNumber(), 'type' => $c->getAsset()->getType()->value],
             'recipient' => $participant, 'contact_name' => $displayName,
             'conversation_kind' => $public ? ('reel' === ($identity['origin_media']['kind'] ?? null) ? $this->translator->trans('mautic.inbox.ui.reel_comment_6f7cab') : $this->translator->trans('mautic.inbox.ui.public_comment_4a1398')) : ('facebook' === $c->getChannel() ? 'Messenger' : $this->translator->trans('mautic.inbox.ui.private_message_e7efc2')),
             'reply_public' => $public && 'facebook' === $c->getChannel(),
@@ -456,6 +473,7 @@ final class InboxQuery
         $count = function (?string $queue) use ($user, $kind): int {
             $qb = $this->entityManager->createQueryBuilder()->select('COUNT(s.id)')->from(ConversationState::class, 's')->where('s.lifecycle IN (:active)')->setParameter('active', ['open', 'snoozed']);
             $qb->join('s.conversation', 'c')->andWhere('c.recipient '.('comments' === $kind ? 'LIKE' : 'NOT LIKE').' :commentRecipient')->setParameter('commentRecipient', 'comment:%');
+            $this->access->apply($qb,$user);
             if ('mine' === $queue) { $qb->andWhere('s.assignee = :user')->setParameter('user', $user); }
             if ('unassigned' === $queue) { $qb->andWhere('s.assignee IS NULL'); }
             return (int) $qb->getQuery()->getSingleScalarResult();

@@ -24,6 +24,7 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
         private CommentContextRepository $comments,
         private OutboundRequestRepository $outboundRequests,
         private EntityManagerInterface $entityManager,
+        private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access,
         private \MauticPlugin\MauticInboxBundle\Application\Push\PendingNotifications $notifications,
     ) {
     }
@@ -59,6 +60,7 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
         $created = false;
         if (!$state instanceof ConversationState) {
             $state = (new ConversationState())->setConversation($conversation);
+            $this->assignConfiguredOperator($state);
             $this->entityManager->persist($state);
             $created = true;
         }
@@ -88,6 +90,25 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
         // So registra a intencao. Nenhuma rede, nenhuma criptografia, nenhuma excecao possivel
         // aqui dentro: o envio sai depois do kernel.terminate, com a resposta ja entregue.
         $this->notifications->add((int) $state->getId(), $this->contactName($message), $this->preview($message), (int) $message->getId());
+    }
+
+    private function assignConfiguredOperator(ConversationState $state): void
+    {
+        $asset=$state->getConversation()->getAsset();$settings=$asset->getSettings();
+        $id=(int)($settings['inbox_default_assignee_id']??0);
+        if (!$id) return;
+        $operator=$this->entityManager->find(\Mautic\UserBundle\Entity\User::class,$id);
+        if (!$operator instanceof \Mautic\UserBundle\Entity\User || !$this->access->canViewInbox($operator)) return;
+        $state->setAssignee($operator);
+        // A review widget uses one explicitly owned fictional contact. Never
+        // match an anonymous visitor's claimed email against production contacts.
+        if (!empty($settings['inbox_review_only']) && 'webchat'===$state->getConversation()->getChannel()) {
+            $contact=$this->entityManager->find(\Mautic\LeadBundle\Entity\Lead::class,(int)($settings['inbox_review_contact_id']??0));
+            if ($contact instanceof \Mautic\LeadBundle\Entity\Lead && $contact->getOwner()?->getId()===$operator->getId()) {
+                $state->getConversation()->setContact($contact);
+                $this->entityManager->persist($state->getConversation());
+            }
+        }
     }
 
     private function contactName(MetaMessage $message): string

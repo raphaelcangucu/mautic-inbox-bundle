@@ -27,6 +27,7 @@ final class InboxToolService
         private AiStore $store, private AiService $agents, private PiClient $pi,
         private CsrfTokenManagerInterface $csrf,
         private \Symfony\Component\HttpFoundation\RequestStack $requests,
+        private \MauticPlugin\MauticInboxBundle\Application\ChannelTransportRegistry $channelTransports,
     ) {}
 
     public function authorize(string $permission='view', bool $admin=false): void
@@ -58,7 +59,7 @@ final class InboxToolService
         $request=$this->request(['action'=>$action]+$data);
         try { $response=match($action){
             'take' => $this->inbox->take($id,$request,$this->permissions,$this->users,$this->states,$this->actions,$this->query),
-            'resolve','reopen','transfer','unassign','snooze','read' => $this->inbox->state($id,$request,$this->permissions,$this->users,$this->states,$this->actions,$this->query,$this->em,$this->conversations),
+            'resolve','reopen','transfer','unassign','snooze','read' => $this->inbox->state($id,$request,$this->permissions,$this->users,$this->states,$this->actions,$this->query,$this->em,$this->conversations,$this->channelTransports),
             'note' => $this->inbox->note($id,$request,$this->permissions,$this->users,$this->states,$this->actions),
             'reply' => $this->inbox->reply($id,$request,$this->permissions,$this->users,$this->states,$this->actions,$this->query),
             'assign_ai' => $this->ai->assign($id,$request,$this->users,$this->permissions,$this->states,$this->agents),

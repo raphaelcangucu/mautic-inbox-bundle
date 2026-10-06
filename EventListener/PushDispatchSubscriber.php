@@ -39,6 +39,7 @@ final class PushDispatchSubscriber implements EventSubscriberInterface
         private UrlGeneratorInterface $router,
         private LoggerInterface $logger,
         private \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $native,
+        private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access,
     ) {
     }
 
@@ -96,6 +97,7 @@ final class PushDispatchSubscriber implements EventSubscriberInterface
         );
 
         foreach ($devices as $device) {
+            if (!$device->getUser() || !$this->access->canView($state,$device->getUser())) continue;
             $result = $this->sender->send($device, $payload);
 
             if ($result->delivered) {

@@ -1,6 +1,6 @@
 # Atendimento omnicanal para Mautic
 
-Este bundle adiciona a caixa nativa **Atendimento** para WhatsApp, Instagram e Facebook/Messenger. O `MauticMetaBundle` continua responsável por ativos, identidades, contatos, mensagens, webhooks e envios; o `MauticInboxBundle` guarda apenas o estado do trabalho humano.
+Este bundle adiciona a caixa nativa **Atendimento** para WhatsApp, Instagram, Facebook/Messenger e canais fornecidos por plugins. O `MauticMetaBundle` continua responsável pelos canais Meta; o `MauticInboxBundle` guarda o estado do atendimento humano e dos agentes de IA, e expõe o contrato usado pelo Web Chat.
 
 ## Instalação
 
@@ -22,8 +22,9 @@ O recarregamento de plugins usa os metadados Doctrine do bundle, que é a conven
 - `inbox_canned_responses`
 - `inbox_outbound_requests`
 - `inbox_comment_contexts`
+- `inbox_ai_records`
 
-Conceda as permissões de **Atendimento / Conversas** e **Atendimento / Respostas prontas** aos papéis apropriados. A leitura exige também permissão Meta de mensagens; o envio exige ativo publicado e ativo. As permissões deste MVP são por papel, sem isolamento por conta individual.
+Conceda as permissões de **Atendimento / Conversas** e **Atendimento / Respostas prontas** aos papéis apropriados. A leitura exige também permissão Meta de mensagens; o envio exige ativo publicado e ativo. A visibilidade das conversas é limitada pelo responsável e pela fila aguardando atendimento; configure o grupo de visibilidade no papel. Veja [acesso dos operadores](OPERATOR-ACCESS.md).
 
 Nenhuma conversa antiga é migrada automaticamente. Confira um ativo por vez e aplique explicitamente:
 
@@ -37,10 +38,11 @@ ddev exec php bin/console mautic:inbox:reconcile --asset-id=12 --limit=500 --app
 
 O comando também separa cada comentário público por conta, mídia e comentário. A conversa privada posterior fica vinculada ao contexto do comentário, sem copiar nem mesclar o contato por nome.
 
-Processe os envios Meta com o worker já existente e acorde conversas adiadas a cada minuto:
+Processe os envios Meta, as sessões de IA e as conversas adiadas a cada minuto:
 
 ```cron
 * * * * * cd /caminho/do/mautic && ddev exec php bin/console mautic:meta:queue:process --limit=100
+* * * * * cd /caminho/do/mautic && ddev exec php bin/console mautic:inbox:ai:work --env=prod
 * * * * * cd /caminho/do/mautic && ddev exec php bin/console mautic:inbox:wake --limit=500
 ```
 

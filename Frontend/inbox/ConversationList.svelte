@@ -41,7 +41,8 @@
           month: "short",
         }).format(date);
   };
-  const channelLabel = (value: string) =>
+  const channelLabel = (value: string, assetType?: string) =>
+    assetType === "whatsapp_qr_session" ? "WhatsApp · QR" :
     (
       ({
         whatsapp: "WhatsApp",
@@ -161,7 +162,7 @@
               >
             </div>
             <div class="inbox-list-meta">
-              {channelLabel(item.channel)} · {item.asset.handle
+              {channelLabel(item.channel, item.asset.type)} · {item.asset.handle
                 ? `@${item.asset.handle}`
                 : item.asset.phone || item.asset.name}
             </div>

@@ -21,7 +21,7 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 /** Native bearer boundary. Business rules remain in the existing Inbox services. */
 final class MobileApiController extends CommonController
 {
-    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing): Response
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing, \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access): Response
     {
         $previous = $tokens->getToken();
         try {
@@ -30,6 +30,7 @@ final class MobileApiController extends CommonController
             try { $grant = $sessions->authenticate($match[1]); } catch (\DomainException) { return $this->error('Sessão expirada. Entre novamente.', 'unauthorized', 401); }
             $user = $em->find(User::class, $grant['user']);
             if (!$user instanceof User || !$user->isPublished() || !hash_equals($grant['fingerprint'], hash('sha256', (string) $user->getPassword()))) { return $this->error('Sessão revogada. Entre novamente.', 'unauthorized', 401); }
+            $access->hydrate($user);
             $tokens->setToken(new UsernamePasswordToken($user, 'main', $user->getRoles()));
             if (!$permissions->isGranted(['inbox:conversations:view','meta:messages:view'])) { return $this->error('Seu usuário não tem acesso ao atendimento.', 'forbidden', 403); }
             $method = $request->getMethod();
@@ -85,6 +86,9 @@ final class MobileApiController extends CommonController
             }
             if ($method === 'GET' && preg_match('#^media/([1-9][0-9]*)$#D',$resource,$media)) {
                 $message=$em->find(\MauticPlugin\MauticMetaBundle\Entity\MetaMessage::class,(int)$media[1]);
+                $mediaState=$message instanceof \MauticPlugin\MauticMetaBundle\Entity\MetaMessage ? $states->findOneBy(['conversation'=>$message->getConversation()]) : null;
+                if (!$mediaState) return $this->error('Arquivo indisponível.','not_found',404);
+                $access->assertView($mediaState,$user);
                 $qrController='MauticPlugin\\MauticWhatsQrBundle\\Controller\\MediaController';
                 $controller=$message instanceof \MauticPlugin\MauticMetaBundle\Entity\MetaMessage && $message->getAsset()->getType()->value === 'whatsapp_qr_session' && class_exists($qrController) ? $qrController.'::show' : InboxController::class.'::media';
                 $response=$this->forward($controller,['messageId'=>(int)$media[1]]);$response->headers->set('Cache-Control','no-store, private');return $response;
@@ -99,7 +103,7 @@ final class MobileApiController extends CommonController
             if ($method === 'GET' && $resource === 'canned-responses') { return $this->data(['items' => $query->cannedResponses()]); }
             if ($method === 'GET' && $resource === 'conversations') { $list=$query->conversations($user,$request->query->all()); $list['items']=array_map($decorate,$list['items']); return $this->data($list); }
             if ($method === 'GET' && $resource === 'notifications') {
-                $batch=$query->notifications($request->query->has('cursor')?$request->query->getInt('cursor'):null);
+                $batch=$query->notifications($request->query->has('cursor')?$request->query->getInt('cursor'):null,$user);
                 foreach($batch['notifications'] as &$notification){$state=$states->find((int)$notification['state_id']);if($state){$c=$decorate($query->summary($state));$notification['conversation']=$c;$notification['suppressed']=$c['moderation']['spam']||$c['moderation']['blockedAuthor'];}}unset($notification);
                 return $this->data($batch);
             }
@@ -139,6 +143,7 @@ final class MobileApiController extends CommonController
                 return $this->error('Recurso não disponível nesta versão da API.', 'unsupported', 404);
             }
             $id = (int) $parts[1]; $operation = $parts[2] ?? ''; $state = $states->find($id);
+            if ($state) $access->assertView($state,$user);
             if (!$state) { return $this->error('Conversa não encontrada.', 'not_found', 404); }
             if ($method === 'GET') {
                 return match ($operation) {
@@ -197,12 +202,14 @@ final class MobileApiController extends CommonController
             }
             elseif ($operation === 'take') { $actions->take($state, $user, (int) ($p['version'] ?? 0)); }
             elseif ($operation === 'state') {
+                $before=$query->detail($state,$user);
                 if (($p['action'] ?? '') === 'read') { $transport=$transports->for($state->getConversation());null === $transport ? $metaConversations->markRead($state->getConversation()) : $transport->markRead($state); }
                 else {
                     $target = isset($p['target_user_id']) ? $em->find(User::class, (int) $p['target_user_id']) : null;
                     if (isset($p['target_user_id']) && (!$target instanceof User || !in_array((int) $target->getId(), array_column($query->users(), 'id'), true))) { throw new InboxException('mautic.inbox.ui.person_not_found_603a16'); }
                     try { $until = !empty($p['until']) ? new \DateTimeImmutable((string) $p['until']) : null; } catch (\Exception) { return $this->error('Data inválida.', 'invalid_date', 422); }
-                    $actions->transition($state, $user, (int) ($p['version'] ?? 0), (string) ($p['action'] ?? ''), $target, $until);
+                    $state=$actions->transition($state, $user, (int) ($p['version'] ?? 0), (string) ($p['action'] ?? ''), $target, $until);
+                    if (!$access->canView($state,$user)) return $this->data($query->afterTransition($state,$user,$before));
                 }
             }
             elseif ($operation === 'note') { $note = $actions->note($state, $user, (string) ($p['body'] ?? '')); return $this->data(['id' => $note->getId(), 'saved' => true], 201); }

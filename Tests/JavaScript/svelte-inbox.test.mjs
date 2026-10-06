@@ -135,6 +135,7 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
     channel: "instagram",
     recipient: "123",
     contact_name: "Maria Silva",
+    avatar_url: "/s/whatsqr/avatars/12",
     asset: { id: 3, name: "Conta" },
     last_message_at: new Date().toISOString(),
     assignee: null,
@@ -193,6 +194,28 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
             kind: "message",
             direction: "inbound",
             body: "Mensagem que precisa chegar a tela",
+            attachments: [
+              {
+                type: "image",
+                label: "Imagem QR",
+                url: "https://mautic.test/s/whatsqr/media/91",
+              },
+              {
+                type: "video",
+                label: "Vídeo QR",
+                url: "https://mautic.test/s/whatsqr/media/92",
+              },
+              {
+                type: "audio",
+                label: "Áudio QR",
+                url: "https://mautic.test/s/whatsqr/media/93",
+              },
+              {
+                type: "document",
+                label: "relatório.pdf",
+                url: "https://mautic.test/s/whatsqr/media/94",
+              },
+            ],
             timestamp: "2026-09-17T12:00:00Z",
           },
         ],
@@ -303,6 +326,24 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
   const root = document.getElementById("inbox-app");
   assert.equal(root.dataset.svelteInboxMounted, "1");
   assert.match(root.textContent, /Maria Silva/);
+  const photo = root.querySelector(".inbox-list-item .inbox-avatar img");
+  assert.ok(
+    photo,
+    "cached participant photo is shown in the conversation list",
+  );
+  assert.equal(
+    photo.getAttribute("src"),
+    "https://mautic.test/s/whatsqr/avatars/12",
+  );
+  assert.equal(photo.getAttribute("loading"), "lazy");
+  photo.dispatchEvent(new window.Event("error"));
+  await tick();
+  assert.equal(root.querySelector(".inbox-list-item .inbox-avatar img"), null);
+  assert.match(
+    root.querySelector(".inbox-list-item .inbox-avatar").textContent,
+    /MS/,
+  );
+
   root
     .querySelector(".inbox-list-item")
     .dispatchEvent(new window.Event("click", { bubbles: true }));
@@ -328,6 +369,26 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
     "o historico da store precisa ser renderizado, e nao so guardado",
   );
   assert.ok(requests.some(([url]) => /\/conversations\/11\/history/.test(url)));
+  assert.equal(
+    root.querySelector(".inbox-attachment img").getAttribute("src"),
+    "https://mautic.test/s/whatsqr/media/91",
+  );
+  assert.equal(
+    root.querySelector(".inbox-attachment video").getAttribute("src"),
+    "https://mautic.test/s/whatsqr/media/92#t=0.001",
+  );
+  assert.ok(
+    root.querySelector(".inbox-attachment video").hasAttribute("controls"),
+  );
+  assert.equal(
+    root.querySelector(".inbox-attachment audio").getAttribute("src"),
+    "https://mautic.test/s/whatsqr/media/93",
+  );
+  assert.ok(
+    root.querySelector(
+      '.inbox-attachment a[href="https://mautic.test/s/whatsqr/media/94"]',
+    ),
+  );
   for (let volta = 0; volta < 60; volta += 1) {
     if (
       requests.some(
