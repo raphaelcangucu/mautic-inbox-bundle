@@ -1,4 +1,5 @@
 import {localeInstruction} from "./locale.mjs";
+import {pageContextInstruction} from "./page-context.mjs";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
@@ -291,6 +292,7 @@ try {
     systemPrompt:
       guard +
       localeInstruction(input.locale) +
+      pageContextInstruction(input.page_context) +
       (input.profile === "macro-sports"
         ? "Especialidade: análises esportivas fundamentadas no CMS. Dúvidas gerais vão ao atendimento humano.\n"
         : "Especialidade: suporte à plataforma e relatórios Macro Markets.\n") +

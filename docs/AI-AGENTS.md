@@ -41,6 +41,8 @@ CMS: GET em `/api/v1/blog`, artigo por slug, `/api/v1/market-predictions/search`
 
 ## Continuidade e falhas
 
+No WebChat, cada nova mensagem atualiza o idioma e a página atual. A IA recebe URL sem parâmetros e título limitado como metadados não confiáveis, nunca como instruções ou identidade. Referências como “esse mercado” podem ser resolvidas pelo slug/título usando as ferramentas públicas do CMS; a página não autoriza consultar contas, executar transações nem buscar URLs arbitrárias. O instalador mantém os módulos de idioma e contexto junto ao runner.
+
 O limite de respostas é configurável em dois níveis: global e por agente. `0` significa ilimitado e é o padrão. Se ambos forem positivos, o menor valor limita a conversa. A verificação acontece antes de chamar o modelo; ao atingir o teto, a última resposta permitida segue normalmente e a atribuição pausa para a equipe continuar. Transferir mantém a contagem. O botão de reinício gera uma nova sessão segura, zera contador e reincidência fora do escopo e invalida gerações ou envios antigos. Permite-se uma troca entre agentes por sessão para evitar alternância acidental.
 
 Cada geração continua limitada a três turnos de modelo e 65 segundos; a saída tem até 900 caracteres. Não há repetição automática de uma geração ou envio de IA que falhou. Mesmo com `0`, documentos, histórico e consultas consomem tokens.
