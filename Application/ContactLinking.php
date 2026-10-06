@@ -56,7 +56,7 @@ final class ContactLinking
      *
      * @return array<string, mixed>
      */
-    public function options(MetaConversation $conversation, string $email, User $user): array
+    public function options(MetaConversation $conversation, string $email, User $user, bool $includeCatalog = true): array
     {
         $current = $conversation->getContact();
         $matches = [];
@@ -72,10 +72,41 @@ final class ContactLinking
             'email' => $email,
             'contact' => null === $current ? null : $this->card($current),
             'matches' => $matches,
-            'campaigns' => $this->pick('campaigns', 'campaign:campaigns', $user),
-            'segments' => $this->pick('lead_lists', 'lead:lists', $user),
+            'campaigns' => $includeCatalog ? $this->pick('campaigns', 'campaign:campaigns', $user) : [],
+            'segments' => $includeCatalog ? $this->pick('lead_lists', 'lead:lists', $user) : [],
             'can_edit' => $this->permissions->isGranted(['lead:leads:editown', 'lead:leads:editother'], 'MATCH_ONE'),
         ];
+    }
+
+    /** Read-only autocomplete: bounded pages, published items and the same ownership rules as pick(). */
+    public function catalogue(User $user, array $filters): array
+    {
+        [$table, $permission] = match ($filters['kind'] ?? '') {
+            'campaign' => ['campaigns', 'campaign:campaigns'],
+            'segment' => ['lead_lists', 'lead:lists'],
+            default => throw new InboxException('Tipo de busca inválido.', 422),
+        };
+        if (!$this->permissions->isGranted([$permission.':viewown', $permission.':viewother'], 'MATCH_ONE', $user)) {
+            return ['items' => [], 'next_cursor' => null];
+        }
+        $limit = max(1, min(50, (int) ($filters['limit'] ?? 20)));
+        $offset = max(0, min(100000, (int) ($filters['cursor'] ?? 0)));
+        $query = mb_substr(trim((string) ($filters['search'] ?? '')), 0, 100);
+        $qb = $this->connection->createQueryBuilder()->select('id', 'name')
+            ->from((defined('MAUTIC_TABLE_PREFIX') ? MAUTIC_TABLE_PREFIX : '').$table)
+            ->where('is_published = 1')->orderBy('name', 'ASC')->addOrderBy('id', 'ASC')
+            ->setFirstResult($offset)->setMaxResults($limit + 1);
+        if (!$this->permissions->isGranted($permission.':viewother', 'MATCH_ALL', $user)) {
+            $qb->andWhere('created_by = :owner')->setParameter('owner', (int) $user->getId());
+        }
+        if ('' !== $query) {
+            $qb->andWhere("LOWER(name) LIKE :query ESCAPE '!'")
+                ->setParameter('query', '%'.strtr(mb_strtolower($query), ['!' => '!!', '%' => '!%', '_' => '!_']).'%');
+        }
+        $rows = $qb->executeQuery()->fetchAllAssociative();
+        $more = count($rows) > $limit;
+        $items = array_map(static fn (array $row): array => ['id' => (int) $row['id'], 'name' => (string) $row['name']], array_slice($rows, 0, $limit));
+        return ['items' => $items, 'next_cursor' => $more ? (string) ($offset + $limit) : null];
     }
 
     /**

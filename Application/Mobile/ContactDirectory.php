@@ -41,7 +41,10 @@ final class ContactDirectory
         if (''!==$q) { $qb->andWhere("(LOWER(CONCAT(COALESCE(l.firstname,''),' ',COALESCE(l.lastname,''))) LIKE :query OR LOWER(l.email) LIKE :query OR l.phone LIKE :query OR l.mobile LIKE :query)")->setParameter('query','%'.mb_strtolower($q).'%'); }
         $campaign=(int)($filters['campaign_id']??0);
         if ($campaign>0) {
-            if (!in_array($campaign,array_column($this->campaigns($user),'id'),true)) { throw new InboxException('Campanha indisponível para seu usuário.',403); }
+            $allowed=$this->allowed($user,'campaign:campaigns:viewown') || $this->allowed($user,'campaign:campaigns:viewother');
+            $check=$this->db->createQueryBuilder()->select('id')->from($this->table('campaigns'))->where('id = :id')->andWhere('is_published = 1')->setParameter('id',$campaign)->setMaxResults(1);
+            if (!$this->allowed($user,'campaign:campaigns:viewother')) { $check->andWhere('created_by = :user')->setParameter('user',$user->getId()); }
+            if (!$allowed || false===$check->executeQuery()->fetchOne()) { throw new InboxException('Campanha indisponível para seu usuário.',403); }
             $qb->andWhere('EXISTS (SELECT 1 FROM '.$this->table('campaign_leads').' cl WHERE cl.lead_id = l.id AND cl.campaign_id = :campaign AND cl.manually_removed = 0)')->setParameter('campaign',$campaign);
         }
         $rows=$qb->executeQuery()->fetchAllAssociative();$more=count($rows)>$limit;$rows=array_slice($rows,0,$limit);

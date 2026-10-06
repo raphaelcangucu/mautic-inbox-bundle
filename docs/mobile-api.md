@@ -143,3 +143,9 @@ Verificação isolada: php Tests/Standalone/publication.php (sem conexão com ba
 A API verifica a correspondência entre comentário, mídia e conta Instagram ativa antes de escrever. Comentários da própria conta e relações de origem incompatíveis são recusados. O marcador `hidden` só é gravado após a confirmação `hidden=true` da rede. Uma resposta de sucesso inicial seguida de ausência de confirmação permanece como falha verificável; não implica remoção ou ocultação confirmada.
 
 As ações exigem sessão, permissão de edição, comentário público e a versão atual do atendimento. Não há exclusão permanente, alteração de esquema ou aplicação automática de moderação a outros canais. As mensagens originais permanecem no Mautic.
+
+### CRM autocomplete
+
+`GET /inbox/mobile/api/crm-options?kind=campaign|segment&search=...&limit=20&cursor=...` returns `{items:[{id,name}],next_cursor}`. Pages are bounded at 50 server-side, sorted by name/id, and preserve published/ownership permissions. Search uses bound parameters and literal wildcard escaping. No whole-catalogue payload or schema change is required. `email-options?include_catalog=0` skips the legacy catalogue during contact review; omission preserves existing web-client behavior. Contact campaign filters validate the chosen ID directly so campaigns outside the old 200-item listing remain accessible.
+
+Checks: local app typecheck and 68 checks, including 1,000 synthetic campaigns/segments; PHP syntax and diff checks. Source backup verified before production code deployment. Live service reads use an explicitly read-only transaction; no database test suite, fixtures or schema operation. Native UI/keyboard interaction remains pending due to unavailable computer control.

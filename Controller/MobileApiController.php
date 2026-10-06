@@ -115,6 +115,7 @@ final class MobileApiController extends CommonController
                 return $this->error('Método não permitido.','method_not_allowed',405);
             }
             if ($method === 'GET' && $resource === 'contacts') { return $this->data($directory->search($user,$request->query->all())); }
+            if ($method === 'GET' && $resource === 'crm-options') { return $this->data($linking->catalogue($user,$request->query->all())); }
             if ($method === 'GET' && $resource === 'contacts/campaigns') { return $this->data(['items'=>$directory->campaigns($user)]); }
             if (preg_match('#^contacts/([1-9][0-9]*)(?:/(start))?$#D',$resource,$contactRoute)) {
                 $contactId=(int)$contactRoute[1];
@@ -139,7 +140,7 @@ final class MobileApiController extends CommonController
                     'history' => $this->data($query->timeline($state, $request->query->get('before'), $request->query->getInt('limit', 40))),
                     'publication' => $this->data($publications->resolve($state,$query->origins($state),$request->query->getBoolean('refresh'))),
                     'templates' => $this->data(['items' => $templates->catalog($state), 'blocked_reason' => ($reason = $templates->blockedReason($state)) ? $this->translator->trans($reason) : null]),
-                    'email-options' => $this->data($linking->options($state->getConversation(), $linking->email($request->query->getString('email')), $user)),
+                    'email-options' => $this->data($linking->options($state->getConversation(), $linking->email($request->query->getString('email')), $user, $request->query->getBoolean('include_catalog', true))),
                     'ai' => $this->forward(AiController::class.'::available', ['stateId' => $id]),
                     default => $this->error('Método não permitido.', 'method_not_allowed', 405),
                 };
