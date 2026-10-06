@@ -14,6 +14,12 @@ Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, In
 - Limite opcional de respostas por sessão de IA. O padrão `0` é ilimitado e o contador pode ser reiniciado pela interface.
 - Contrato de transporte para canais externos, com metadados, envio humano e por IA, leitura e tempo real.
 
+## WhatsApp por QR
+
+A versão 1.4.1 identifica sessões `whatsapp_qr_session` como **WhatsApp · QR**. Instale o [MauticWhatsQrBundle](https://github.com/raphaelcangucu/mautic-whatsqr-bundle) 0.2.1 e seu serviço Go para conectar o aparelho. O Inbox mantém atribuição, notas, rascunhos, fila e retomada humana existentes.
+
+O canal QR permite respostas de texto sem a janela de 24 horas da Cloud API e não oferece templates oficiais. Uma sessão desconectada ou um destinatário ainda não resolvido bloqueia a resposta com orientação específica. Envios novos têm retentativas limitadas para falhas temporárias; reenvio manual continua uma tentativa. DNC, idempotência e limites do conector permanecem ativos. Mídia e recibos de leitura do transporte QR ainda não estão implementados.
+
 ## Frontend Svelte 5
 
 O atendimento e a configuração dos agentes usam componentes Svelte 5 com TypeScript, mantendo o visual, as rotas e as garantias do Mautic. Twig fornece somente os pontos de montagem e os dados iniciais escapados. O bundle compilado e versionado em `Assets/dist/inbox-app.js` contém o runtime necessário, portanto a instalação por Composer não exige Node.js em produção.
@@ -31,7 +37,7 @@ Os componentes ficam em `Frontend/`. O entrypoint atende `Mautic.inboxOnLoad` e 
 
 ## Instalação
 
-Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.14.0 ou compatível instalado. Em uma instalação DDEV:
+Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.14.2 ou compatível instalado. Em uma instalação DDEV:
 
 ```bash
 ddev start

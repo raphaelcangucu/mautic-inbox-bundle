@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.1 - 2026-10-06
+
+- Integra sessões WhatsApp por QR ao Inbox com identificação do transporte, bloqueios claros e fila com retentativas limitadas.
+- Dispensa a janela e os templates da Cloud API somente para sessões QR, mantendo DNC e demais proteções do conector.
+- Requer Meta Bundle 0.14.2 e preserva as melhorias de SSE, consultas em lote e idioma da versão 1.4.0.
+
 ## 1.3.0
 
 - Adiciona um contrato de transporte para canais externos ao Meta Bundle.

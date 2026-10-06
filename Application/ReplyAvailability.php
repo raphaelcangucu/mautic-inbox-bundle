@@ -7,6 +7,8 @@ use Doctrine\ORM\EntityManagerInterface;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
 use MauticPlugin\MauticInboxBundle\Entity\OutboundRequest;
 use MauticPlugin\MauticMetaBundle\Entity\MetaMessage;
+use MauticPlugin\MauticMetaBundle\Domain\AssetType;
+use MauticPlugin\MauticMetaBundle\Domain\UnresolvedRecipient;
 
 final class ReplyAvailability
 {
@@ -18,10 +20,13 @@ final class ReplyAvailability
     public function reason(ConversationState $state): ?string
     {
         $c = $state->getConversation();
+        $qr = AssetType::WhatsAppQrSession === $c->getAsset()->getType();
         if ('resolved' === $state->getLifecycle()) { return $this->translator->trans('mautic.inbox.ui.this_conversation_is_resolved_reopen_it_to_reply_fd61b2'); }
         if (null !== ($transport = $this->channelTransports->for($c))) {
             return $transport->replyBlockedReason($state);
         }
+        if (UnresolvedRecipient::marks($c->getRecipient())) { return $this->translator->trans('mautic.inbox.ui.reply_recipient_unresolved'); }
+        if ($qr && in_array((string) ($c->getAsset()->getSettings()['whatsqr_session_status'] ?? ''), ['logged_out', 'failed', 'ambiguous_credential'], true)) { return $this->translator->trans('mautic.inbox.ui.reply_qr_session_disconnected'); }
         if ('active' !== $c->getAsset()->getStatus() || !$c->getAsset()->isPublished()) { return $this->translator->trans('mautic.inbox.ui.the_channel_is_unavailable_review_the_connection_in_meta_a8f714'); }
         if ('facebook' === $c->getChannel() && false === ($c->getAsset()->getSettings()['facebook_reply_enabled'] ?? true)) { return $this->translator->trans('mautic.inbox.ui.the_facebook_connection_needs_additional_permissions_in_meta_befo_85248a'); }
         $repo = $this->entityManager->getRepository(MetaMessage::class);
@@ -33,6 +38,7 @@ final class ReplyAvailability
         if ($comment && ($repo->findOneBy(['conversation' => $c, 'direction' => 'outbound', 'messageType' => 'private_reply', 'status' => ['accepted', 'sent', 'delivered', 'read', 'pending', 'processing', 'uncertain']]) || $this->entityManager->getRepository(OutboundRequest::class)->findOneBy(['conversation' => $c, 'status' => ['pending', 'processing', 'waiting', 'uncertain', 'sent', 'accepted', 'delivered', 'read']]))) {
             return $this->translator->trans('mautic.inbox.ui.this_comment_already_received_a_private_reply_or_has_a_send_in_pr_a118b7');
         }
+        if ($qr) { return null; }
         $last = $repo->findOneBy(['conversation' => $c, 'direction' => 'inbound'], ['dateAdded' => 'DESC', 'id' => 'DESC']);
         if ('whatsapp' === $c->getChannel() && $c->getContact()) {
             // Match the connector's window policy when Brazilian phone normalization changed the recipient.

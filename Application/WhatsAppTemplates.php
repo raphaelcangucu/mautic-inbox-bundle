@@ -19,6 +19,7 @@ final class WhatsAppTemplates
     public function catalog(ConversationState $state): array
     {
         $phone = $state->getConversation()->getAsset();
+        if (null !== ($qr = $this->qrRefusal($state))) { throw new InboxException($qr); }
         if ('whatsapp' !== $state->getConversation()->getChannel() || $phone->getType() !== AssetType::WhatsAppPhoneNumber) { throw new InboxException('mautic.inbox.template.whatsapp_only'); }
         $account = null;
         foreach ($this->em->getRepository(MetaAsset::class)->findBy(['connection' => $phone->getConnection(), 'type' => AssetType::WhatsAppBusinessAccount->value, 'isPublished' => true]) as $waba) {
@@ -62,8 +63,24 @@ final class WhatsAppTemplates
         return ['body' => $selected['name'].' · '.$selected['language']."\n".$preview, 'payload' => ['recipient' => $recipient, 'name' => $selected['name'], 'language' => $selected['language'], 'components' => array_values($components), '_template_id' => $id]];
     }
 
+    /**
+     * A recusa propria do canal por QR.
+     *
+     * Modelo e produto do WABA: ele so existe porque ha uma conta de negocio na Meta que
+     * aprova o texto. Uma sessao por QR vive fora do Graph e nao tem conta nenhuma, entao
+     * aqui nao ha modelo indisponivel -- nao ha modelo. Dizer "modelos so para conversas
+     * WhatsApp" mandaria o atendente conferir o canal errado, porque a conversa E WhatsApp;
+     * e "este destinatario nao e um numero valido", que e o que a checagem de consentimento
+     * devolvia, manda conferir o contato, que tambem nao e o problema.
+     */
+    private function qrRefusal(ConversationState $state): ?string
+    {
+        return AssetType::WhatsAppQrSession === $state->getConversation()->getAsset()->getType() ? 'mautic.inbox.template.qr_session' : null;
+    }
+
     public function blockedReason(ConversationState $state): ?string
     {
+        if (null !== ($qr = $this->qrRefusal($state))) { return $qr; }
         try {
             $c = $state->getConversation(); $a = $c->getAsset();
             $recipient = $this->phones->normalize($c->getRecipient(), (string) ($a->getSettings()['default_region'] ?? 'BR'));

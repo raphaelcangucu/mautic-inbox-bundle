@@ -7,6 +7,9 @@ export interface Asset {
   handle?: string;
   phone?: string;
   channel?: Channel;
+  // Opcional porque uma conversa guardada no cache antes desta versao volta sem ele, e a
+  // lista precisa continuar desenhando o que ja tinha.
+  type?: string;
 }
 export interface Assignee {
   id: number;
