@@ -21,7 +21,7 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 /** Native bearer boundary. Business rules remain in the existing Inbox services. */
 final class MobileApiController extends CommonController
 {
-    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory): Response
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing): Response
     {
         $previous = $tokens->getToken();
         try {
@@ -102,6 +102,17 @@ final class MobileApiController extends CommonController
                 if ($id && !$selected) { return $this->error('Conversa não encontrada.', 'not_found', 404); }
                 $since = $request->query->getString('since') ?: gmdate(DATE_ATOM, time() - 60);
                 $updates=$query->poll($user,$since,$selected,$request->query->has('notification_cursor') ? $request->query->getInt('notification_cursor') : null); $updates['conversations']=array_map($decorate,$updates['conversations']); return $this->data($updates);
+            }
+            if ($resource === 'whatsqr' || preg_match('#^whatsqr/([1-9][0-9]*)(?:/(start))?$#D',$resource,$qrRoute)) {
+                if ($method==='GET' && $resource==='whatsqr') { return $this->data($pairing->connections()); }
+                if ($method==='GET' && empty($qrRoute[2])) { return $this->data($pairing->status((int)$qrRoute[1])); }
+                if ($method==='POST' && ($qrRoute[2]??'')==='start') {
+                    if(strlen($request->getContent())>1024){return $this->error('Requisição inválida.','invalid_request',400);}
+                    try{$payload=json_decode($request->getContent(),true,4,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
+                    if(!is_array($payload)||array_is_list($payload)||!is_bool($payload['regenerate']??null)){return $this->error('Requisição inválida.','invalid_request',400);}
+                    return $this->data($pairing->start((int)$qrRoute[1],$payload['regenerate']));
+                }
+                return $this->error('Método não permitido.','method_not_allowed',405);
             }
             if ($method === 'GET' && $resource === 'contacts') { return $this->data($directory->search($user,$request->query->all())); }
             if ($method === 'GET' && $resource === 'contacts/campaigns') { return $this->data(['items'=>$directory->campaigns($user)]); }
