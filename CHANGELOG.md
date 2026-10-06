@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.5.0 - 2026-10-06
 
+- Inclui o contexto da página atual para agentes no WebChat, preservando a atualização já integrada ao main.
+- Valida recepção real de imagem e PDF pelo WhatsApp QR, preview, download e atualização automática do histórico.
 - Adiciona um contrato opcional de anexos para plugins de canal, permitindo preview autenticado de imagens/vídeos/áudios e abertura de documentos QR sem usar o Graph.
 - Preserva os anexos dos canais existentes e mantém o rótulo de imagens sem nome de arquivo.
 - Adiciona um provedor opcional de fotos de participantes para plugins, mantendo o avatar dos demais canais e o retorno às iniciais.

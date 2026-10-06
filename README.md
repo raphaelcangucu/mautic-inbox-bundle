@@ -16,13 +16,15 @@ Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, In
 
 ## WhatsApp por QR
 
-A versão 1.4.1 identifica sessões `whatsapp_qr_session` como **WhatsApp · QR**. Instale o [MauticWhatsQrBundle](https://github.com/raphaelcangucu/mautic-whatsqr-bundle) 0.2.1 e seu serviço Go para conectar o aparelho. O Inbox mantém atribuição, notas, rascunhos, fila e retomada humana existentes.
+A versão 1.5.0 identifica sessões `whatsapp_qr_session` como **WhatsApp · QR**. Instale o [MauticWhatsQrBundle](https://github.com/raphaelcangucu/mautic-whatsqr-bundle) 0.3.0 e seu serviço Go para conectar o aparelho. O Inbox mantém atribuição, notas, rascunhos, fila e retomada humana existentes.
 
-O canal QR permite respostas de texto sem a janela de 24 horas da Cloud API e não oferece templates oficiais. Uma sessão desconectada ou um destinatário ainda não resolvido bloqueia a resposta com orientação específica. Envios novos têm retentativas limitadas para falhas temporárias; reenvio manual continua uma tentativa. DNC, idempotência e limites do conector permanecem ativos. Mídia e recibos de leitura do transporte QR ainda não estão implementados.
+O canal QR permite respostas de texto sem a janela de 24 horas da Cloud API e não oferece templates oficiais. Uma sessão desconectada ou um destinatário ainda não resolvido bloqueia a resposta com orientação específica. Envios novos têm retentativas limitadas para falhas temporárias; reenvio manual continua uma tentativa. DNC, idempotência e limites do conector permanecem ativos. Mídia recebida usa o proxy privado do WhatsQR 0.3.0, com validação de conteúdo, limite de 32 MiB e ClamAV obrigatório. Recibos de leitura e envio de anexos pelo transporte QR ainda não estão implementados.
 
 Plugins podem fornecer fotos pelo contrato opcional `ParticipantAvatarProviderInterface`, registrado com a tag `mautic.inbox.participant_avatar`. Ele monta uma URL local a partir da conversa já carregada, sem consulta por linha. O WhatsQR usa essa extensão para mostrar a miniatura atual do contato com cache e autenticação; o avatar existente mantém as iniciais se a foto não estiver disponível.
 
 Anexos de canais externos usam `AttachmentProviderInterface`, com tag `mautic.inbox.attachment`. O provedor apenas monta a URL HTTPS autenticada da mensagem, sem IO. `MessagePresentation` prefere essa URL e preserva o proxy Graph dos canais oficiais quando nenhum provedor corresponde. O WhatsQR fornece imagens/figurinhas, vídeo e áudio nos previews Svelte existentes, além de links de documentos, sem expor as credenciais de download ao navegador. O plugin do canal é responsável por validar, armazenar e servir o arquivo com autenticação e limites.
+
+A validação real da integração está documentada em [docs/WHATSQR-MEDIA.md](docs/WHATSQR-MEDIA.md).
 
 ## Frontend Svelte 5
 
@@ -170,7 +172,7 @@ O identificador do link representa o estado persistido da conversa no Inbox. Ele
 
 ## Compatibilidade e versão
 
-A versão `1.3.0` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+A versão `1.5.0` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.2`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
 
 ### Tempo real e consultas (1.4)
 
