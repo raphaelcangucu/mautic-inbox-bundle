@@ -20,6 +20,10 @@ A versão 1.4.1 identifica sessões `whatsapp_qr_session` como **WhatsApp · QR*
 
 O canal QR permite respostas de texto sem a janela de 24 horas da Cloud API e não oferece templates oficiais. Uma sessão desconectada ou um destinatário ainda não resolvido bloqueia a resposta com orientação específica. Envios novos têm retentativas limitadas para falhas temporárias; reenvio manual continua uma tentativa. DNC, idempotência e limites do conector permanecem ativos. Mídia e recibos de leitura do transporte QR ainda não estão implementados.
 
+Plugins podem fornecer fotos pelo contrato opcional `ParticipantAvatarProviderInterface`, registrado com a tag `mautic.inbox.participant_avatar`. Ele monta uma URL local a partir da conversa já carregada, sem consulta por linha. O WhatsQR usa essa extensão para mostrar a miniatura atual do contato com cache e autenticação; o avatar existente mantém as iniciais se a foto não estiver disponível.
+
+Anexos de canais externos usam `AttachmentProviderInterface`, com tag `mautic.inbox.attachment`. O provedor apenas monta a URL HTTPS autenticada da mensagem, sem IO. `MessagePresentation` prefere essa URL e preserva o proxy Graph dos canais oficiais quando nenhum provedor corresponde. O WhatsQR fornece imagens/figurinhas, vídeo e áudio nos previews Svelte existentes, além de links de documentos, sem expor as credenciais de download ao navegador. O plugin do canal é responsável por validar, armazenar e servir o arquivo com autenticação e limites.
+
 ## Frontend Svelte 5
 
 O atendimento e a configuração dos agentes usam componentes Svelte 5 com TypeScript, mantendo o visual, as rotas e as garantias do Mautic. Twig fornece somente os pontos de montagem e os dados iniciais escapados. O bundle compilado e versionado em `Assets/dist/inbox-app.js` contém o runtime necessário, portanto a instalação por Composer não exige Node.js em produção.

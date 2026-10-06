@@ -49,6 +49,7 @@ final class InboxQuery
         private ChannelTransportRegistry $channelTransports,
         #[\Symfony\Component\DependencyInjection\Attribute\Autowire(service: 'mautic.helper.twig.avatar')]
         private \Mautic\LeadBundle\Twig\Helper\AvatarHelper $avatars,
+        private ?ParticipantAvatarRegistry $participantAvatars = null,
     ) {
     }
 
@@ -365,7 +366,7 @@ final class InboxQuery
         }
         $summary = [
             'contact_handle' => $handle,
-            'avatar_url' => $profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null),
+            'avatar_url' => $this->participantAvatars?->url($c) ?? ($profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null)),
             'preview' => $preview,
             'id' => (int) $state->getId(), 'conversation_id' => (int) $c->getId(), 'version' => $state->getVersion(),
             // O tipo vai junto porque `channel` nao distingue os dois WhatsApp: o
