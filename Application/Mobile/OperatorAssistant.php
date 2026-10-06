@@ -17,8 +17,16 @@ use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 final class OperatorAssistant
 {
     public function __construct(private PiClient $pi, private EntityManagerInterface $em, private SearchCampaignsTool $campaigns, private FetchCampaignTool $campaign, private SearchContactsTool $contacts, private FetchContactTool $contact, private InboxQuery $inbox, private ConversationStateRepository $states, #[Autowire('%kernel.project_dir%')] private string $projectDir) {}
+    /** Public provider description only: no credentials, tools, model calls or CRM reads. */
+    public function privacy(): array { return $this->run(['mode'=>'privacy']); }
     public function reply(array $payload,User $user): array
     {
+        // Older beta clients remain compatible. New clients bind the user's
+        // consent to the current recipient before any question or context leaves.
+        if (array_key_exists('sharing_policy_id',$payload)) {
+            $policy=$this->privacy();
+            if (!is_string($payload['sharing_policy_id']) || !hash_equals((string)($policy['policy_id']??''),$payload['sharing_policy_id'])) { throw new InboxException('O provedor do assistente mudou. Confira e autorize o compartilhamento novamente.',409); }
+        }
         $message=trim((string)($payload['message']??''));
         if ($message === '' || mb_strlen($message)>4000) { throw new InboxException('mautic.inbox.ui.invalid_request_43c865',422); }
         $dir=$this->projectDir.'/var/inbox-mobile'; if(!is_dir($dir)){mkdir($dir,0700,true);}

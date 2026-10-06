@@ -69,6 +69,7 @@ final class MobileApiController extends CommonController
                 }
                 return $raw;
             };
+            if ($method === 'GET' && $resource === 'assistant/privacy') { return $this->data($assistant->privacy()); }
             if ($method === 'POST' && $resource === 'assistant/messages') {
                 if(strlen($request->getContent())>32768){return $this->error('Requisição inválida.','invalid_request',400);}
                 try{$payload=json_decode($request->getContent(),true,16,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
