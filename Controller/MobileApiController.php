@@ -82,7 +82,12 @@ final class MobileApiController extends CommonController
                 if (!is_array($payload)) { return $this->error('JSON inválido.','invalid_request',400); }
                 return $this->data($canned->create($payload,$user,$cannedRepository,$em),201);
             }
-            if ($method === 'GET' && preg_match('#^media/([1-9][0-9]*)$#D',$resource,$media)) { $response=$this->forward(InboxController::class.'::media',['messageId'=>(int)$media[1]]);$response->headers->set('Cache-Control','no-store, private');return $response; }
+            if ($method === 'GET' && preg_match('#^media/([1-9][0-9]*)$#D',$resource,$media)) {
+                $message=$em->find(\MauticPlugin\MauticMetaBundle\Entity\MetaMessage::class,(int)$media[1]);
+                $qrController='MauticPlugin\\MauticWhatsQrBundle\\Controller\\MediaController';
+                $controller=$message instanceof \MauticPlugin\MauticMetaBundle\Entity\MetaMessage && $message->getAsset()->getType()->value === 'whatsapp_qr_session' && class_exists($qrController) ? $qrController.'::show' : InboxController::class.'::media';
+                $response=$this->forward($controller,['messageId'=>(int)$media[1]]);$response->headers->set('Cache-Control','no-store, private');return $response;
+            }
 
             if ($method === 'DELETE' && $resource === 'session') { $sessions->revoke($match[1]); return $this->data(['revoked' => true]); }
             if ($method === 'GET' && $resource === 'me') { return $this->data(['user' => ['id' => (int) $user->getId(), 'name' => $user->getName(), 'email' => $user->getEmail()]]); }
@@ -101,7 +106,7 @@ final class MobileApiController extends CommonController
                 $id = $request->query->getInt('state_id'); $selected = $id ? $states->find($id) : null;
                 if ($id && !$selected) { return $this->error('Conversa não encontrada.', 'not_found', 404); }
                 $since = $request->query->getString('since') ?: gmdate(DATE_ATOM, time() - 60);
-                $updates=$query->poll($user,$since,$selected,$request->query->has('notification_cursor') ? $request->query->getInt('notification_cursor') : null); $updates['conversations']=array_map($decorate,$updates['conversations']); return $this->data($updates);
+                $updates=$query->poll($user,$since,$selected,$request->query->has('notification_cursor') ? $request->query->getInt('notification_cursor') : null); $updates['conversations']=array_map($decorate,$updates['conversations']); $updates['timeline']=\MauticPlugin\MauticInboxBundle\Application\Mobile\MediaRoutes::items($updates['timeline'],$request->getSchemeAndHttpHost()); return $this->data($updates);
             }
             if ($resource === 'whatsqr' || preg_match('#^whatsqr/([1-9][0-9]*)(?:/(start))?$#D',$resource,$qrRoute)) {
                 if ($method==='GET' && $resource==='whatsqr') { return $this->data($pairing->connections()); }
@@ -137,7 +142,7 @@ final class MobileApiController extends CommonController
             if ($method === 'GET') {
                 return match ($operation) {
                     '' => $this->data($decorate($query->summary($state))),
-                    'history' => $this->data($query->timeline($state, $request->query->get('before'), $request->query->getInt('limit', 40))),
+                    'history' => $this->data((function() use ($query,$state,$request): array { $timeline=$query->timeline($state,$request->query->get('before'),$request->query->getInt('limit',40));$timeline['items']=\MauticPlugin\MauticInboxBundle\Application\Mobile\MediaRoutes::items($timeline['items'],$request->getSchemeAndHttpHost());return $timeline; })()),
                     'publication' => $this->data($publications->resolve($state,$query->origins($state),$request->query->getBoolean('refresh'))),
                     'templates' => $this->data(['items' => $templates->catalog($state), 'blocked_reason' => ($reason = $templates->blockedReason($state)) ? $this->translator->trans($reason) : null]),
                     'email-options' => $this->data($linking->options($state->getConversation(), (!$request->query->getBoolean('include_catalog', true) && '' === trim($request->query->getString('email'))) ? '' : $linking->email($request->query->getString('email')), $user, $request->query->getBoolean('include_catalog', true))),
