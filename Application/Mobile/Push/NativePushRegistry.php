@@ -14,6 +14,8 @@ final class NativePushRegistry
     public function register(array $grant, array $p): array
     {
         $installation = self::installation((string)($p['installation'] ?? ''));
+        // Old mobile versions omit locale and retain their existing Portuguese notifications.
+        $locale = NativePushLocale::checked(array_key_exists('locale',$p) ? $p['locale'] : 'pt-BR');
         if (!is_string($p['token'] ?? null) || !preg_match('/^[a-fA-F0-9]{64,200}$/D', $p['token']) || strlen($p['token']) % 2 !== 0 || !in_array($p['environment'] ?? '', ['development','production'], true) || !is_string($p['accountId'] ?? null) || !preg_match('/^[a-f0-9]{64}$/D', $p['accountId']) || ($p['bundle'] ?? '') !== 'com.distributionmachine.mauticinbox.demo') { throw new \DomainException('invalid_device'); }
         if (!is_string($p['name'] ?? '') || (isset($p['openConversation']) && (!is_int($p['openConversation']) || $p['openConversation'] < 0)) || (isset($p['foreground']) && !is_bool($p['foreground']))) { throw new \DomainException('invalid_device'); }
         $prefs = $p['preferences'] ?? [];
@@ -21,10 +23,10 @@ final class NativePushRegistry
         $safe = [];
         foreach (['enabled'=>true,'sound'=>true,'preview'=>false,'quiet'=>false,'grouped'=>true,'suppressOpen'=>true] as $key=>$default) { if (isset($prefs[$key]) && !is_bool($prefs[$key])) { throw new \DomainException('invalid_preferences'); } $safe[$key] = $prefs[$key] ?? $default; }
         $key = hash('sha256', $installation.':'.$grant['user']);
-        $this->storage->transaction(function(array &$data) use ($key,$installation,$grant,$p,$safe): void {
+        $this->storage->transaction(function(array &$data) use ($key,$installation,$grant,$p,$safe,$locale): void {
             // One installation may keep several operators; identity and active session are explicit.
             $old = $data['devices'][$key] ?? [];
-            $data['devices'][$key] = ['installation'=>$installation,'user'=>(int)$grant['user'],'session'=>$grant['session'],'accountId'=>$p['accountId'],'token'=>strtolower($p['token']),'environment'=>$p['environment'],'bundle'=>$p['bundle'],'name'=>mb_substr((string)($p['name'] ?? 'Mautic Inbox'),0,80),'preferences'=>$safe,'seen'=>time(),'open'=>(int)($p['openConversation'] ?? 0),'foreground'=>($p['foreground'] ?? false) === true,'retired'=>($old['retired'] ?? false) && ($old['token'] ?? '') === strtolower($p['token']) && ($old['environment'] ?? '') === $p['environment'],'tested'=>$old['tested'] ?? 0,'accepted'=>$old['accepted'] ?? null,'error'=>$old['error'] ?? null];
+            $data['devices'][$key] = ['installation'=>$installation,'user'=>(int)$grant['user'],'session'=>$grant['session'],'accountId'=>$p['accountId'],'token'=>strtolower($p['token']),'environment'=>$p['environment'],'bundle'=>$p['bundle'],'name'=>mb_substr((string)($p['name'] ?? 'Mautic Inbox'),0,80),'locale'=>$locale,'preferences'=>$safe,'seen'=>time(),'open'=>(int)($p['openConversation'] ?? 0),'foreground'=>($p['foreground'] ?? false) === true,'retired'=>($old['retired'] ?? false) && ($old['token'] ?? '') === strtolower($p['token']) && ($old['environment'] ?? '') === $p['environment'],'tested'=>$old['tested'] ?? 0,'accepted'=>$old['accepted'] ?? null,'error'=>$old['error'] ?? null];
         });
         return $this->status($grant,$installation);
     }

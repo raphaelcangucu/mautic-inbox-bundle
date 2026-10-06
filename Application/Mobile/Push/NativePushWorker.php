@@ -71,8 +71,8 @@ final class NativePushWorker
     public static function payload(array $device, ?array $raw, int $state): array
     {
         // Generic by default: customer names and message contents are not sent to Apple.
-        $title=$device['name']; $body=$state ? 'Você recebeu uma nova mensagem.' : 'Push remoto do Mautic conectado a este aparelho.';
-        if ($raw && $device['preferences']['preview']) { $title.=' · '.mb_substr($raw['contact_name'] ?? 'Contato',0,80); $body=mb_substr($raw['preview'] ?? 'Nova mensagem',0,500); }
+        $locale=$device['locale'] ?? 'pt-BR'; $title=$device['name']; $body=NativePushLocale::text($locale,$state ? 'new' : 'test');
+        if ($raw && $device['preferences']['preview']) { $title.=' · '.mb_substr($raw['contact_name'] ?? NativePushLocale::text($locale,'contact'),0,80); $body=mb_substr($raw['preview'] ?? NativePushLocale::text($locale,'new'),0,500); }
         $aps=['alert'=>['title'=>$title,'body'=>$body]];
         if ($device['preferences']['sound']) { $aps['sound']='default'; }
         if ($device['preferences']['grouped']) { $aps['thread-id']='inbox-'.$device['accountId'].'-'.$state; }
