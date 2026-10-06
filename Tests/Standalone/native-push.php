@@ -31,7 +31,7 @@ try {
     verify(!$eligible(array_replace($conversation,['lastInboundId'=>100])),'newer inbound replaces grouped queued alert');
     verify(!$eligible(array_replace($conversation,['spam'=>true]))&&!$eligible(array_replace($conversation,['blockedAuthor'=>true])),'moderation before delivery suppresses queued alert');
     $present=array_replace($d,['foreground'=>true,'open'=>232,'seen'=>time()]);
-    verify(!NativePushWorker::conversationEligible($present,$job,$conversation,8,time()),'open conversation with fresh presence suppresses alert');
+    verify(NativePushWorker::conversationEligible($present,$job,$conversation,8,time()),'recent foreground hint cannot discard an alert after iOS force-close; native handler controls presentation');
     verify(NativePushWorker::conversationEligible(array_replace($present,['seen'=>time()-61]),$job,$conversation,8,time()),'expired foreground presence no longer suppresses alert');
     verify(!NativePushWorker::conversationEligible($d,$job,[],8,time()),'deleted conversation cannot receive alert');
     verify(!str_contains(json_encode($payload),'SECRET'),'default payload excludes customer details');verify($payload['accountId']===$device['accountId']&&$payload['conversationId']===232,'notification opens correct account and conversation');

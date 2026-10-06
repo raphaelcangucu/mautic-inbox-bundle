@@ -66,7 +66,11 @@ final class NativePushWorker
         if ($device['preferences']['grouped'] && ($conversation['lastInboundId'] ?? null) !== $job['message']) {
             return false;
         }
-        return !($device['preferences']['suppressOpen'] && $device['foreground'] && $device['seen'] > $now - 60 && $device['open'] === $job['state']);
+        // Presence is advisory: force-closing iOS cannot reliably publish a
+        // background update. Dropping an alert here loses it permanently.
+        // The native foreground notification handler applies suppressOpen
+        // against the actual visible conversation when APNs delivers it.
+        return true;
     }
     public static function payload(array $device, ?array $raw, int $state): array
     {
