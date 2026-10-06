@@ -36,7 +36,7 @@ final class ContactDirectory
         if (!$this->allowed($user,'lead:leads:viewown') && !$this->allowed($user,'lead:leads:viewother')) { throw new InboxException('Sem permissão para consultar contatos.',403); }
         $limit=max(1,min(50,(int)($filters['limit']??30)));
         $qb=$this->db->createQueryBuilder()->select('l.id','l.firstname','l.lastname','l.email','l.mobile','l.phone')->from($this->table('leads'),'l')->where('l.id > :cursor')->setParameter('cursor',max(0,(int)($filters['cursor']??0)))->orderBy('l.id')->setMaxResults($limit+1);
-        if (!$this->allowed($user,'lead:leads:viewother')) { $qb->andWhere('l.owner_id = :user')->setParameter('user',$user->getId()); }
+        if (!$this->allowed($user,'lead:leads:viewother')) { $qb->andWhere('COALESCE(l.owner_id, l.created_by) = :user')->setParameter('user',$user->getId()); }
         $q=mb_substr(trim((string)($filters['search']??'')),0,100);
         if (''!==$q) { $qb->andWhere("(LOWER(CONCAT(COALESCE(l.firstname,''),' ',COALESCE(l.lastname,''))) LIKE :query OR LOWER(l.email) LIKE :query OR l.phone LIKE :query OR l.mobile LIKE :query)")->setParameter('query','%'.mb_strtolower($q).'%'); }
         $campaign=(int)($filters['campaign_id']??0);
@@ -53,7 +53,9 @@ final class ContactDirectory
     {
         $contact=$this->em->find(Lead::class,$id);
         if (!$contact instanceof Lead) { throw new InboxException('Contato não encontrado.',404); }
-        if (!$this->allowed($user,'lead:leads:viewother') && !($this->allowed($user,'lead:leads:viewown') && $contact->getOwner()?->getId()===$user->getId())) { throw new InboxException('Sem permissão para consultar este contato.',403); }
+        $permissionUser=$contact->getPermissionUser();
+        $permissionUserId=$permissionUser instanceof User ? $permissionUser->getId() : $permissionUser;
+        if (!$this->allowed($user,'lead:leads:viewother') && !($this->allowed($user,'lead:leads:viewown') && (int)$permissionUserId===$user->getId())) { throw new InboxException('Sem permissão para consultar este contato.',403); }
         return $contact;
     }
 
