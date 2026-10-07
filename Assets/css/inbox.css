@@ -214,3 +214,153 @@
 .inbox-sheet-check{display:flex;align-items:center;gap:9px;margin:0;min-height:44px;font-size:13px;font-weight:400}
 .inbox-sheet-foot{display:flex;align-items:center;justify-content:flex-end;gap:10px;margin-top:4px}
 .inbox-sheet-foot .btn{min-height:44px;padding:0 18px}
+
+/* Fit the actual Mautic content area, including its overlaid footer. The standalone
+   shell has no Mautic footer; its bottom navigation keeps its own measured reserve. */
+.inbox-app {
+  container-name: inbox;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--ib-app-top, 60px) - var(--ib-footer-space, 62px) - var(--ib-bottom-nav, 0px));
+  min-height: 0;
+}
+.inbox-app[data-standalone="1"] { --ib-footer-space: 0px; }
+.inbox-toolbar, .inbox-channel-notice { flex: none; }
+.inbox-workspace { flex: 1 1 auto; height: auto; min-height: 0; }
+.inbox-thread #inbox-selected {
+  position: relative;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+.inbox-messages-wrap, .inbox-list-scroll { overscroll-behavior: contain; }
+.inbox-settings, .inbox-automation {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+.inbox-automation .table-responsive { overflow-x: auto; }
+.inbox-automation table { min-width: 720px; }
+.inbox-automation th { white-space: nowrap; }
+.inbox-attachment audio { min-width: 0; max-width: 100%; }
+
+@media (min-width: 761px) {
+  .inbox-toolbar {
+    height: auto;
+    min-height: 76px;
+    padding: 12px 20px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .inbox-thread-header { min-height: 76px; }
+  .inbox-composer {
+    max-height: min(50dvh, 380px);
+    overflow: auto;
+  }
+  .inbox-composer textarea {
+    height: clamp(76px, 12dvh, 116px);
+    min-height: 76px;
+    max-height: 180px;
+    padding: 12px 14px;
+  }
+  .inbox-thread-identity { flex: 1 1 auto; }
+}
+
+/* A tablet can have a wide viewport but only 500px left beside the Mautic menu.
+   Use the width of the inbox itself instead of squeezing three columns into it. */
+@container inbox (max-width: 1120px) {
+  .inbox-workspace { grid-template-columns: 270px minmax(0, 1fr); }
+  .inbox-thread #inbox-selected,
+  .inbox-thread:has(.inbox-contact-panel.closed) #inbox-selected {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inbox-thread-header { grid-column: 1; padding-inline: 16px; }
+  .inbox-contact-panel { display: none; }
+  .inbox-contact-panel.open {
+    display: block;
+    position: absolute;
+    grid-column: 1;
+    grid-row: 2 / 4;
+    inset: 0 0 0 auto;
+    width: min(320px, 100%);
+    z-index: 5;
+    box-shadow: -12px 0 28px #26313e0d;
+  }
+  .inbox-ai-header { max-width: 140px; }
+}
+
+@container inbox (max-width: 650px) {
+  .inbox-workspace { display: block; }
+  .inbox-list-column { height: 100%; border-right: 0; }
+  .inbox-thread { display: none; height: 100%; }
+  .inbox-app.has-selection .inbox-thread { display: block; }
+  .inbox-app.has-selection .inbox-list-column { display: none; }
+  #inbox-back { display: inline-flex; padding: 5px; }
+  .inbox-thread-header {
+    display: grid;
+    grid-template-columns: 28px 32px minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px 12px;
+    min-height: 64px;
+  }
+  #inbox-back { grid-column: 1; grid-row: 1; }
+  .inbox-thread-header .inbox-avatar {
+    display: flex;
+    grid-column: 2;
+    grid-row: 1;
+    width: 32px;
+    height: 32px;
+  }
+  .inbox-thread-identity { grid-column: 3; grid-row: 1; }
+  .inbox-thread-header .inbox-actions {
+    grid-column: 4;
+    grid-row: 1;
+    width: auto;
+    margin: 0;
+    gap: 4px;
+  }
+  .inbox-thread-header .inbox-actions .btn { padding: 6px 9px; }
+  .inbox-ai-header {
+    grid-column: 3 / 5;
+    grid-row: 2;
+    max-width: 100%;
+    margin: 0;
+  }
+  .inbox-ai-header + .inbox-actions { margin: 0; }
+  .inbox-timeline { padding-inline: 16px; }
+  .inbox-message, .inbox-pending { max-width: 92%; }
+  .inbox-settings-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+@media (min-width: 761px) {
+  @container inbox (max-width: 650px) {
+    .inbox-toolbar { flex-direction: column; align-items: stretch; }
+    .inbox-product-heading { min-width: 0; }
+    .inbox-product-heading div > span { display: block; }
+    .inbox-tabs { width: 100%; justify-content: space-between; }
+    .inbox-tabs button { min-height: 40px; padding: 8px 10px; }
+    .inbox-settings { padding: 18px; }
+    .inbox-settings-section-heading { flex-wrap: wrap; }
+    .inbox-automation { padding: 16px; }
+  }
+}
+
+@media (max-width: 760px) {
+  /* The embedded mobile inbox has its own bottom navigation. Keep the Mautic
+     footer out of that area instead of reserving two overlapping footers. */
+  body:has(.inbox-app[data-standalone="0"]) #app-footer { display: none; }
+}
+
+@container inbox (max-width: 420px) {
+  .inbox-thread-header:has(#inbox-take) .inbox-thread-identity {
+    grid-column: 3 / 5;
+  }
+  .inbox-thread-header:has(#inbox-take) .inbox-actions {
+    grid-column: 1 / 5;
+    grid-row: 2;
+    justify-content: flex-end;
+  }
+  .inbox-thread-header:has(#inbox-take) .inbox-ai-header {
+    grid-column: 1 / 5;
+    grid-row: 3;
+  }
+}

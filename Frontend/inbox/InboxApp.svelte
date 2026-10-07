@@ -891,22 +891,43 @@
   let puxada = 0;
   let recarregando = false;
   let puxadaDispose: (() => void) | null = null;
+  let frameObserver: ResizeObserver | null = null;
+  let frameRequest: number | undefined;
   const LIMITE_DA_PUXADA = 72;
 
   function medirMoldura(): void {
-    root.style.setProperty(
-      "--ib-app-top",
-      `${Math.max(0, Math.round(root.getBoundingClientRect().top + window.scrollY))}px`,
-    );
+    const setSize = (name: string, value: number) => {
+      const size = `${Math.max(0, Math.ceil(value))}px`;
+      if (root.style.getPropertyValue(name) !== size) {
+        root.style.setProperty(name, size);
+      }
+    };
+    setSize("--ib-app-top", root.getBoundingClientRect().top + window.scrollY);
+
+    // O rodape do Mautic fica sobre o conteudo. O shell instalavel nao tem esse rodape.
+    // Medir o elemento real tambem cobre mudancas de tema, zoom e quebra de linha.
+    const footer = config.standalone
+      ? null
+      : document.getElementById("app-footer");
+    const footerHeight = footer?.getBoundingClientRect().height || 0;
+    setSize("--ib-footer-space", footerHeight ? footerHeight + 16 : 0);
 
     const menu = root.querySelector<HTMLElement>(".inbox-tabs");
     // So quando o menu esta destacado embaixo. No desktop ele e uma faixa dentro da barra de
     // cima, ja contada pela coluna, e descontar a altura dele de novo encolheria a tela a toa.
     if (menu && "fixed" === window.getComputedStyle(menu).position) {
-      root.style.setProperty("--ib-bottom-nav", `${menu.offsetHeight}px`);
+      setSize("--ib-bottom-nav", menu.offsetHeight);
     } else {
       root.style.removeProperty("--ib-bottom-nav");
     }
+  }
+
+  function scheduleFrame(): void {
+    if (frameRequest !== undefined) return;
+    frameRequest = requestAnimationFrame(() => {
+      frameRequest = undefined;
+      medirMoldura();
+    });
   }
 
   onMount(() => {
@@ -914,6 +935,18 @@
     medirMoldura();
     window.addEventListener("resize", medirMoldura);
     window.addEventListener("orientationchange", medirMoldura);
+    if (typeof ResizeObserver !== "undefined") {
+      frameObserver = new ResizeObserver(scheduleFrame);
+      frameObserver.observe(root);
+      for (const element of [
+        root.querySelector(".inbox-toolbar"),
+        root.querySelector(".inbox-tabs"),
+        document.getElementById("app-header"),
+        document.getElementById("app-footer"),
+      ]) {
+        if (element) frameObserver.observe(element);
+      }
+    }
 
     // So dentro do app instalado: no navegador o Android ja tem o gesto nativo e o Safari tem o
     // botao, e dois puxoes concorrendo no mesmo dedo e pior que nenhum.
@@ -1006,8 +1039,11 @@
     puxadaDispose?.();
     window.removeEventListener("resize", medirMoldura);
     window.removeEventListener("orientationchange", medirMoldura);
+    frameObserver?.disconnect();
+    if (frameRequest !== undefined) cancelAnimationFrame(frameRequest);
     root.style.removeProperty("--ib-app-top");
     root.style.removeProperty("--ib-bottom-nav");
+    root.style.removeProperty("--ib-footer-space");
     root.classList.remove("has-selection");
     root.removeAttribute("data-svelte-inbox-mounted");
     delete root.dataset.feedbackSource;
