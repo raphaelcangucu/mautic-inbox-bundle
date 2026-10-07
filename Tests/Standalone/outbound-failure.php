@@ -6,4 +6,5 @@ function check(bool $value): void { if (!$value) throw new RuntimeException('Fai
 check(OutboundFailure::describe('{"message":"Local anti-spam cooldown active for this recipient (60 seconds)."}') === ['code'=>'local_cooldown','seconds'=>60]);
 check(OutboundFailure::describe('token=SECRET') === ['code'=>'delivery_failed','seconds'=>null]);
 check(OutboundFailure::describe(null) === ['code'=>null,'seconds'=>null]);
-echo "3 failure diagnostic cases passed; no database or kernel.\n";
+check(OutboundFailure::describe('{"message":"WhatsApp identity is linked to a different Mautic contact."}') === ['code'=>'contact_identity_mismatch','seconds'=>null]);
+echo "4 failure diagnostic cases passed; no database or kernel.\n";
