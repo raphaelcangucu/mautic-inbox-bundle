@@ -435,7 +435,10 @@ final class InboxQuery
             return ['kind' => 'note', 'id' => $entity->getId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
         }
         if ($entity instanceof OutboundRequest) {
-            return ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'retryable' => 'failed' === $entity->getStatus() && null !== $entity->getJob(), 'failure' => $entity->getFailureReason() && str_starts_with($entity->getFailureReason(), 'mautic.inbox.') ? $this->translator->trans($entity->getFailureReason()) : $entity->getFailureReason(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
+            $payload = $entity->getJob()?->getPayload() ?? [];
+            $diagnostic = OutboundFailure::describe($entity->getJob()?->getLastError());
+            $failure = $diagnostic['code'] === 'local_cooldown' ? $this->translator->trans('mautic.inbox.ui.local_cooldown', ['%seconds%' => $diagnostic['seconds']]) : ($entity->getFailureReason() && str_starts_with($entity->getFailureReason(), 'mautic.inbox.') ? $this->translator->trans($entity->getFailureReason()) : $entity->getFailureReason());
+            return ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'retryable' => 'failed' === $entity->getStatus() && null !== $entity->getJob(), 'failure' => $failure, 'failure_code' => $diagnostic['code'], 'cooldown_seconds' => $diagnostic['seconds'], 'retry_of' => is_string($payload['_retry_of'] ?? null) ? $payload['_retry_of'] : null, 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
         }
         return ['kind' => 'event', 'id' => $entity->getId(), 'event' => $entity->getEventType(), 'author' => $entity->getActor()?->getName(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
     }

@@ -254,6 +254,22 @@ final class ConversationActions
         if ('failed' !== $failedRequest->getStatus() || !$failedRequest->getJob()) {
             throw new InboxException('mautic.inbox.ui.retry_failed_only', 409);
         }
+        // The conversation lock serializes retries from different devices. A stale
+        // bubble cannot create a second child after another retry was registered.
+        $later = $this->outboundRequests->createQueryBuilder('retry')
+            ->leftJoin('retry.job', 'retryJob')->addSelect('retryJob')
+            ->where('retry.conversation = :conversation')->andWhere('retry.id > :source')
+            ->setParameter('conversation', $state->getConversation())->setParameter('source', $failedRequest->getId())
+            ->orderBy('retry.id', 'ASC')->getQuery()->toIterable();
+        foreach ($later as $attempt) {
+            if (($attempt->getJob()?->getPayload()['_retry_of'] ?? null) !== $failedRequest->getRequestId()) {
+                continue;
+            }
+            if ('failed' === $attempt->getStatus()) {
+                throw new InboxException('mautic.inbox.ui.retry_superseded', 409);
+            }
+            return [$attempt, false];
+        }
         if ($state->getAssignee()?->getId() !== $author->getId()) {
             throw new InboxException('mautic.inbox.ui.assign_the_conversation_to_yourself_before_replying_52b660', 409);
         }

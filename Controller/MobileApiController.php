@@ -132,6 +132,22 @@ final class MobileApiController extends CommonController
                 }
                 return $this->error('Método não permitido.','method_not_allowed',405);
             }
+            if (preg_match('#^outbound/([1-9][0-9]*)/retry$#D', $resource, $retryRoute)) {
+                if ($method !== 'POST') { return $this->error('Método não permitido.', 'method_not_allowed', 405); }
+                if (!$permissions->isGranted(['inbox:conversations:create','meta:messages:create'])) { return $this->error('Ação não autorizada para seu usuário.', 'forbidden', 403); }
+                if (strlen($request->getContent()) > 1024) { return $this->error('Requisição inválida.', 'invalid_request', 400); }
+                try { $payload = json_decode($request->getContent(), true, 4, JSON_THROW_ON_ERROR); } catch (\JsonException) { return $this->error('JSON inválido.', 'invalid_request', 400); }
+                if (!is_array($payload) || array_is_list($payload) || !is_string($payload['request_id'] ?? null)) { return $this->error('Identificador de envio inválido.', 'invalid_request', 400); }
+                $failed = $em->find(\MauticPlugin\MauticInboxBundle\Entity\OutboundRequest::class, (int) $retryRoute[1]);
+                $retryState = $failed ? $states->findOneBy(['conversation' => $failed->getConversation()]) : null;
+                if (!$retryState) { return $this->error('Mensagem não encontrada.', 'not_found', 404); }
+                $access->assertView($retryState, $user);
+                $flags = $moderation->flags($query->summary($retryState));
+                if ($flags['spam'] || $flags['blockedAuthor']) { return $this->error('Restaure o atendimento antes de responder.', 'moderated', 422); }
+                // Reuse the web Inbox's locking, idempotency, assignment and channel checks.
+                $out = $actions->retry($failed, $user, $payload['request_id']);
+                return $this->data(['request_id' => $out->getRequestId(), 'status' => $out->getStatus(), 'item' => $query->outboundItem($out), 'summary' => $decorate($query->summary($retryState))], 202);
+            }
             if ($method === 'GET' && $resource === 'contacts') { return $this->data($directory->search($user,$request->query->all())); }
             if ($method === 'GET' && $resource === 'crm-options') { return $this->data($linking->catalogue($user,$request->query->all())); }
             if ($method === 'GET' && $resource === 'contacts/campaigns') { return $this->data(['items'=>$directory->campaigns($user)]); }

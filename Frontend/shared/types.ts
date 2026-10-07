@@ -93,6 +93,9 @@ export interface TimelineItem {
   context?: unknown;
   failure?: string;
   retryable?: boolean;
+  retry_of?: string | null;
+  attempt_count?: number;
+  display_id?: number;
   ai?: { agent?: string; key?: string };
   /** Só em itens de envio. O servidor já manda; era o tipo que não declarava. */
   request_id?: string;

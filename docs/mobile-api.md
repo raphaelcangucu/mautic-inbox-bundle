@@ -32,6 +32,7 @@ Todas as rotas abaixo começam em `/inbox/mobile/api/`. Header: `Authorization: 
 | POST `conversations/{id}/take` | `version`; assumir e pausar IA |
 | POST `conversations/{id}/state` | `version`, `action`: read/resolve/reopen/transfer/unassign/snooze; alvo/prazo conforme ação |
 | POST `conversations/{id}/note` | Nota interna; não há retry automático |
+| POST `outbound/{id}/retry` | Reenvio explícito de outbound confirmado como falho, usando o mesmo serviço do Inbox web; `request_id` novo e estável por tentativa. Devolve `item` e `summary`; mantém permissões, atribuição, moderação e regras do canal. |
 | PUT `conversations/{id}/draft` | Rascunho remoto existente; app prioriza rascunho local |
 | GET `conversations/{id}/templates` | Templates WhatsApp reais e indicação de suporte |
 | GET `conversations/{id}/email-options` | Contato, correspondências, campanhas/segmentos e permissão |
@@ -175,3 +176,13 @@ For conversations whose asset type is `whatsapp_qr_session`, the mobile composer
 ## Assistentes internos configuráveis
 
 A configuração de agentes internos, a seleção por `agent_key` e as ferramentas/perfis autorizados estão descritas em [internal-assistant.md](internal-assistant.md). A lista anterior de ferramentas fixas só continua como compatibilidade quando ainda não existe nenhum agente interno configurado.
+
+### Manual retry and delivery diagnostics
+
+`POST /inbox/mobile/api/outbound/{outboundId}/retry` accepts only `{request_id}` and reuses the web Inbox retry action. It requires the same conversation access, ownership, lifecycle, moderation and channel permissions. The original payload stays on the server. Stable IDs make lost-response retries idempotent; the conversation lock prevents stale clients from creating parallel children of a prior failed attempt. A pending/sent child is returned without sending again; a superseded failed source returns HTTP 409 so the client can refresh and retry the latest attempt.
+
+Outbound timeline receipts include `retry_of`, `failure_code` and `cooldown_seconds`. Raw provider errors never enter the public diagnostic fields. Both clients project explicit retry chains into one stable message bubble whose status follows the latest attempt. Independent messages with identical text remain independent; the raw attempts and audit events remain available. The mobile client reads current receipts before a manual retry, persists the retry identifier before posting, and never retries automatically when reconnecting or restarting. Foreground delivery failures show an alert; the native report shares only operational IDs, status, attempt count, diagnostic code and timestamp, excluding customer content and credentials.
+
+[meta-human-qr-cadence.patch](patches/meta-human-qr-cadence.patch) contains the focused MauticMetaBundle companion change. Human text replies through WhatsApp QR bypass per-recipient campaign cadence only. Asset hourly/daily caps, opt-out checks, automatic campaigns and official WhatsApp safeguards remain. Apply to the matching Meta policy/sender source with a verified backup; no schema migration is required.
+
+Verification: app typecheck and 134 isolated checks; web timeline unit checks and Svelte build; standalone PHP diagnostic, stale-retry and mocked QR policy checks. No test kernel or database connection is opened by these standalone checks. Production diagnosis used read-only queries; deployment preserved unrelated live changes and verified code backups. No customer message was sent as part of this correction.
