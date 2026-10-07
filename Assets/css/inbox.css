@@ -226,6 +226,18 @@
   min-height: 0;
 }
 .inbox-app[data-standalone="1"] { --ib-footer-space: 0px; }
+.inbox-app .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 .inbox-toolbar, .inbox-channel-notice { flex: none; }
 .inbox-workspace { flex: 1 1 auto; height: auto; min-height: 0; }
 .inbox-thread #inbox-selected {
