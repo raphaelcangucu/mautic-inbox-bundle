@@ -29,6 +29,8 @@
     // ate o entalhe em 10,14. Espelhado ele vira um botao de "voltar"; na horizontal, contornado,
     // ele deixa de parecer aviao e vira uma seta de avancar — as duas foram conferidas na tela.
     send: "M21 5L3 11l7 3 3 7z M21 5l-11 9",
+    plus: "M12 5v14 M5 12h14",
+    close: "M6 6l12 12 M18 6L6 18",
     clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 7v5l3 2",
   };
 </script>

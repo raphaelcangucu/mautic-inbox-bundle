@@ -261,7 +261,7 @@ test("the timeline scrolls for a pending too, and stays inert until it is given 
   );
   assert.match(
     timeline,
-    /visibleCount = items\.length \+ pendingMessages\.length/,
+    /visibleCount = visibleItems\.length \+ pendingMessages\.length/,
     "a rolagem precisa observar as duas colecoes",
   );
   // A decisao em si mora em autoscroll.ts, com testes proprios. O que importa aqui e que o
