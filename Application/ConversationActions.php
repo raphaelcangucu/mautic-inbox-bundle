@@ -174,15 +174,16 @@ final class ConversationActions
         return $draft;
     }
 
-    public function reply(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null): OutboundRequest
+    public function reply(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null, ?int $expectedVersion = null): OutboundRequest
     {
-        $outbound = $this->inboxIntegration->runHumanTransition($state, fn (): OutboundRequest => $this->entityManager->wrapInTransaction(function () use ($state, $author, $body, $requestId, $template, $replyMode): OutboundRequest {
+        $outbound = $this->inboxIntegration->runHumanTransition($state, fn (): OutboundRequest => $this->entityManager->wrapInTransaction(function () use ($state, $author, $body, $requestId, $template, $replyMode, $expectedVersion): OutboundRequest {
                 $locked = $this->entityManager->find(ConversationState::class, $state->getId(), LockMode::PESSIMISTIC_WRITE);
                 if (!$locked instanceof ConversationState) {
                     throw new InboxException('mautic.inbox.ui.conversation_not_found_61bc81', 404);
                 }
 
                 $this->entityManager->refresh($locked, LockMode::PESSIMISTIC_WRITE);
+                if ($expectedVersion !== null && $locked->getVersion() !== $expectedVersion) { throw new InboxException('O atendimento mudou desde a revisão. Peça uma nova proposta.', 409); }
                 return $this->replyLocked($locked, $author, $body, $requestId, $template, $replyMode);
             }));
         if ($outbound->getJob()) {

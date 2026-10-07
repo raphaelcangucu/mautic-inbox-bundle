@@ -18,7 +18,7 @@ use Psr\Log\LoggerInterface;
 
 final class OperatorAssistant
 {
-    public function __construct(private AiStore $store, private ReadInboxTool $readInbox, private PiClient $pi, private EntityManagerInterface $em, private SearchCampaignsTool $campaigns, private FetchCampaignTool $campaign, private SearchContactsTool $contacts, private FetchContactTool $contact, private InboxQuery $inbox, private ConversationStateRepository $states, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, private LoggerInterface $logger, #[Autowire('%kernel.project_dir%')] private string $projectDir) {}
+    public function __construct(private AiStore $store, private ReadInboxTool $readInbox, private PiClient $pi, private EntityManagerInterface $em, private SearchCampaignsTool $campaigns, private FetchCampaignTool $campaign, private SearchContactsTool $contacts, private FetchContactTool $contact, private InboxQuery $inbox, private ConversationStateRepository $states, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, private LoggerInterface $logger, private AssistantCampaignReports $reports, private AssistantActions $actions, #[Autowire('%kernel.project_dir%')] private string $projectDir) {}
     /** Public provider description only: no credentials, tools, model calls or CRM reads. */
     public function privacy(): array { return $this->run(['mode'=>'privacy']); }
     /** Metadata only; tools are intersected with fresh user permissions. */
@@ -39,7 +39,7 @@ final class OperatorAssistant
         foreach ($configured as $agent) {
             if (!InternalAgentPolicy::visible($agent,(int)$user->getId(),$user->getRole()?->getId(),$user->isPublished())) continue;
             $tools=InternalAgentPolicy::effectiveTools($agent,fn(string $p)=>$this->access->granted($user,$p));
-            $items[]=['key'=>$agent['key'],'name'=>$agent['name'],'tools'=>$tools,'read_only'=>true];
+            $items[]=['key'=>$agent['key'],'name'=>$agent['name'],'tools'=>$tools,'read_only'=>true,'confirmation_required'=>(bool)array_intersect($tools,InternalAgentPolicy::writes())];
         }
         // Once internal agents are configured, disabling them must not open a fallback.
         if (!$configured) {
@@ -76,13 +76,16 @@ final class OperatorAssistant
             if ($requested && !$selected) throw new InboxException('mautic.inbox.ui.conversation_not_found_61bc81',404);
             if ($selected) $this->access->assertView($selected,$user);
             $context=$selected?['id'=>(int)$selected->getId(),'name'=>$this->inbox->summary($selected)['contact_name']]:[];
-            $plan=$this->run(['mode'=>'plan','message'=>$message,'history'=>$history,'context'=>$context,'tools'=>$agent['tools'],'documents'=>$documents]);
+            $results=[];$names=[];
+            $explicit=AssistantQueryHints::calls($message);
+            $explicit=array_values(array_filter($explicit,static fn($call)=>in_array($call['tool'],$agent['tools'],true)));
+            for($round=0;$round<2;$round++){
+            $plan=$round===0&&$explicit?['calls'=>$explicit,'needs_followup'=>true]:$this->run(['mode'=>'plan','message'=>$message,'history'=>$history,'context'=>$context,'tools'=>array_values(array_diff($agent['tools'],InternalAgentPolicy::writes())),'documents'=>$documents,'results'=>$results]);
             // Operational metadata only: never log questions, history or CRM data.
             $this->logger->info('Inbox internal assistant plan', ['actor'=>(int)$user->getId(),'agent'=>$agent['key'],'tools'=>$agent['tools'],'calls'=>array_values(array_filter(array_map(static fn($call)=>is_array($call)&&in_array($call['tool']??null,array_column(InternalAgentPolicy::catalog(),'name'),true)?$call['tool']:null,(array)($plan['calls']??[]))))]);
-            $results=[];$names=[];
             foreach(array_slice((array)($plan['calls']??[]),0,3) as $call){
                 if(!is_array($call)){continue;} $tool=(string)($call['tool']??'');$query=mb_substr((string)($call['query']??''),0,120);$id=max(0,(int)($call['id']??0));$page=max(1,min(100,(int)($call['page']??1)));
-                if(!in_array($tool,$agent['tools'],true)){$results[]=['tool'=>$tool,'data'=>['error'=>'permission_denied']];continue;}
+                if(in_array($tool,InternalAgentPolicy::writes(),true)||!in_array($tool,$agent['tools'],true)){$results[]=['tool'=>$tool,'data'=>['error'=>'permission_denied']];continue;}
                 // Role changes between planning and execution apply immediately.
                 $fresh=$this->selectAgent(['agent_key'=>$agent['key']],$user);
                 if(!in_array($tool,$fresh['tools'],true)){$results[]=['tool'=>$tool,'data'=>['error'=>'permission_denied']];continue;}
@@ -94,7 +97,10 @@ final class OperatorAssistant
                         'mautic_search_contacts'=>($this->contacts)($query,10,$page),
                         'mautic_fetch_campaign'=>$id>0?($this->campaign)($id,false):['error'=>'missing_id'],
                         'mautic_fetch_contact'=>$id>0?($this->contact)($id):['error'=>'missing_id'],
-                        'mautic_read_inbox'=>($this->readInbox)($arguments['resource'],$id>0?$id:null,$arguments['filters']),
+                        'mautic_read_campaign_flow'=>$this->reports->flow($id),
+                        'campaign_report'=>$this->reports->report(array_replace($call,['_user'=>$user])),
+                        'campaign_comments'=>$this->reports->comments($id,$user,isset($call['date'])?(string)$call['date']:null),
+                        'mautic_read_inbox'=>$this->readForAssistant($arguments['resource'],$id>0?$id:null,$arguments['filters'],$user),
                         'inbox_context'=>$selected?['conversation'=>$this->inbox->detail($selected,$user),'history'=>$this->inbox->timeline($selected,null,30,$user)]:$this->inbox->conversations($user,['kind'=>'private','queue'=>'all','needs_response'=>true,'limit'=>20]),
                     };
                     // Ephemeral WebChat tokens are never provided to the model.
@@ -106,12 +112,79 @@ final class OperatorAssistant
                 $this->logger->info('Inbox internal assistant tool', ['actor'=>(int)$user->getId(),'agent'=>$agent['key'],'tool'=>$tool,'failed'=>isset($result['error']),'items'=>isset($result['items'])&&is_array($result['items'])?count($result['items']):null]);
                 $results[]=['tool'=>$tool,'arguments'=>$arguments,'data'=>$result];$names[]=$tool;
             }
+            if(empty($plan['calls'])||empty($plan['needs_followup']))break;
+            }
             $fresh=$this->selectAgent(['agent_key'=>$agent['key']],$user);
             $results=array_values(array_filter($results,static fn(array $result)=>in_array($result['tool'],$fresh['tools'],true)));
             $answer=$this->run(['mode'=>'answer','message'=>$message,'history'=>$history,'context'=>$context,'tools'=>$fresh['tools'],'documents'=>$documents,'results'=>$results]);
+            $proposals=[];$proposalErrors=[];
+            foreach(array_slice((array)($answer['proposals']??[]),0,3) as $draft){
+                try{
+                    if(!is_array($draft))throw new \InvalidArgumentException('invalid_proposal');
+                    $draft=AssistantActionPolicy::normalize($draft);
+                    $this->authorizeAction($draft,$user,$agent['key']);
+                    $this->assertActionEvidence($draft,$results,$context);
+                    $proposals[]=$this->actions->preview($draft,$user,$agent['key']);
+                }catch(InboxException $e){$proposalErrors[]=$e->getMessage();}catch(\InvalidArgumentException $e){$this->logger->error('Inbox internal assistant invalid proposal',['actor'=>(int)$user->getId(),'agent'=>$agent['key'],'reason'=>$e->getMessage(),'tool'=>$draft['tool']??null,'target'=>$draft['id']??null,'fields'=>array_keys($draft)]);$proposalErrors[]='Identifique o alvo exato antes de preparar a ação.';}
+            }
+            if($proposalErrors)$answer['text']=($answer['text']??'')."\n\nNão foi possível preparar a ação: ".implode(' ',$proposalErrors);
             if(!is_string($answer['text']??null)||trim($answer['text'])===''){throw new InboxException('mautic.inbox.ai.pi_failed',503);}
-            return ['role'=>'assistant','text'=>mb_substr($answer['text'],0,4000),'tool'=>implode(' · ',array_unique($names))?:'Pi · leitura','read_only'=>true,'agent_key'=>$agent['key'],'agent_name'=>$agent['name']];
+            $this->selectAgent(['agent_key'=>$agent['key']],$user);
+            return ['role'=>'assistant','text'=>mb_substr($answer['text'],0,4000),'tool'=>implode(' · ',array_unique($names))?:'Pi · leitura','read_only'=>true,'agent_key'=>$agent['key'],'agent_name'=>$agent['name'],'proposals'=>$proposals];
         } finally {flock($lock,LOCK_UN);fclose($lock);}
+    }
+    public function confirm(array $payload,User $user): array
+    {
+        if(($payload['confirm']??null)!==true||!is_string($payload['proposal_id']??null))throw new InboxException('Confirme a ação revisada.',422);
+        $agent=$this->selectAgent($payload,$user);
+        return $this->actions->confirm($payload['proposal_id'],$user,$agent['key'],fn($action)=>$this->authorizeAction($action,$user,$agent['key']));
+    }
+    public function actionStatus(array $payload,User $user): array
+    {
+        if(!is_string($payload['proposal_id']??null))throw new InboxException('Ação inválida.',422);
+        $agent=$this->selectAgent($payload,$user);
+        return $this->actions->status($payload['proposal_id'],$user,$agent['key'],fn($action)=>$this->authorizeAction($action,$user,$agent['key']));
+    }
+    private function authorizeAction(array $action,User $user,string $key): void
+    {
+        $fresh=$this->selectAgent(['agent_key'=>$key],$user);
+        if(!in_array($action['tool']??'',InternalAgentPolicy::writes(),true)||!in_array($action['tool'],$fresh['tools'],true))throw new InboxException('mautic.inbox.ai.not_allowed',403);
+    }
+    private function assertActionEvidence(array $action,array $results,array $context): void
+    {
+        $campaigns=[];$conversations=isset($context['id'])?[(int)$context['id']]:[];$contacts=[];$users=[];
+        foreach($results as $result){
+            $data=$result['data'];$tool=$result['tool'];if(isset($data['error']))continue;
+            if(in_array($tool,['mautic_search_campaigns','campaign_report'],true))foreach($data['items']??[] as $row)$campaigns[]=(int)($row['id']??0);
+            if($tool==='mautic_fetch_campaign')$campaigns[]=(int)($data['id']??0);
+            if($tool==='mautic_read_campaign_flow')$campaigns[]=(int)($data['campaignId']??0);
+            if($tool==='campaign_comments')$campaigns[]=(int)($data['campaign_id']??0);
+            if($tool==='inbox_context')foreach($data['items']??[] as $row)$conversations[]=(int)($row['id']??0);
+            if($tool==='mautic_search_contacts')foreach($data['items']??[] as $row)$contacts[]=(int)($row['id']??0);
+            if($tool==='mautic_fetch_contact')$contacts[]=(int)($data['id']??0);
+            if($tool==='mautic_read_inbox'){
+                if(($result['arguments']['resource']??'')==='conversations')foreach($data['items']??[] as $row)$conversations[]=(int)($row['id']??0);
+                if(($result['arguments']['resource']??'')==='conversation')$conversations[]=(int)($result['arguments']['id']??0);
+                if(($result['arguments']['resource']??'')==='users')foreach($data['items']??[] as $row)$users[]=(int)($row['id']??0);
+            }
+        }
+        $ids=str_starts_with((string)($action['tool']??''),'campaign_')?$campaigns:$conversations;
+        if(!in_array($action['id']??null,$ids,true))throw new \InvalidArgumentException('unknown_target');
+        foreach($action['contact_ids']??[] as $id)if(!in_array($id,$contacts,true))throw new \InvalidArgumentException('unknown_contact');
+        if(isset($action['user_id'])&&!in_array($action['user_id'],$users,true))throw new \InvalidArgumentException('unknown_operator');
+    }
+    private function readForAssistant(string $resource,?int $id,array $filters,User $user): array
+    {
+        $data=($this->readInbox)($resource,$id,$filters);
+        if($resource==='conversation'&&$id){
+            $state=$this->states->find($id);
+            if($state&&$state->getConversation()->getChannel()==='instagram'&&str_starts_with($state->getConversation()->getRecipient(),'comment:')){
+                $this->access->assertView($state,$user);
+                $reason=$this->actions->publicReplyReason($id,$user);
+                $data['reply_modes']=['public'=>['available'=>$reason===null,'blocked_reason'=>$reason],'private'=>['available'=>($data['reply_blocked_reason']??null)===null,'blocked_reason'=>$data['reply_blocked_reason']??null]];
+            }
+        }
+        return $data;
     }
     private function inboxFilters(array $input): array
     {

@@ -25,4 +25,8 @@ $customer=Policy::normalize(array_replace($agent,['audience'=>'customer']));chec
 check(Policy::select([$agent],[])===$agent,'single profile supports old clients');
 check(Policy::select([$agent],['agent_key'=>'private'])===$agent,'explicit selection');
 foreach([[[],[]],[[$agent,$agent],[]],[[$agent],['agent_key'=>'customer']],[[$agent],['agent_key'=>[]]]]as[$items,$request])denied(fn()=>Policy::select($items,$request),403);
+$write=['mcp_tools'=>['mautic_reply_inbox','campaign_add_contacts']];
+check(Policy::effectiveTools($write,fn($p)=>$p==='inbox:conversations:create')===[],'Inbox create does not grant Meta create');
+check(Policy::effectiveTools($write,fn($p)=>in_array($p,['inbox:conversations:create','meta:messages:create','inbox:conversations:view','meta:messages:view'],true))===['mautic_reply_inbox'],'all required reply permissions');
+check(Policy::effectiveTools($write,fn($p)=>in_array($p,['campaign:campaigns:editown','campaign:campaigns:viewown','lead:leads:viewown'],true))===[],'campaign membership needs contact edit too');
 echo "Internal agent policy: all checks passed\n";

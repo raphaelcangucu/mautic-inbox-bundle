@@ -72,11 +72,12 @@ final class MobileApiController extends CommonController
             };
             if ($method === 'GET' && $resource === 'assistant/agents') { return $this->data($assistant->agents($user)); }
             if ($method === 'GET' && $resource === 'assistant/privacy') { return $this->data($assistant->privacy()); }
-            if ($method === 'POST' && $resource === 'assistant/messages') {
+            if ($method === 'GET' && $resource === 'assistant/actions/status') { return $this->data($assistant->actionStatus($request->query->all(),$user)); }
+            if ($method === 'POST' && in_array($resource,['assistant/messages','assistant/actions/confirm'],true)) {
                 if(strlen($request->getContent())>32768){return $this->error('Requisição inválida.','invalid_request',400);}
                 try{$payload=json_decode($request->getContent(),true,16,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
                 if(!is_array($payload)){return $this->error('JSON inválido.','invalid_request',400);}
-                return $this->data($assistant->reply($payload,$user));
+                return $this->data($resource==='assistant/messages'?$assistant->reply($payload,$user):$assistant->confirm($payload,$user));
             }
             if ($method === 'POST' && $resource === 'canned-responses') {
                 if (!$permissions->isGranted('inbox:templates:edit')) { return $this->error('Ação não autorizada.','forbidden',403); }

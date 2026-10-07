@@ -15,3 +15,16 @@ test("internal agents enforce role, tool caps and no fallback without a database
   );
   assert.match(output, /all checks passed/);
 });
+
+test("assistant proposals are actor-bound, expire and never execute twice", () => {
+  const output = execFileSync(
+    "php",
+    [
+      fileURLToPath(
+        new URL("../Standalone/assistant-actions.php", import.meta.url),
+      ),
+    ],
+    { encoding: "utf8" },
+  );
+  assert.match(output, /all checks passed/);
+});
