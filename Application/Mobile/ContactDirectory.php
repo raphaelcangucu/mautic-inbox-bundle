@@ -86,7 +86,7 @@ final class ContactDirectory
         $this->access->apply($statesQuery,$user);
         foreach ($statesQuery->getQuery()->getResult() as $state) {
             $c=$state->getConversation();$reason=$this->availability->reason($state);
-            $items[]=['key'=>'state:'.$state->getId(),'state_id'=>$state->getId(),'asset_id'=>$c->getAsset()->getId(),'channel'=>$c->getChannel(),'name'=>$c->getAsset()->getName(),'available'=>$canStart && null===$reason,'reason'=>$reason];
+            $items[]=['key'=>'state:'.$state->getId(),'state_id'=>$state->getId(),'asset_id'=>$c->getAsset()->getId(),'channel'=>$c->getChannel(),'name'=>$c->getAsset()->getName(),'phone'=>$c->getAsset()->getPhoneNumber(),'available'=>$canStart && null===$reason,'reason'=>$reason];
             if ($qrType && $qrType===$c->getAsset()->getType()) { $qrAssets[]=$c->getAsset()->getId(); }
         }
         if (null===$qrType) { return $items; }
@@ -96,7 +96,7 @@ final class ContactDirectory
             $reason=null;
             try { $this->phones->normalizeImported($phone,(string)($asset->getSettings()['default_region']??'BR')); } catch (\InvalidArgumentException) { $reason='Cadastre um telefone válido no contato.'; }
             if ('connected'!==($asset->getSettings()['whatsqr_session_status']??'')) { $reason='Este número QR não está conectado.'; }
-            $items[]=['key'=>'qr:'.$asset->getId(),'state_id'=>null,'asset_id'=>$asset->getId(),'channel'=>'whatsapp','name'=>$asset->getName().' · QR','available'=>$canStart && null===$reason,'reason'=>$reason];
+            $items[]=['key'=>'qr:'.$asset->getId(),'state_id'=>null,'asset_id'=>$asset->getId(),'channel'=>'whatsapp','name'=>$asset->getName().' · QR','phone'=>$asset->getPhoneNumber(),'available'=>$canStart && null===$reason,'reason'=>$reason];
         }
         return $items;
     }
