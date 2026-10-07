@@ -16,7 +16,8 @@ final class AiService {
  /** @return array{allowed:bool,reason:?string} */
  public function availability(ConversationState $state,array $agent): array {
   $config=$this->store->config();$permission=$this->permission($state);$reason=null;
-  if(empty($config['enabled']))$reason='global_disabled';
+  if(InternalAgentPolicy::internal($agent))$reason='agent_permission';
+  elseif(empty($config['enabled']))$reason='global_disabled';
   elseif(empty($agent['enabled']))$reason='agent_disabled';
   elseif(!in_array($permission,$config['permissions'],true))$reason='global_permission';
   elseif(!in_array($permission,$agent['permissions']??[],true))$reason='agent_permission';
@@ -107,5 +108,5 @@ final class AiService {
  private function cancelPendingRuns(int $stateId): void {
   foreach($this->store->all('run')as$run){if((int)($run['state']??0)!==$stateId||in_array($run['status']??'', ['sent','completed','cancelled','forced'],true))continue;$key=(string)$run['key'];unset($run['key'],$run['revision']);$run['status']='cancelled';$run['cancelled_at']=gmdate(DATE_ATOM);$this->store->put('run',$key,$run);}
  }
- public function saveAgent(array $p): void {$key=(string)($p['key']??'');if(!preg_match('/^[a-z0-9_-]{1,80}$/',$key))$key=bin2hex(random_bytes(8));$name=trim((string)($p['name']??''));if(!$name||mb_strlen($name)>100)throw new InboxException('mautic.inbox.ai.document_invalid');$this->store->put('agent',$key,['name'=>$name,'profile'=>in_array($p['profile']??'', ['macro-support','macro-sports'],true)?$p['profile']:'macro-support','enabled'=>!empty($p['enabled']),'limit'=>AiStore::normalizeLimit($p['limit']??0),'limit_configured'=>true,'documents'=>array_values(array_filter((array)($p['documents']??[]),'is_string')),'permissions'=>array_values(array_filter((array)($p['permissions']??[]),'is_string'))],(int)($p['revision']??0));}
+ public function saveAgent(array $p): array {$key=(string)($p['key']??'');if(!preg_match('/^[a-z0-9_-]{1,80}$/',$key))$key=bin2hex(random_bytes(8));$name=trim((string)($p['name']??''));if(!$name||mb_strlen($name)>100)throw new InboxException('mautic.inbox.ai.document_invalid');$policy=InternalAgentPolicy::normalize($p,$this->store->get('agent',$key));$record=$this->store->put('agent',$key,$policy+['name'=>$name,'profile'=>in_array($p['profile']??'', ['macro-support','macro-sports'],true)?$p['profile']:'macro-support','enabled'=>!empty($p['enabled']),'limit'=>AiStore::normalizeLimit($p['limit']??0),'limit_configured'=>true,'documents'=>array_values(array_filter((array)($p['documents']??[]),'is_string')),'permissions'=>array_values(array_filter((array)($p['permissions']??[]),'is_string'))],(int)($p['revision']??0));return ['key'=>$key,'revision'=>$record->getRevision()]+$record->getData();}
 }

@@ -33,3 +33,7 @@ Update all three plugins together for this migration. Old PHP adapter namespaces
 New mutation tools default to preview and require explicit `confirm=true` for execution. Preview describes the requested mutation but does not guarantee business validation or delivery. Where available, use an idempotency key; reply requests use their own unique request ID. Tools retain the authenticated user's Mautic permissions. AI and human response safety controls are never disabled by MCP; internal `_origin`/`_ai_*` payload overrides are rejected.
 
 The Pi customer agent does **not** automatically gain these administrative MCP tools. Its restricted CMS/funnel tool list remains separate.
+
+## Assistente interno no aplicativo
+
+O assistente privado pode usar um subconjunto configurado dos adaptadores locais de consulta, executados com a identidade do usuário autenticado. A política e a separação dos agentes de atendimento estão em [internal-assistant.md](internal-assistant.md). Não recebe automaticamente todo o catálogo MCP nem ferramentas de escrita.

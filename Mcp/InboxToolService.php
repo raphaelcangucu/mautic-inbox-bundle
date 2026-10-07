@@ -71,7 +71,7 @@ final class InboxToolService
     public function readAi(string $resource,?string $key): array
     {
         $this->authorize('view',true);
-        $data=$this->result($this->ai->data($this->users,$this->store,$this->agents,$this->pi));
+        $data=$this->result($this->ai->data($this->users,$this->store,$this->agents,$this->pi,$this->em));
         if($resource==='overview')return $data;
         if(!in_array($resource,['documents','agents','config','assets','health'],true))throw new \InvalidArgumentException('Unsupported AI resource.');
         if($key!==null && in_array($resource,['documents','agents'],true)){

@@ -21,6 +21,6 @@ class PiClient {
     public function install(): array {
         if(!is_dir($this->home()))mkdir($this->home(),0700,true);
         $p=new Process(['/usr/bin/npm','install','--save-exact','--ignore-scripts','@earendil-works/pi-coding-agent@0.85.1'],$this->home());$p->setTimeout(180);$p->run();if(!$p->isSuccessful())throw new InboxException('mautic.inbox.ai.install_failed',503);
-        foreach(['runner.mjs','cms.mjs','locale.mjs','page-context.mjs'] as $file)copy(__DIR__.'/../../Runtime/'.$file,$this->home().'/'.$file);return ['installed'=>true];
+        foreach(['runner.mjs','cms.mjs','locale.mjs','page-context.mjs','mobile-assistant.mjs'] as $file)copy(__DIR__.'/../../Runtime/'.$file,$this->home().'/'.$file);return ['installed'=>true];
     }
 }

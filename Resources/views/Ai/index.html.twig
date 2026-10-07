@@ -15,7 +15,7 @@
     'channels', 'documents_hint', 'agent_selected', 'behavior', 'behavior_hint', 'enabled_hint',
     'context_preview', 'permissions_hint', 'save_hint', 'profile', 'profile_support_hint',
     'profile_sports_hint', 'global_short', 'agent_short', 'characters', 'selected', 'unlimited',
-    'unlimited_hint', 'limit', 'limit_hint'
+    'unlimited_hint', 'limit', 'limit_hint', 'audience', 'audience_customer', 'audience_internal', 'internal_hint', 'customer_hint', 'mcp_connection', 'mcp_current', 'mcp_identity_hint', 'mcp_tools', 'mcp_read_only', 'internal_roles', 'internal_roles_hint', 'tool_campaign_search', 'tool_campaign_fetch', 'tool_contact_search', 'tool_contact_fetch', 'tool_inbox_context', 'tool_inbox_read'
 ] %}
 {% set aiLabels = {} %}
 {% for key in aiLabelKeys %}
@@ -29,5 +29,5 @@
     data-inbox-url="{{ path('mautic_inbox_index') }}"
     data-csrf="{{ csrf_token('mautic_inbox') }}"
 ></div>
-{{ includeScript('plugins/MauticInboxBundle/Assets/dist/inbox-app.js?ai=20260915-limit1', 'inboxaiOnLoad', 'inboxaiOnLoad') }}
+{{ includeScript('plugins/MauticInboxBundle/Assets/dist/inbox-app.js?ai=20261007-internal1', 'inboxaiOnLoad', 'inboxaiOnLoad') }}
 {% endblock %}

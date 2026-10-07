@@ -42,15 +42,16 @@
         }).format(date);
   };
   const channelLabel = (value: string, assetType?: string) =>
-    assetType === "whatsapp_qr_session" ? "WhatsApp · QR" :
-    (
-      ({
-        whatsapp: "WhatsApp",
-        instagram: "Instagram",
-        facebook: "Facebook",
-        webchat: "Web Chat",
-      }) as Record<string, string>
-    )[value] || value;
+    assetType === "whatsapp_qr_session"
+      ? "WhatsApp · QR"
+      : (
+          {
+            whatsapp: "WhatsApp",
+            instagram: "Instagram",
+            facebook: "Facebook",
+            webchat: "Web Chat",
+          } as Record<string, string>
+        )[value] || value;
 </script>
 
 <section

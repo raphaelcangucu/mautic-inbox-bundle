@@ -70,6 +70,7 @@ final class MobileApiController extends CommonController
                 }
                 return $raw;
             };
+            if ($method === 'GET' && $resource === 'assistant/agents') { return $this->data($assistant->agents($user)); }
             if ($method === 'GET' && $resource === 'assistant/privacy') { return $this->data($assistant->privacy()); }
             if ($method === 'POST' && $resource === 'assistant/messages') {
                 if(strlen($request->getContent())>32768){return $this->error('Requisição inválida.','invalid_request',400);}

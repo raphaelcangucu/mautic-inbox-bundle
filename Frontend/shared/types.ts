@@ -201,7 +201,20 @@ export interface AiDocument {
   published?: AiDocumentVersion | null;
   versions?: AiDocumentVersion[];
 }
+export interface AiTool {
+  name: string;
+  label: string;
+  permissions: string[];
+}
+export interface AiRole {
+  id: number;
+  name: string;
+}
 export interface AiAgent {
+  audience?: "customer" | "internal";
+  mcp_connection?: string | null;
+  mcp_tools?: string[];
+  role_ids?: number[];
   key: string;
   revision: number;
   name: string;
@@ -217,6 +230,8 @@ export interface AiAsset {
   channel: string;
 }
 export interface AiData {
+  mcp_tools?: AiTool[];
+  roles?: AiRole[];
   documents: AiDocument[];
   agents: AiAgent[];
   assets: AiAsset[];

@@ -171,3 +171,7 @@ The WhatsQR service must include authenticated `POST /sessions/{id}/configuratio
 `GET whatsqr/{id}` returns `stage: not_done`, `cause: service_down`, and both pairing actions disabled when the service cannot be reached. It does not expose service errors or credentials, or reset a session. A temporary `reconnecting` state waits for whatsmeow's automatic reconnection; only a confirmed lost/expired pairing offers a new QR.
 
 For conversations whose asset type is `whatsapp_qr_session`, the mobile composer can open that exact connection. After a send attempt it performs a read-only diagnosis and opens recovery if the session is no longer connected. Failed or uncertain replies remain in the local outbox; the diagnosis never resends them. Official WhatsApp and other channels keep their existing reply behavior.
+
+## Assistentes internos configuráveis
+
+A configuração de agentes internos, a seleção por `agent_key` e as ferramentas/perfis autorizados estão descritas em [internal-assistant.md](internal-assistant.md). A lista anterior de ferramentas fixas só continua como compatibilidade quando ainda não existe nenhum agente interno configurado.
