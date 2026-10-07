@@ -14,15 +14,19 @@ use MauticPlugin\MauticMcpBundle\Mcp\Tool\Contact\{SearchContactsTool,FetchConta
 use Symfony\Component\Process\Process;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
+use Psr\Log\LoggerInterface;
 
 final class OperatorAssistant
 {
-    public function __construct(private AiStore $store, private ReadInboxTool $readInbox, private PiClient $pi, private EntityManagerInterface $em, private SearchCampaignsTool $campaigns, private FetchCampaignTool $campaign, private SearchContactsTool $contacts, private FetchContactTool $contact, private InboxQuery $inbox, private ConversationStateRepository $states, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, #[Autowire('%kernel.project_dir%')] private string $projectDir) {}
+    public function __construct(private AiStore $store, private ReadInboxTool $readInbox, private PiClient $pi, private EntityManagerInterface $em, private SearchCampaignsTool $campaigns, private FetchCampaignTool $campaign, private SearchContactsTool $contacts, private FetchContactTool $contact, private InboxQuery $inbox, private ConversationStateRepository $states, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, private LoggerInterface $logger, #[Autowire('%kernel.project_dir%')] private string $projectDir) {}
     /** Public provider description only: no credentials, tools, model calls or CRM reads. */
     public function privacy(): array { return $this->run(['mode'=>'privacy']); }
     /** Metadata only; tools are intersected with fresh user permissions. */
     public function agents(User $user): array
     {
+        // The same request can span model planning; re-read role assignment too.
+        $this->em->refresh($user);
+        if($user->getRole())$this->em->refresh($user->getRole());
         if (!$this->access->canViewInbox($user)) throw new InboxException('mautic.inbox.ai.not_allowed',403);
         $records=[];
         foreach ($this->store->all('agent') as $record) {
@@ -73,6 +77,8 @@ final class OperatorAssistant
             if ($selected) $this->access->assertView($selected,$user);
             $context=$selected?['id'=>(int)$selected->getId(),'name'=>$this->inbox->summary($selected)['contact_name']]:[];
             $plan=$this->run(['mode'=>'plan','message'=>$message,'history'=>$history,'context'=>$context,'tools'=>$agent['tools'],'documents'=>$documents]);
+            // Operational metadata only: never log questions, history or CRM data.
+            $this->logger->info('Inbox internal assistant plan', ['actor'=>(int)$user->getId(),'agent'=>$agent['key'],'tools'=>$agent['tools'],'calls'=>array_values(array_filter(array_map(static fn($call)=>is_array($call)&&in_array($call['tool']??null,array_column(InternalAgentPolicy::catalog(),'name'),true)?$call['tool']:null,(array)($plan['calls']??[]))))]);
             $results=[];$names=[];
             foreach(array_slice((array)($plan['calls']??[]),0,3) as $call){
                 if(!is_array($call)){continue;} $tool=(string)($call['tool']??'');$query=mb_substr((string)($call['query']??''),0,120);$id=max(0,(int)($call['id']??0));$page=max(1,min(100,(int)($call['page']??1)));
@@ -80,13 +86,15 @@ final class OperatorAssistant
                 // Role changes between planning and execution apply immediately.
                 $fresh=$this->selectAgent(['agent_key'=>$agent['key']],$user);
                 if(!in_array($tool,$fresh['tools'],true)){$results[]=['tool'=>$tool,'data'=>['error'=>'permission_denied']];continue;}
+                $arguments=['query'=>$query,'id'=>$id,'page'=>$page];
+                if($tool==='mautic_read_inbox')$arguments+=['resource'=>(string)($call['resource']??'conversations'),'filters'=>$this->inboxFilters((array)($call['filters']??[]))];
                 try {
                     $result=match($tool){
                         'mautic_search_campaigns'=>($this->campaigns)($query,10,$page),
                         'mautic_search_contacts'=>($this->contacts)($query,10,$page),
                         'mautic_fetch_campaign'=>$id>0?($this->campaign)($id,false):['error'=>'missing_id'],
                         'mautic_fetch_contact'=>$id>0?($this->contact)($id):['error'=>'missing_id'],
-                        'mautic_read_inbox'=>($this->readInbox)((string)($call['resource']??'conversations'),$id>0?$id:null,$this->inboxFilters((array)($call['filters']??[]))),
+                        'mautic_read_inbox'=>($this->readInbox)($arguments['resource'],$id>0?$id:null,$arguments['filters']),
                         'inbox_context'=>$selected?['conversation'=>$this->inbox->detail($selected,$user),'history'=>$this->inbox->timeline($selected,null,30,$user)]:$this->inbox->conversations($user,['kind'=>'private','queue'=>'all','needs_response'=>true,'limit'=>20]),
                     };
                     // Ephemeral WebChat tokens are never provided to the model.
@@ -95,7 +103,8 @@ final class OperatorAssistant
                     }
                     $result=$this->sanitize($result);
                 } catch (InboxException $e) { $result=['error'=>$e->httpStatus===403||$e->httpStatus===404?'permission_denied':'resource_unavailable']; } catch (\InvalidArgumentException) { $result=['error'=>'invalid_arguments']; } catch (\Symfony\Component\Security\Core\Exception\AccessDeniedException) { $result=['error'=>'permission_denied']; } catch (HttpExceptionInterface $e) { $result=['error'=>$e->getStatusCode()===403?'permission_denied':'resource_unavailable']; }
-                $results[]=['tool'=>$tool,'arguments'=>['query'=>$query,'id'=>$id,'page'=>$page],'data'=>$result];$names[]=$tool;
+                $this->logger->info('Inbox internal assistant tool', ['actor'=>(int)$user->getId(),'agent'=>$agent['key'],'tool'=>$tool,'failed'=>isset($result['error']),'items'=>isset($result['items'])&&is_array($result['items'])?count($result['items']):null]);
+                $results[]=['tool'=>$tool,'arguments'=>$arguments,'data'=>$result];$names[]=$tool;
             }
             $fresh=$this->selectAgent(['agent_key'=>$agent['key']],$user);
             $results=array_values(array_filter($results,static fn(array $result)=>in_array($result['tool'],$fresh['tools'],true)));
