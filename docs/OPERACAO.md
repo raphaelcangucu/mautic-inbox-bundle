@@ -24,7 +24,7 @@ O recarregamento de plugins usa os metadados Doctrine do bundle, que é a conven
 - `inbox_comment_contexts`
 - `inbox_ai_records`
 
-Conceda as permissões de **Atendimento / Conversas** e **Atendimento / Respostas prontas** aos papéis apropriados. A leitura exige também permissão Meta de mensagens; o envio exige ativo publicado e ativo. As permissões deste MVP são por papel, sem isolamento por conta individual.
+Conceda as permissões de **Atendimento / Conversas** e **Atendimento / Respostas prontas** aos papéis apropriados. A leitura exige também permissão Meta de mensagens; o envio exige ativo publicado e ativo. A visibilidade das conversas é limitada pelo responsável e pela fila aguardando atendimento; configure o grupo de visibilidade no papel. Veja [acesso dos operadores](OPERATOR-ACCESS.md).
 
 Nenhuma conversa antiga é migrada automaticamente. Confira um ativo por vez e aplique explicitamente:
 

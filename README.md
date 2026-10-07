@@ -14,18 +14,6 @@ Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, In
 - Limite opcional de respostas por sessão de IA. O padrão `0` é ilimitado e o contador pode ser reiniciado pela interface.
 - Contrato de transporte para canais externos, com metadados, envio humano e por IA, leitura e tempo real.
 
-## WhatsApp por QR
-
-A versão 1.5.0 identifica sessões `whatsapp_qr_session` como **WhatsApp · QR**. Instale o [MauticWhatsQrBundle](https://github.com/raphaelcangucu/mautic-whatsqr-bundle) 0.3.0 e seu serviço Go para conectar o aparelho. O Inbox mantém atribuição, notas, rascunhos, fila e retomada humana existentes.
-
-O canal QR permite respostas de texto sem a janela de 24 horas da Cloud API e não oferece templates oficiais. Uma sessão desconectada ou um destinatário ainda não resolvido bloqueia a resposta com orientação específica. Envios novos têm retentativas limitadas para falhas temporárias; reenvio manual continua uma tentativa. DNC, idempotência e limites do conector permanecem ativos. Mídia recebida usa o proxy privado do WhatsQR 0.3.0, com validação de conteúdo, limite de 32 MiB e ClamAV obrigatório. Recibos de leitura e envio de anexos pelo transporte QR ainda não estão implementados.
-
-Plugins podem fornecer fotos pelo contrato opcional `ParticipantAvatarProviderInterface`, registrado com a tag `mautic.inbox.participant_avatar`. Ele monta uma URL local a partir da conversa já carregada, sem consulta por linha. O WhatsQR usa essa extensão para mostrar a miniatura atual do contato com cache e autenticação; o avatar existente mantém as iniciais se a foto não estiver disponível.
-
-Anexos de canais externos usam `AttachmentProviderInterface`, com tag `mautic.inbox.attachment`. O provedor apenas monta a URL HTTPS autenticada da mensagem, sem IO. `MessagePresentation` prefere essa URL e preserva o proxy Graph dos canais oficiais quando nenhum provedor corresponde. O WhatsQR fornece imagens/figurinhas, vídeo e áudio nos previews Svelte existentes, além de links de documentos, sem expor as credenciais de download ao navegador. O plugin do canal é responsável por validar, armazenar e servir o arquivo com autenticação e limites.
-
-A validação real da integração está documentada em [docs/WHATSQR-MEDIA.md](docs/WHATSQR-MEDIA.md).
-
 ## Frontend Svelte 5
 
 O atendimento e a configuração dos agentes usam componentes Svelte 5 com TypeScript, mantendo o visual, as rotas e as garantias do Mautic. Twig fornece somente os pontos de montagem e os dados iniciais escapados. O bundle compilado e versionado em `Assets/dist/inbox-app.js` contém o runtime necessário, portanto a instalação por Composer não exige Node.js em produção.
@@ -43,7 +31,7 @@ Os componentes ficam em `Frontend/`. O entrypoint atende `Mautic.inboxOnLoad` e 
 
 ## Instalação
 
-Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.14.2 ou compatível instalado. Em uma instalação DDEV:
+Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.14.0 ou compatível instalado. Em uma instalação DDEV:
 
 ```bash
 ddev start
@@ -116,9 +104,7 @@ O modelo só recebe ferramentas e fontes autorizadas. Credenciais do Pi e do CMS
 
 O pacote opcional [`raphaelcangucu/mautic-webchat-bundle`](https://github.com/raphaelcangucu/mautic-webchat-bundle) usa o contrato de transporte da versão 1.3. Ele adiciona ao site um widget Svelte em tempo real e entrega as conversas neste mesmo Inbox, incluindo digitação, presença, confirmação de entrega e leitura, página de origem, UTMs e atribuição automática opcional a um agente de IA.
 
-O broker PHP SSE e as tabelas de sessão pertencem ao plugin Web Chat. Removê-lo não altera os transportes Meta do Inbox.
-
-A validação da versão 1.3 cobriu, em produção, digitação do visitante no Inbox, digitação nomeada do agente no widget, confirmação de entrega e leitura, consulta de relatório pelo agente, perguntas de acompanhamento e encerramento da conversa pela IA. [Assista ao vídeo end-to-end no repositório do Web Chat](https://github.com/raphaelcangucu/mautic-webchat-bundle/blob/main/docs/video/mautic-webchat-e2e.mp4).
+O gateway WebSocket e as tabelas de sessão pertencem ao plugin Web Chat. Removê-lo não altera os transportes Meta do Inbox.
 
 ## Segurança e comportamento
 
@@ -172,8 +158,8 @@ O identificador do link representa o estado persistido da conversa no Inbox. Ele
 
 ## Compatibilidade e versão
 
-A versão `1.5.0` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.2`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+A versão `1.5.2` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.2`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
 
-### Tempo real e consultas (1.4)
+Para respostas enviadas pelo celular e importação de histórico privado disponível, use o [MauticWhatsQrBundle 0.3.2](https://github.com/raphaelcangucu/mautic-whatsqr-bundle/releases/tag/v0.3.2) ou compatível. O WhatsApp pode limitar o histórico fornecido ao dispositivo conectado; essa versão não garante recuperar todas as conversas antigas. Importações preservam datas e não geram alertas de mensagens novas.
 
-O WebChat recebe atualizações por EventSource/SSE e envia digitação e leitura por POST autenticado. O transporte do chat roda em PHP CLI separado do FPM. A lista carrega últimas mensagens e identidades em duas consultas por página; provedores podem implementar `BatchChannelTransportInterface` para buscar metadados em lote. Os índices `inbox_message_latest` e `inbox_message_inbound` são registrados na metadata do Doctrine. Para bases existentes, aplique apenas os índices documentados no WebChat, com backup verificado, sem executar atualização genérica de schema.
+O editor reúne as opções no botão **+**: resposta privada/pública, nota interna, respostas prontas e templates WhatsApp. O campo cresce com o texto e mantém o envio ao lado. Templates continuam respeitando a janela do canal, variáveis obrigatórias e permissões; respostas prontas preenchem o rascunho para revisão.

@@ -17,10 +17,11 @@ final class ReplyAvailability
         private \Symfony\Contracts\Translation\TranslatorInterface $translator,
         private ChannelTransportRegistry $channelTransports,
     ) {}
-    public function reason(ConversationState $state): ?string
+    public function reason(ConversationState $state, ?string $replyMode = null): ?string
     {
         $c = $state->getConversation();
         $qr = AssetType::WhatsAppQrSession === $c->getAsset()->getType();
+        $replyMode = ReplyMode::resolve($c->getChannel(), $c->getRecipient(), $replyMode);
         if ('resolved' === $state->getLifecycle()) { return $this->translator->trans('mautic.inbox.ui.this_conversation_is_resolved_reopen_it_to_reply_fd61b2'); }
         if (null !== ($transport = $this->channelTransports->for($c))) {
             return $transport->replyBlockedReason($state);
@@ -31,11 +32,11 @@ final class ReplyAvailability
         if ('facebook' === $c->getChannel() && false === ($c->getAsset()->getSettings()['facebook_reply_enabled'] ?? true)) { return $this->translator->trans('mautic.inbox.ui.the_facebook_connection_needs_additional_permissions_in_meta_befo_85248a'); }
         $repo = $this->entityManager->getRepository(MetaMessage::class);
         $comment = str_starts_with($c->getRecipient(), 'comment:');
-        if ($comment && 'facebook' === $c->getChannel()) {
+        if ($comment && ('facebook' === $c->getChannel() || ReplyMode::instagramPublic($c->getChannel(),$c->getRecipient(),$replyMode))) {
             $source = $repo->findOneBy(['conversation' => $c, 'direction' => 'inbound', 'messageType' => 'comment']);
             return !$source || !empty($source->getPayload()['removed']) ? $this->translator->trans('mautic.inbox.ui.this_comment_was_removed_or_is_not_available_for_a_reply_2a340b') : null;
         }
-        if ($comment && ($repo->findOneBy(['conversation' => $c, 'direction' => 'outbound', 'messageType' => 'private_reply', 'status' => ['accepted', 'sent', 'delivered', 'read', 'pending', 'processing', 'uncertain']]) || $this->entityManager->getRepository(OutboundRequest::class)->findOneBy(['conversation' => $c, 'status' => ['pending', 'processing', 'waiting', 'uncertain', 'sent', 'accepted', 'delivered', 'read']]))) {
+        if ($comment && ($repo->findOneBy(['conversation' => $c, 'direction' => 'outbound', 'messageType' => 'private_reply', 'status' => ['accepted', 'sent', 'delivered', 'read', 'pending', 'processing', 'uncertain']]) || $this->hasPrivateRequest($c))) {
             return $this->translator->trans('mautic.inbox.ui.this_comment_already_received_a_private_reply_or_has_a_send_in_pr_a118b7');
         }
         if ($qr) { return null; }
@@ -53,5 +54,13 @@ final class ReplyAvailability
             return 'whatsapp' === $c->getChannel() ? $this->translator->trans('mautic.inbox.ui.no_message_was_received_in_the_last_24_hours_use_an_approved_what_bcb7ba') : ('facebook' === $c->getChannel() ? $this->translator->trans('mautic.inbox.ui.no_message_was_received_in_the_last_24_hours_wait_for_a_new_messe_7ed11e') : $this->translator->trans('mautic.inbox.ui.no_message_was_received_in_the_last_24_hours_wait_for_a_new_direc_221a2e'));
         }
         return null;
+    }
+
+    public function hasPrivateRequest(\MauticPlugin\MauticMetaBundle\Entity\MetaConversation $conversation): bool
+    {
+        return null !== $this->entityManager->getRepository(OutboundRequest::class)->createQueryBuilder('o')
+            ->join('o.job','j')->where('o.conversation = :conversation AND o.status IN (:statuses) AND j.operation = :operation')
+            ->setParameters(['conversation'=>$conversation,'statuses'=>['pending','processing','waiting','uncertain','sent','accepted','delivered','read'],'operation'=>'instagram_private_reply'])
+            ->setMaxResults(1)->getQuery()->getOneOrNullResult();
     }
 }

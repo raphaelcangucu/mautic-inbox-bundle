@@ -121,6 +121,10 @@
       revision: 0,
       name: "",
       profile: "macro-support",
+      audience: "customer",
+      mcp_connection: "current_mautic",
+      mcp_tools: [],
+      role_ids: [],
       enabled: false,
       limit: 0,
       documents: [],
@@ -133,7 +137,17 @@
     const permissions = agent.permissions.filter((permission) =>
       data.config.permissions.includes(permission),
     );
-    await request<AiActionResponse>({ ...agent, permissions, action: "agent" });
+    const response = await request<AiActionResponse>({
+      ...agent,
+      permissions,
+      action: "agent",
+    });
+    if (
+      response.result &&
+      typeof response.result === "object" &&
+      "key" in response.result
+    )
+      selectedAgent = response.result as AiAgent;
     await load();
     showFeedback(t("saved"));
   }
@@ -242,6 +256,8 @@
   />
 {:else}
   <AgentsView
+    tools={data.mcp_tools ?? []}
+    roles={data.roles ?? []}
     documents={data.documents}
     assets={data.assets}
     globalPermissions={data.config.permissions}

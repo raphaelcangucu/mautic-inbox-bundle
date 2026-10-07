@@ -1,8 +1,16 @@
 <script lang="ts">
   import PermissionGrid from "./PermissionGrid.svelte";
   import ReplyLimitField from "./ReplyLimitField.svelte";
-  import type { AiAgent, AiAsset, AiDocument } from "../shared/types";
+  import type {
+    AiAgent,
+    AiAsset,
+    AiDocument,
+    AiTool,
+    AiRole,
+  } from "../shared/types";
 
+  export let tools: AiTool[] = [];
+  export let roles: AiRole[] = [];
   export let documents: AiDocument[] = [];
   export let assets: AiAsset[] = [];
   export let globalPermissions: string[] = [];
@@ -28,11 +36,36 @@
         `# ${item.published!.name} · v${item.published!.version}\n${item.published!.body}`,
     )
     .join("\n\n");
-  $: selectedPermissionCount =
-    agent?.permissions.filter((permission) =>
-      globalPermissions.includes(permission),
-    ).length ?? 0;
+  $: internal = agent?.audience === "internal";
+  $: selectedPermissionCount = internal
+    ? (agent?.mcp_tools?.length ?? 0)
+    : (agent?.permissions.filter((permission) =>
+        globalPermissions.includes(permission),
+      ).length ?? 0);
 
+  function audience(value: string): void {
+    if (!agent) return;
+    agent = {
+      ...agent,
+      audience: value === "internal" ? "internal" : "customer",
+      mcp_connection: "current_mautic",
+      mcp_tools: agent.mcp_tools ?? [],
+      role_ids: agent.role_ids ?? [],
+    };
+    onSelect(agent);
+  }
+  function toggleTool(name: string, checked: boolean): void {
+    if (!agent) return;
+    const current = (agent.mcp_tools ?? []).filter((item) => item !== name);
+    agent = { ...agent, mcp_tools: checked ? [...current, name] : current };
+    onSelect(agent);
+  }
+  function toggleRole(id: number, checked: boolean): void {
+    if (!agent) return;
+    const current = (agent.role_ids ?? []).filter((item) => item !== id);
+    agent = { ...agent, role_ids: checked ? [...current, id] : current };
+    onSelect(agent);
+  }
   function choose(key: string): void {
     const selected = agents.find((item) => item.key === key);
     if (selected) onSelect(selected);
@@ -84,7 +117,9 @@
       <div class="ai-agent-avatar" aria-hidden="true">AI</div>
       <div class="ai-agent-summary-name">
         <strong id="ai-agent-summary-name">{agent.name || t("new")}</strong
-        ><span id="ai-agent-summary-profile">{agent.profile}</span>
+        ><span id="ai-agent-summary-profile"
+          >{internal ? t("audience_internal") : agent.profile}</span
+        >
       </div>
       <div class="ai-summary-stat">
         <strong id="ai-agent-summary-docs">{selectedDocuments.length}</strong
@@ -93,13 +128,13 @@
       <div class="ai-summary-stat">
         <strong id="ai-agent-summary-permissions"
           >{selectedPermissionCount}</strong
-        ><span>{t("channels")}</span>
+        ><span>{internal ? t("mcp_tools") : t("channels")}</span>
       </div>
-      <div class="ai-summary-stat">
-        <strong id="ai-agent-summary-limit">{agent.limit || "∞"}</strong><span
-          >{t("limit")}</span
-        >
-      </div>
+      {#if !internal}<div class="ai-summary-stat">
+          <strong id="ai-agent-summary-limit">{agent.limit || "∞"}</strong><span
+            >{t("limit")}</span
+          >
+        </div>{/if}
       <span
         id="ai-agent-status"
         class="ai-status-pill"
@@ -127,28 +162,45 @@
           /></label
         >
         <label
-          >{t("profile")}<select
-            id="ai-agent-profile"
-            bind:value={agent.profile}
+          >{t("audience")}
+          <select
+            id="ai-agent-audience"
             class="form-control not-chosen"
+            value={agent.audience ?? "customer"}
             disabled={busy}
-            ><option value="macro-support">macro-support</option><option
-              value="macro-sports">macro-sports</option
-            ></select
-          ></label
-        >
-        <p id="ai-agent-profile-hint" class="ai-field-hint">
-          {agent.profile === "macro-sports"
-            ? t("profile_sports_hint")
-            : t("profile_support_hint")}
+            on:change={(event) => audience(event.currentTarget.value)}
+          >
+            <option value="customer">{t("audience_customer")}</option>
+            <option value="internal">{t("audience_internal")}</option>
+          </select>
+        </label>
+        <p class="ai-field-hint">
+          {internal ? t("internal_hint") : t("customer_hint")}
         </p>
+        {#if !internal}<label
+            >{t("profile")}<select
+              id="ai-agent-profile"
+              bind:value={agent.profile}
+              class="form-control not-chosen"
+              disabled={busy}
+              ><option value="macro-support">macro-support</option><option
+                value="macro-sports">macro-sports</option
+              ></select
+            ></label
+          >
+          <p id="ai-agent-profile-hint" class="ai-field-hint">
+            {agent.profile === "macro-sports"
+              ? t("profile_sports_hint")
+              : t("profile_support_hint")}
+          </p>
+        {/if}
         <div class="ai-inline-options">
-          <ReplyLimitField
-            id="ai-agent-limit"
-            bind:value={agent.limit}
-            {busy}
-            {t}
-          />
+          {#if !internal}<ReplyLimitField
+              id="ai-agent-limit"
+              bind:value={agent.limit}
+              {busy}
+              {t}
+            />{/if}
           <label class="ai-switch-row"
             ><span
               ><strong>{t("enabled")}</strong><small>{t("enabled_hint")}</small
@@ -219,18 +271,68 @@
         <span class="ai-card-icon" aria-hidden="true">⌁</span>
         <div>
           <h3>{t("permissions")}</h3>
-          <p>{t("permissions_hint")}</p>
+          <p>{internal ? t("mcp_identity_hint") : t("permissions_hint")}</p>
         </div>
       </div>
       <div id="ai-agent-permissions">
-        <PermissionGrid
-          {assets}
-          bind:values={agent.permissions}
-          {globalPermissions}
-          local
-          {busy}
-          {t}
-        />
+        {#if internal}
+          <label
+            >{t("mcp_connection")}<select
+              id="ai-agent-mcp-connection"
+              class="form-control not-chosen"
+              disabled
+              ><option value="current_mautic">{t("mcp_current")}</option
+              ></select
+            ></label
+          >
+          <p class="ai-field-hint">{t("mcp_identity_hint")}</p>
+          <h4>{t("mcp_tools")}</h4>
+          <p class="ai-field-hint">{t("mcp_read_only")}</p>
+          <div class="ai-document-checklist" id="ai-agent-mcp-tools">
+            {#each tools as tool (tool.name)}
+              <label class="ai-doc-check"
+                ><input
+                  type="checkbox"
+                  value={tool.name}
+                  disabled={busy}
+                  checked={agent.mcp_tools?.includes(tool.name) ?? false}
+                  on:change={(event) =>
+                    toggleTool(tool.name, event.currentTarget.checked)}
+                /><span class="ai-doc-check-copy"
+                  ><strong>{t(tool.label)}</strong><small>{tool.name}</small
+                  ></span
+                ></label
+              >
+            {/each}
+          </div>
+          <h4>{t("internal_roles")}</h4>
+          <p class="ai-field-hint">{t("internal_roles_hint")}</p>
+          <div class="ai-document-checklist" id="ai-agent-roles">
+            {#each roles as role (role.id)}
+              <label class="ai-doc-check"
+                ><input
+                  type="checkbox"
+                  value={role.id}
+                  disabled={busy}
+                  checked={agent.role_ids?.includes(role.id) ?? false}
+                  on:change={(event) =>
+                    toggleRole(role.id, event.currentTarget.checked)}
+                /><span class="ai-doc-check-copy"
+                  ><strong>{role.name}</strong></span
+                ></label
+              >
+            {/each}
+          </div>
+        {:else}
+          <PermissionGrid
+            {assets}
+            bind:values={agent.permissions}
+            {globalPermissions}
+            local
+            {busy}
+            {t}
+          />
+        {/if}
       </div>
     </div>
 

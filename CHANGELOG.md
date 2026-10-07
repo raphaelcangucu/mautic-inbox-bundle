@@ -1,28 +1,28 @@
+# Acesso limitado de operadores (6/10/2026)
+
+- Login/senha existente do Mautic com papel próprio para avaliação Apple.
+- Escopo de conversas próprias, fila aberta aguardando atendimento e supervisão explícita.
+- Proteção de leitura, ações, mídia, notificações, assistente e push sem migração.
+- Validação de banco somente em instalação descartável com guard do kernel real.
+
 # Changelog
 
-## 1.5.0 - 2026-10-06
+## 1.5.2 - 2026-10-07
 
-- Inclui o contexto da página atual para agentes no WebChat, preservando a atualização já integrada ao main.
-- Valida recepção real de imagem e PDF pelo WhatsApp QR, preview, download e atualização automática do histórico.
-- Adiciona um contrato opcional de anexos para plugins de canal, permitindo preview autenticado de imagens/vídeos/áudios e abertura de documentos QR sem usar o Graph.
-- Preserva os anexos dos canais existentes e mantém o rótulo de imagens sem nome de arquivo.
-- Adiciona um provedor opcional de fotos de participantes para plugins, mantendo o avatar dos demais canais e o retorno às iniciais.
-
-## 1.4.1 - 2026-10-06
-
-- Integra sessões WhatsApp por QR ao Inbox com identificação do transporte, bloqueios claros e fila com retentativas limitadas.
-- Dispensa a janela e os templates da Cloud API somente para sessões QR, mantendo DNC e demais proteções do conector.
-- Requer Meta Bundle 0.14.2 e preserva as melhorias de SSE, consultas em lote e idioma da versão 1.4.0.
+- Publica o acesso de operadores com escopo de conversas, autenticação do aplicativo, notificações push e recuperação WhatsQR já presentes no atendimento.
+- Mantém uma única mensagem visível para tentativas de reenvio e exibe diagnósticos de identidades WhatsApp não vinculadas.
+- Mostra o número QR de envio entre as opções de canal.
+- Atualiza a timeline com histórico privado importado, preservando datas, atribuição e ciclo de atendimento; mensagens antigas não acionam som, contador de novas mensagens ou push.
+- Reserva espaço para o rodapé do Mautic e adapta lista, conversa e painel de contato à largura disponível, incluindo tablets.
+- Reúne as opções do editor no botão **+**, mantém envio ao lado do texto e ajusta a altura conforme digitação, rascunho e largura.
+- Preserva notas, respostas prontas, templates, restrições do canal, atalhos e envio otimista; corrige a seleção de respostas prontas com IDs numéricos.
+- Alinha a versão declarada do plugin e documenta a dependência Meta 0.14.2 e o complemento WhatsQR 0.3.2.
 
 ## 1.3.0
 
 - Adiciona um contrato de transporte para canais externos ao Meta Bundle.
 - Permite que plugins de canal reutilizem Inbox, atribuição, notas, rascunhos e agentes de IA.
 - Inclui metadados de tempo real por conversa e suporte ao canal Web Chat.
-- Publica digitação da IA com nome do agente e reconcilia mensagens, leitura e sessão da IA em tempo real.
-- Recarrega o estado do agente após respostas e encerramento sem exigir atualização manual da página.
-- Pré-carrega relatórios de rodadas no contexto permitido e preserva a causa real de falhas do Pi/Codex.
-- Valida Web Chat em produção com resposta contextual, limite ilimitado e encerramento pelo agente.
 
 ## Nao lancado
 
@@ -94,11 +94,3 @@
 - Atribuição, transferência, resolução, adiamento, notas e rascunhos.
 - Integração com a fila Meta e bloqueio de automações durante a tomada humana.
 - Nomes e fotos, prévias de mídia, formatação segura, SSE e alertas sonoros/visuais.
-
-## 1.4.0
-
-- Replace the WebChat operator's WebSocket client with SSE + scoped HTTP commands.
-- Deduplicate read receipts, throttle typing and expire stale indicators.
-- Fetch list message previews and identities in batches; expose an optional channel metadata prefetch contract.
-- Register indexes for conversation/date and conversation/direction/date queries.
-- Preserve existing Meta channels, AI controls, attachments, assignment, drafts and notifications.

@@ -93,6 +93,9 @@ export interface TimelineItem {
   context?: unknown;
   failure?: string;
   retryable?: boolean;
+  retry_of?: string | null;
+  attempt_count?: number;
+  display_id?: number;
   ai?: { agent?: string; key?: string };
   /** Só em itens de envio. O servidor já manda; era o tipo que não declarava. */
   request_id?: string;
@@ -201,7 +204,20 @@ export interface AiDocument {
   published?: AiDocumentVersion | null;
   versions?: AiDocumentVersion[];
 }
+export interface AiTool {
+  name: string;
+  label: string;
+  permissions: string[];
+}
+export interface AiRole {
+  id: number;
+  name: string;
+}
 export interface AiAgent {
+  audience?: "customer" | "internal";
+  mcp_connection?: string | null;
+  mcp_tools?: string[];
+  role_ids?: number[];
   key: string;
   revision: number;
   name: string;
@@ -217,6 +233,8 @@ export interface AiAsset {
   channel: string;
 }
 export interface AiData {
+  mcp_tools?: AiTool[];
+  roles?: AiRole[];
   documents: AiDocument[];
   agents: AiAgent[];
   assets: AiAsset[];

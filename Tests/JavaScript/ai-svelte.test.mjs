@@ -163,6 +163,14 @@ test("the compiled AI workspace loads data and sends authenticated admin actions
         permissions: ["9:message"],
       },
     ],
+    mcp_tools: [
+      {
+        name: "mautic_read_inbox",
+        label: "tool_inbox_read",
+        permissions: ["inbox:conversations:view"],
+      },
+    ],
+    roles: [{ id: 2, name: "Operator" }],
     assets: [{ id: 9, name: "WhatsApp", channel: "whatsapp" }],
     installed: true,
     config: {
@@ -177,6 +185,20 @@ test("the compiled AI workspace loads data and sends authenticated admin actions
       models: [{ id: "gpt-test", name: "GPT Test" }],
     },
   };
+  data.agents.push({
+    key: "internal",
+    revision: 1,
+    name: "Internal",
+    profile: "macro-support",
+    audience: "internal",
+    enabled: true,
+    limit: 0,
+    documents: [],
+    permissions: [],
+    mcp_connection: "current_mautic",
+    mcp_tools: [],
+    role_ids: [],
+  });
   const requests = [];
   const response = (body) =>
     new Response(JSON.stringify(body), {
@@ -242,6 +264,41 @@ test("the compiled AI workspace loads data and sends authenticated admin actions
   );
   assert.equal(agentSave.headers.get("X-CSRF-Token"), "csrf-token");
   assert.equal(agentSave.body.limit, 0);
+  const agentSelect = app.querySelector("#ai-agent-select");
+  agentSelect.value = "internal";
+  agentSelect.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(app.querySelector("#ai-agent-audience").value, "internal");
+  assert.ok(app.querySelector("#ai-agent-mcp-connection"));
+  assert.equal(
+    app.querySelector("#ai-agent-limit"),
+    null,
+    "customer reply limit does not apply to a private operator",
+  );
+  const tool = app.querySelector(
+    '#ai-agent-mcp-tools input[value="mautic_read_inbox"]',
+  );
+  tool.checked = true;
+  tool.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const role = app.querySelector('#ai-agent-roles input[value="2"]');
+  role.checked = true;
+  role.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  app
+    .querySelector("#ai-agent-save-top")
+    .dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const internalSave = requests.find(
+    (request) =>
+      request.body?.action === "agent" && request.body?.key === "internal",
+  );
+  assert.equal(internalSave?.body.audience, "internal");
+  assert.deepEqual(internalSave?.body.mcp_tools, ["mautic_read_inbox"]);
+  assert.deepEqual(internalSave?.body.role_ids, [2]);
+  assert.equal(internalSave?.body.mcp_connection, "current_mautic");
+  assert.equal(internalSave.headers.get("X-CSRF-Token"), "csrf-token");
   app
     .querySelector('[data-ai-tab="pi"]')
     .dispatchEvent(new window.Event("click", { bubbles: true }));

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { afterUpdate, onMount, tick } from "svelte";
+  import { collapseRetries } from "./retry-timeline";
   import Icon from "../shared/Icon.svelte";
   import MessageBubble from "./MessageBubble.svelte";
   import PendingBubble from "./PendingBubble.svelte";
@@ -61,11 +62,13 @@
    * A pendente mora em outra colecao, entao observar so items.length deixa a bolha otimista
    * nascer abaixo da dobra — que e justamente o ganho que o envio otimista promete.
    */
-  $: visibleCount = items.length + pendingMessages.length;
-  $: grouped = items.map((item, index) => ({
+  $: visibleItems = collapseRetries(items);
+  $: visibleCount = visibleItems.length + pendingMessages.length;
+  $: grouped = visibleItems.map((item, index) => ({
     item,
     showDay:
-      index === 0 || day(items[index - 1].timestamp) !== day(item.timestamp),
+      index === 0 ||
+      day(visibleItems[index - 1].timestamp) !== day(item.timestamp),
     day: day(item.timestamp),
   }));
   afterUpdate(() => {
@@ -87,7 +90,10 @@
       await onOlder();
       await tick();
       scroller.scrollTop = oldTop + scroller.scrollHeight - oldHeight;
-      rolagem = { ...rolagem, vistos: items.length + pendingMessages.length };
+      rolagem = {
+        ...rolagem,
+        vistos: visibleItems.length + pendingMessages.length,
+      };
     } finally {
       preserving = false;
     }
@@ -110,7 +116,7 @@
       >{t("mautic.inbox.ui.load_earlier_messages_3d0b6c")}</button
     >{/if}
   <div id="inbox-timeline" class="inbox-timeline" aria-live="polite">
-    {#each grouped as row (row.item.kind + ":" + row.item.id)}{#if row.showDay}<div
+    {#each grouped as row (row.item.kind + ":" + (row.item.display_id ?? row.item.id))}{#if row.showDay}<div
           class="inbox-date-separator"
         >
           {row.day}

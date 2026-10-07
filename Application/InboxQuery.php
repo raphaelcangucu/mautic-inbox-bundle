@@ -47,8 +47,10 @@ final class InboxQuery
         private MessagePresentation $presentation,
         private ReplyAvailability $replyAvailability,
         private ChannelTransportRegistry $channelTransports,
+        private \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications,
         #[\Symfony\Component\DependencyInjection\Attribute\Autowire(service: 'mautic.helper.twig.avatar')]
         private \Mautic\LeadBundle\Twig\Helper\AvatarHelper $avatars,
+        private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access,
         private ?ParticipantAvatarRegistry $participantAvatars = null,
     ) {
     }
@@ -61,6 +63,7 @@ final class InboxQuery
         $qb = $this->entityManager->createQueryBuilder()->select('s', 'c', 'a', 'contact', 'assignee')
             ->from(ConversationState::class, 's')->join('s.conversation', 'c')->join('c.asset', 'a')
             ->leftJoin('c.contact', 'contact')->leftJoin('s.assignee', 'assignee');
+        $this->access->apply($qb,$user);
         $queue = (string) ($filters['queue'] ?? 'mine');
         if ('mine' === $queue) {
             $qb->andWhere('s.assignee = :currentUser')->setParameter('currentUser', $user);
@@ -122,6 +125,7 @@ final class InboxQuery
     /** @return array<string,mixed> */
     public function detail(ConversationState $state, User $user): array
     {
+        $this->access->assertView($state,$user);
         $conversation = $state->getConversation();
         $contact = $conversation->getContact();
         $drafts = [];
@@ -140,15 +144,17 @@ final class InboxQuery
             'origins' => $this->origins($state),
             'drafts' => $drafts,
             'can_reply' => null === $blockedReason && $assignedToMe,
-            'can_take_and_reply' => null === $blockedReason && null === $state->getAssignee(),
+            'can_take' => AssignmentPolicy::canTake($state->getAssignee()?->getId(), (int) $user->getId(), $user->isAdmin()),
+            'can_take_and_reply' => null === $blockedReason && !$assignedToMe && AssignmentPolicy::canTake($state->getAssignee()?->getId(), (int) $user->getId(), $user->isAdmin()),
             'reply_blocked_reason' => $blockedReason,
             'reply_hint' => $blockedReason ?? (!$assignedToMe ? (null === $state->getAssignee() ? $this->translator->trans('mautic.inbox.ui.write_your_reply_sending_it_will_assign_this_conversation_to_you__52d1da') : $this->translator->trans('mautic.inbox.ui.conversation_assigned_to_name_transfer_it_to_yourself_before_repl_21d227', ['%name%' => $state->getAssignee()->getName()])) : $this->translator->trans('mautic.inbox.ui.your_reply_will_be_sent_by_account_3734ba', ['%account%' => $conversation->getAsset()->getName()])),
         ];
     }
 
     /** @return array{items:list<array<string,mixed>>,next_cursor:?string} */
-    public function timeline(ConversationState $state, ?string $before, int $limit = 40): array
+    public function timeline(ConversationState $state, ?string $before, int $limit = 40, ?User $user = null): array
     {
+        $this->access->assertView($state,$user);
         $limit = max(1, min(100, $limit));
         $cursor = $this->decodeTimeCursor($before);
         $conversation = $state->getConversation();
@@ -201,9 +207,16 @@ final class InboxQuery
      *
      * @return array<string,mixed>
      */
-    public function summary(ConversationState $state): array
+    public function summary(ConversationState $state, ?User $user = null): array
     {
+        $this->access->assertView($state,$user);
         return $this->conversation($state);
+    }
+
+    public function afterTransition(ConversationState $state, User $user, array $before): array
+    {
+        if ($this->access->canView($state,$user)) return $this->detail($state,$user);
+        return array_replace($before,['id'=>$state->getId(),'version'=>$state->getVersion(),'assignee'=>null,'can_reply'=>false,'can_take'=>false,'can_take_and_reply'=>false,'access_revoked'=>true]);
     }
 
     /** @return list<array{id:int,name:string,body:string,enabled:bool}> */
@@ -237,12 +250,9 @@ final class InboxQuery
     public function users(): array
     {
         $users = $this->entityManager->getRepository(User::class)->findBy(['isPublished' => true], ['firstName' => 'ASC'], 200);
-        $permission = $this->permissions->getPermissionObject('inbox');
-        $metaPermission = $this->permissions->getPermissionObject('meta');
-        $users = array_values(array_filter($users, static function (User $user) use ($permission, $metaPermission): bool {
+        $users = array_values(array_filter($users, function (User $user): bool {
             if ($user->isAdmin()) { return true; }
-            return $permission->isGranted($user->getActivePermissions()['inbox'] ?? [], 'conversations', 'view')
-                && $metaPermission->isGranted($user->getActivePermissions()['meta'] ?? [], 'messages', 'view');
+            return $this->access->canViewInbox($user);
         }));
         return array_map(static fn (User $user): array => ['id' => (int) $user->getId(), 'name' => $user->getName() ?: (string) $user->getUsername()], $users);
     }
@@ -271,15 +281,18 @@ final class InboxQuery
         try { $from = new \DateTimeImmutable($since); } catch (\Throwable) { throw new InboxException('mautic.inbox.ui.invalid_update_marker_cedfb7'); }
         if ($from < new \DateTimeImmutable('-24 hours')) { $from = new \DateTimeImmutable('-24 hours'); }
         $until = new \DateTimeImmutable();
-        $states = $this->entityManager->createQueryBuilder()->select('s', 'c')->from(ConversationState::class, 's')->join('s.conversation', 'c')
+        if ($selected) $this->access->assertView($selected,$user);
+        $qb = $this->entityManager->createQueryBuilder()->select('s', 'c')->from(ConversationState::class, 's')->join('s.conversation', 'c')
             ->where('(s.dateModified > :from OR c.lastMessageAt > :from)')->andWhere('s.dateModified <= :until')->setParameter('from', $from)->setParameter('until', $until)
-            ->orderBy('s.dateModified', 'ASC')->setMaxResults(51)->getQuery()->getResult();
+            ->orderBy('s.dateModified', 'ASC')->setMaxResults(51);
+        $this->access->apply($qb,$user);
+        $states=$qb->getQuery()->getResult();
         $hasMore = count($states) > 50;
         $states = array_slice($states, 0, 50);
         $timeline = [];
         if ($selected instanceof ConversationState) {
             foreach (self::TIMELINE_TYPES as $class => [$kind, $rank]) {
-                $qb = $this->entityManager->createQueryBuilder()->select('x')->from($class, 'x')->where('x.conversation = :conversation')->andWhere('x.dateAdded > :from')->andWhere('x.dateAdded <= :until')
+                $qb = $this->entityManager->createQueryBuilder()->select('x')->from($class, 'x')->where('x.conversation = :conversation')->andWhere(MetaMessage::class === $class ? '(x.dateAdded > :from OR x.dateModified > :from)' : 'x.dateAdded > :from')->andWhere('x.dateAdded <= :until')
                     ->setParameter('conversation', $selected->getConversation())->setParameter('from', $from)->setParameter('until', $until);
             if (MetaMessage::class === $class) { $qb->andWhere('x.id NOT IN (SELECT humanJob.messageLogId FROM '.OutboundRequest::class.' humanRequest JOIN humanRequest.job humanJob WHERE humanRequest.conversation = :conversation AND humanJob.messageLogId IS NOT NULL)'); }
                 foreach ($qb->orderBy('x.dateAdded', 'ASC')->setMaxResults(101)->getQuery()->getResult() as $entity) {
@@ -292,24 +305,23 @@ final class InboxQuery
         }
         $next = $hasMore && [] !== $states ? end($states)->getDateModified() : $until;
 
-        $notifications = $this->notifications($notificationCursor);
+        $notifications = $this->notifications($notificationCursor,$user);
         return ['conversations' => array_map(fn (ConversationState $state): array => $this->conversation($state), $states), 'timeline' => $timeline, 'next_since' => $next->format(DATE_ATOM), 'has_more' => $hasMore] + $notifications;
     }
 
     /** Incoming IDs are independent of UI filters, read state and historical message timestamps. */
-    public function notifications(?int $cursor): array
+    public function notifications(?int $cursor, User $user): array
     {
         $qb = $this->entityManager->createQueryBuilder()->from(MetaMessage::class, 'm')
             ->join(ConversationState::class, 'notificationState', 'WITH', 'notificationState.conversation = m.conversation')
             ->where("m.direction = 'inbound'");
+        $this->access->apply($qb,$user,'notificationState');
         if (null === $cursor) {
             return ['notifications' => [], 'notification_cursor' => (int) $qb->select('MAX(m.id)')->getQuery()->getSingleScalarResult(), 'notifications_more' => false];
         }
-        $rows = $qb->select('m.id AS id', 'notificationState.id AS state_id')->andWhere('m.id > :cursor')->setParameter('cursor', max(0, $cursor))
+        $rows = $qb->select('m.id AS id', 'notificationState.id AS state_id', 'm.payload AS notification_payload')->andWhere('m.id > :cursor')->setParameter('cursor', max(0, $cursor))
             ->orderBy('m.id', 'ASC')->setMaxResults(101)->getQuery()->getArrayResult();
-        $more = count($rows) > 100;
-        $rows = array_slice($rows, 0, 100);
-        return ['notifications' => $rows, 'notification_cursor' => $rows ? (int) end($rows)['id'] : $cursor, 'notifications_more' => $more];
+        return NotificationBatch::present($rows, $cursor);
     }
 
     /** @param list<ConversationState> $states */
@@ -421,13 +433,20 @@ final class InboxQuery
             return ['kind' => 'note', 'id' => $entity->getId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
         }
         if ($entity instanceof OutboundRequest) {
-            return ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'retryable' => 'failed' === $entity->getStatus() && null !== $entity->getJob(), 'failure' => $entity->getFailureReason() && str_starts_with($entity->getFailureReason(), 'mautic.inbox.') ? $this->translator->trans($entity->getFailureReason()) : $entity->getFailureReason(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
+            $payload = $entity->getJob()?->getPayload() ?? [];
+            $diagnostic = OutboundFailure::describe($entity->getJob()?->getLastError());
+            $failure = match ($diagnostic['code']) {
+                'local_cooldown' => $this->translator->trans('mautic.inbox.ui.local_cooldown', ['%seconds%' => $diagnostic['seconds']]),
+                'contact_identity_mismatch' => $this->translator->trans('mautic.inbox.ui.contact_identity_mismatch'),
+                default => $entity->getFailureReason() && str_starts_with($entity->getFailureReason(), 'mautic.inbox.') ? $this->translator->trans($entity->getFailureReason()) : $entity->getFailureReason(),
+            };
+            return ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'retryable' => 'failed' === $entity->getStatus() && null !== $entity->getJob(), 'failure' => $failure, 'failure_code' => $diagnostic['code'], 'cooldown_seconds' => $diagnostic['seconds'], 'retry_of' => is_string($payload['_retry_of'] ?? null) ? $payload['_retry_of'] : null, 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
         }
         return ['kind' => 'event', 'id' => $entity->getId(), 'event' => $entity->getEventType(), 'author' => $entity->getActor()?->getName(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
     }
 
     /** @return list<array<string,mixed>> */
-    private function origins(ConversationState $state): array
+    public function origins(ConversationState $state): array
     {
         $contexts = $this->entityManager->createQueryBuilder()->select('context')->from(CommentContext::class, 'context')
             ->where('context.publicConversation = :conversation OR context.privateConversation = :conversation')
@@ -441,12 +460,14 @@ final class InboxQuery
             $related = $public ? $context->getPrivateConversation() : $context->getPublicConversation();
             $relatedState = null === $related ? null : $this->entityManager->getRepository(ConversationState::class)->findOneBy(['conversation' => $related]);
             $payload = $context->getMessage()->getPayload();
+            $cached = $this->publications->cached((int)$state->getConversation()->getAsset()->getId(),$context->getMediaId());
+            $url = \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext::link($cached['permalink'] ?? $url,$state->getConversation()->getChannel());
             $title = $this->translator->trans('mautic.inbox.ui.post_b172b7').$context->getMediaId();
             foreach ($this->automationRules() as $rule) { if ((string) $rule['media_id'] === $context->getMediaId() && (int) $rule['asset_id'] === $state->getConversation()->getAsset()->getId()) { $title = $rule['campaign']; break; } }
-            $image = $payload['origin_media']['image'] ?? null;
+            $image = $cached['image'] ?? $payload['origin_media']['image'] ?? null;
             $host = is_string($image) ? parse_url($image, PHP_URL_HOST) : null;
             $image = is_string($host) && str_starts_with($image, 'https://') && (str_ends_with($host, '.cdninstagram.com') || str_ends_with($host, '.fbcdn.net')) ? $image : null;
-            $items[] = ['image' => $image, 'caption' => $payload['origin_media']['caption'] ?? null, 'title' => $payload['origin_media']['caption'] ?? $title, 'media_id' => $context->getMediaId(), 'comment_id' => $context->getCommentId(), 'author' => $payload['commenterName'] ?? $context->getParticipantId(), 'body' => is_string($payload['text'] ?? null) ? mb_substr($payload['text'], 0, 500) : $this->translator->trans('mautic.inbox.ui.comment_on_the_post_4b4a80'), 'permalink' => $url, 'related_state_id' => $relatedState?->getId(), 'related_kind' => $public ? 'private' : 'comments'];
+            $items[] = ['image' => $image, 'caption' => $cached['caption'] ?? $payload['origin_media']['caption'] ?? null, 'title' => $cached['caption'] ?? $payload['origin_media']['caption'] ?? $title, 'media_id' => $context->getMediaId(), 'comment_id' => $context->getCommentId(), 'author' => $payload['commenterName'] ?? $context->getParticipantId(), 'body' => is_string($payload['text'] ?? null) ? mb_substr($payload['text'], 0, 500) : $this->translator->trans('mautic.inbox.ui.comment_on_the_post_4b4a80'), 'permalink' => $url, 'related_state_id' => $relatedState?->getId(), 'related_kind' => $public ? 'private' : 'comments'];
         }
         return $items;
     }
@@ -457,6 +478,7 @@ final class InboxQuery
         $count = function (?string $queue) use ($user, $kind): int {
             $qb = $this->entityManager->createQueryBuilder()->select('COUNT(s.id)')->from(ConversationState::class, 's')->where('s.lifecycle IN (:active)')->setParameter('active', ['open', 'snoozed']);
             $qb->join('s.conversation', 'c')->andWhere('c.recipient '.('comments' === $kind ? 'LIKE' : 'NOT LIKE').' :commentRecipient')->setParameter('commentRecipient', 'comment:%');
+            $this->access->apply($qb,$user);
             if ('mine' === $queue) { $qb->andWhere('s.assignee = :user')->setParameter('user', $user); }
             if ('unassigned' === $queue) { $qb->andWhere('s.assignee IS NULL'); }
             return (int) $qb->getQuery()->getSingleScalarResult();

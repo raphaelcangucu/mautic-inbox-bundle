@@ -9,13 +9,15 @@ use Mautic\UserBundle\Entity\User;
 use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
 use MauticPlugin\MauticMetaBundle\Entity\MetaOutboundJob;
 final class AiService {
- public function __construct(private AiStore $store,private EntityManagerInterface $em,private PiClient $pi,private MetaInboxIntegration $integration){}
+ public function __construct(private AiStore $store,private EntityManagerInterface $em,private PiClient $pi,private MetaInboxIntegration $integration,private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access){}
+ public function assertConversationAccess(ConversationState $state,User $actor): void {$this->access->assertView($state,$actor);}
  public function assets(): array{return array_map(fn($a)=>['id'=>$a->getId(),'name'=>$a->getName(),'channel'=>$a->getType()->channel()->value,'external_id'=>$a->getExternalId()],array_values(array_filter($this->em->getRepository(MetaAsset::class)->findBy(['isPublished'=>true]),fn($a)=>$a->getType()!==\MauticPlugin\MauticMetaBundle\Domain\AssetType::WhatsAppBusinessAccount)));}
  public function permission(ConversationState $state): string{return $state->getConversation()->getAsset()->getId().':'.(str_starts_with($state->getConversation()->getRecipient(),'comment:')?'comment':'message');}
  /** @return array{allowed:bool,reason:?string} */
  public function availability(ConversationState $state,array $agent): array {
   $config=$this->store->config();$permission=$this->permission($state);$reason=null;
-  if(empty($config['enabled']))$reason='global_disabled';
+  if(InternalAgentPolicy::internal($agent))$reason='agent_permission';
+  elseif(empty($config['enabled']))$reason='global_disabled';
   elseif(empty($agent['enabled']))$reason='agent_disabled';
   elseif(!in_array($permission,$config['permissions'],true))$reason='global_permission';
   elseif(!in_array($permission,$agent['permissions']??[],true))$reason='agent_permission';
@@ -24,6 +26,7 @@ final class AiService {
  public function allowed(ConversationState $state,array $agent): bool{return $this->availability($state,$agent)['allowed'];}
  public function effectiveLimit(array $agent): int{return AiStore::effectiveLimit($this->store->config(),$agent);}
  public function assign(ConversationState $state,User $actor,string $key,int $version): void {
+  $this->access->assertView($state,$actor);
   $agent=$this->store->get('agent',$key);if(!$agent||!$this->allowed($state,$agent))throw new InboxException('mautic.inbox.ai.not_allowed',409);
   $health=$this->store->get('health','pi');if(empty($health['validated']))throw new InboxException('mautic.inbox.ai.validate_first',409);
   $this->integration->runHumanTransition($state,function()use($state,$actor,$key,$agent,$version){$this->em->refresh($state);if($state->getVersion()!==$version)throw new InboxException('mautic.inbox.ai.conflict',409);
@@ -46,6 +49,7 @@ final class AiService {
   });
  }
  public function reset(ConversationState $state,User $actor,int $version): void {
+  $this->access->assertView($state,$actor);
   $this->integration->runHumanTransition($state,function()use($state,$actor,$version){
    $this->em->refresh($state);if($state->getVersion()!==$version)throw new InboxException('mautic.inbox.ai.conflict',409);
    $assignment=$this->store->get('assignment',(string)$state->getId());if(!$assignment)throw new InboxException('mautic.inbox.ai.not_assigned',409);$wasQueued=in_array($assignment['status']??'', ['queued','finishing'],true);
@@ -70,6 +74,7 @@ final class AiService {
   return ['run_key'=>$run['key'],'text'=>(string)$run['text'],'status'=>$status,'raw_status'=>$rawStatus,'reason'=>$reason,'error'=>$error,'agent'=>(string)($run['agent']??''),'date'=>$run['date']??$run['failed_at']??null,'retryable'=>!in_array($status,['processing','uncertain','generating'],true)];
  }
  public function retryPending(ConversationState $state,User $actor,string $runKey,int $version): MetaOutboundJob {
+  $this->access->assertView($state,$actor);
   $job=$this->integration->runHumanTransition($state,function()use($state,$actor,$runKey,$version):MetaOutboundJob{
    $this->em->refresh($state);if($state->getVersion()!==$version)throw new InboxException('mautic.inbox.ai.conflict',409);
    $pending=$this->pendingReply($state);if(!$pending||$pending['run_key']!==$runKey)throw new InboxException('mautic.inbox.ai.reply_unavailable',409);
@@ -103,5 +108,5 @@ final class AiService {
  private function cancelPendingRuns(int $stateId): void {
   foreach($this->store->all('run')as$run){if((int)($run['state']??0)!==$stateId||in_array($run['status']??'', ['sent','completed','cancelled','forced'],true))continue;$key=(string)$run['key'];unset($run['key'],$run['revision']);$run['status']='cancelled';$run['cancelled_at']=gmdate(DATE_ATOM);$this->store->put('run',$key,$run);}
  }
- public function saveAgent(array $p): void {$key=(string)($p['key']??'');if(!preg_match('/^[a-z0-9_-]{1,80}$/',$key))$key=bin2hex(random_bytes(8));$name=trim((string)($p['name']??''));if(!$name||mb_strlen($name)>100)throw new InboxException('mautic.inbox.ai.document_invalid');$this->store->put('agent',$key,['name'=>$name,'profile'=>in_array($p['profile']??'', ['macro-support','macro-sports'],true)?$p['profile']:'macro-support','enabled'=>!empty($p['enabled']),'limit'=>AiStore::normalizeLimit($p['limit']??0),'limit_configured'=>true,'documents'=>array_values(array_filter((array)($p['documents']??[]),'is_string')),'permissions'=>array_values(array_filter((array)($p['permissions']??[]),'is_string'))],(int)($p['revision']??0));}
+ public function saveAgent(array $p): array {$key=(string)($p['key']??'');if(!preg_match('/^[a-z0-9_-]{1,80}$/',$key))$key=bin2hex(random_bytes(8));$name=trim((string)($p['name']??''));if(!$name||mb_strlen($name)>100)throw new InboxException('mautic.inbox.ai.document_invalid');$policy=InternalAgentPolicy::normalize($p,$this->store->get('agent',$key));$record=$this->store->put('agent',$key,$policy+['name'=>$name,'profile'=>in_array($p['profile']??'', ['macro-support','macro-sports'],true)?$p['profile']:'macro-support','enabled'=>!empty($p['enabled']),'limit'=>AiStore::normalizeLimit($p['limit']??0),'limit_configured'=>true,'documents'=>array_values(array_filter((array)($p['documents']??[]),'is_string')),'permissions'=>array_values(array_filter((array)($p['permissions']??[]),'is_string'))],(int)($p['revision']??0));return ['key'=>$key,'revision'=>$record->getRevision()]+$record->getData();}
 }

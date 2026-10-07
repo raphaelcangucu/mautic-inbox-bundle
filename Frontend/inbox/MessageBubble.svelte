@@ -99,6 +99,12 @@
     {#if item.kind === "comment" && item.context}<div class="inbox-list-meta">
         {t("mautic.inbox.ui.post_linked_to_the_original_comment_405f5e")}
       </div>{/if}
+    {#if (item.attempt_count ?? 1) > 1}<small class="inbox-status"
+        >{t("mautic.inbox.ui.delivery_attempts").replace(
+          "%count%",
+          String(item.attempt_count),
+        )}</small
+      >{/if}
     {#if item.failure}<div class="inbox-status-failed">{item.failure}</div>{/if}
     {#if item.retryable}<button
         type="button"

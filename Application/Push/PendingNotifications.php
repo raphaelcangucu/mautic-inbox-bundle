@@ -17,13 +17,15 @@ final class PendingNotifications
     /** @var list<array{stateId:int, contact:string, preview:string}> */
     private array $pending = [];
 
-    public function add(int $stateId, string $contact, string $preview): void
+    public function add(int $stateId, string $contact, string $preview, ?int $messageId = null): void
     {
         if ($stateId <= 0) {
             return;
         }
 
-        $this->pending[] = ['stateId' => $stateId, 'contact' => $contact, 'preview' => $preview];
+        $item = ['stateId' => $stateId, 'contact' => $contact, 'preview' => $preview];
+        if ($messageId !== null) { $item['messageId'] = $messageId; }
+        $this->pending[] = $item;
     }
 
     /**

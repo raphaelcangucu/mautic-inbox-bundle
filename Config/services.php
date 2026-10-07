@@ -28,6 +28,7 @@ return function (ContainerConfigurator $configurator): void {
     $services->alias(PushDeviceStore::class, PushDeviceRepository::class);
     // Security/ esta na lista de exclusoes padrao do Mautic, entao esta classe precisa ser
     // registrada a mao — mesmo motivo pelo qual o Meta bundle registra o CredentialVault.
+    $services->set(\MauticPlugin\MauticInboxBundle\Security\ConversationAccess::class)->autowire();
     $services->set(InboxAccessCheck::class)->autowire();
     $services->alias(InboxAccess::class, InboxAccessCheck::class);
 };
