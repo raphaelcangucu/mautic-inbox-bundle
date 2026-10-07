@@ -292,7 +292,7 @@ final class InboxQuery
         $timeline = [];
         if ($selected instanceof ConversationState) {
             foreach (self::TIMELINE_TYPES as $class => [$kind, $rank]) {
-                $qb = $this->entityManager->createQueryBuilder()->select('x')->from($class, 'x')->where('x.conversation = :conversation')->andWhere('x.dateAdded > :from')->andWhere('x.dateAdded <= :until')
+                $qb = $this->entityManager->createQueryBuilder()->select('x')->from($class, 'x')->where('x.conversation = :conversation')->andWhere(MetaMessage::class === $class ? '(x.dateAdded > :from OR x.dateModified > :from)' : 'x.dateAdded > :from')->andWhere('x.dateAdded <= :until')
                     ->setParameter('conversation', $selected->getConversation())->setParameter('from', $from)->setParameter('until', $until);
             if (MetaMessage::class === $class) { $qb->andWhere('x.id NOT IN (SELECT humanJob.messageLogId FROM '.OutboundRequest::class.' humanRequest JOIN humanRequest.job humanJob WHERE humanRequest.conversation = :conversation AND humanJob.messageLogId IS NOT NULL)'); }
                 foreach ($qb->orderBy('x.dateAdded', 'ASC')->setMaxResults(101)->getQuery()->getResult() as $entity) {
@@ -319,11 +319,9 @@ final class InboxQuery
         if (null === $cursor) {
             return ['notifications' => [], 'notification_cursor' => (int) $qb->select('MAX(m.id)')->getQuery()->getSingleScalarResult(), 'notifications_more' => false];
         }
-        $rows = $qb->select('m.id AS id', 'notificationState.id AS state_id')->andWhere('m.id > :cursor')->setParameter('cursor', max(0, $cursor))
+        $rows = $qb->select('m.id AS id', 'notificationState.id AS state_id', 'm.payload AS notification_payload')->andWhere('m.id > :cursor')->setParameter('cursor', max(0, $cursor))
             ->orderBy('m.id', 'ASC')->setMaxResults(101)->getQuery()->getArrayResult();
-        $more = count($rows) > 100;
-        $rows = array_slice($rows, 0, 100);
-        return ['notifications' => $rows, 'notification_cursor' => $rows ? (int) end($rows)['id'] : $cursor, 'notifications_more' => $more];
+        return NotificationBatch::present($rows, $cursor);
     }
 
     /** @param list<ConversationState> $states */
