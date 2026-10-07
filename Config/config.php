@@ -7,7 +7,7 @@ use MauticPlugin\MauticInboxBundle\Controller\InboxController;
 return [
     'name' => 'Mautic Omnichannel Inbox',
     'description' => 'Atendimento humano para canais Meta conectado ao CRM do Mautic.',
-    'version' => '1.3.0',
+    'version' => '1.5.2',
     'author' => 'Mautic',
     'routes' => ['main' => [
         'mautic_inbox_mail_connections' => ['path' => '/inbox/mail-connections', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MailConnectionsController::class.'::index', 'method' => ['GET', 'POST']],

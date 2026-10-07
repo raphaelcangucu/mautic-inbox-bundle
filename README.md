@@ -158,4 +158,8 @@ O identificador do link representa o estado persistido da conversa no Inbox. Ele
 
 ## Compatibilidade e versão
 
-A versão `1.3.0` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.0`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+A versão `1.5.2` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.2`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+
+Para respostas enviadas pelo celular e importação de histórico privado disponível, use o [MauticWhatsQrBundle 0.3.2](https://github.com/raphaelcangucu/mautic-whatsqr-bundle/releases/tag/v0.3.2) ou compatível. O WhatsApp pode limitar o histórico fornecido ao dispositivo conectado; essa versão não garante recuperar todas as conversas antigas. Importações preservam datas e não geram alertas de mensagens novas.
+
+O editor reúne as opções no botão **+**: resposta privada/pública, nota interna, respostas prontas e templates WhatsApp. O campo cresce com o texto e mantém o envio ao lado. Templates continuam respeitando a janela do canal, variáveis obrigatórias e permissões; respostas prontas preenchem o rascunho para revisão.

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount, tick } from "svelte";
   import Icon from "../shared/Icon.svelte";
   import type {
     CannedResponse,
@@ -28,6 +29,12 @@
   ) => Promise<boolean>;
   let menuValue = "";
   let campo: HTMLTextAreaElement | null = null;
+  let toolsButton: HTMLButtonElement | null = null;
+  let toolsPanel: HTMLDivElement | null = null;
+  let toolsOpen = false;
+  let toolsLeft = 0;
+  let toolsTop = 0;
+  let toolsHeight = 320;
   const consulta =
     "undefined" === typeof window
       ? null
@@ -37,17 +44,97 @@
    * ou arrastar a janela atravessa o limite sem recarregar nada.
    */
   let estreita = Boolean(consulta?.matches);
-  consulta?.addEventListener("change", (evento) => {
-    estreita = evento.matches;
-  });
-  const estreito = (): boolean => estreita;
   function ajustarAltura(): void {
-    if (!campo || !estreito()) return;
-    // Zero, e nao "auto": com o atributo rows=3 no elemento, "auto" vale tres linhas e o campo
-    // nascia com 90px de altura mesmo vazio. Do zero, scrollHeight e o texto que existe de fato.
-    campo.style.height = "0px";
-    campo.style.height = `${Math.min(Math.max(campo.scrollHeight, 42), 120)}px`;
+    const field = campo;
+    if (!field) return;
+    const limit = Math.max(72, Math.min(168, window.innerHeight * 0.22));
+    field.style.height = "0px";
+    field.style.height = `${Math.min(Math.max(field.scrollHeight, 44), limit)}px`;
+    field.style.overflowY = field.scrollHeight > limit ? "auto" : "hidden";
   }
+  async function resizeForBody(_body: string): Promise<void> {
+    await tick();
+    ajustarAltura();
+  }
+  function positionTools(): void {
+    if (!toolsButton) return;
+    const rect = toolsButton.getBoundingClientRect();
+    const width = Math.min(320, window.innerWidth - 24);
+    toolsLeft = Math.max(
+      12,
+      Math.min(rect.left, window.innerWidth - width - 12),
+    );
+    toolsHeight = Math.max(72, Math.min(360, rect.top - 20));
+    toolsTop = Math.max(
+      12,
+      rect.top - Math.min(toolsPanel?.scrollHeight || 320, toolsHeight) - 8,
+    );
+  }
+  async function toggleTools(): Promise<void> {
+    if (toolsOpen) {
+      closeTools(true);
+      return;
+    }
+    if (
+      !note &&
+      selected.channel === "whatsapp" &&
+      !templatesLoading &&
+      !templates.length &&
+      !templateBlocked &&
+      !templateError
+    )
+      onLoadTemplates();
+    toolsOpen = true;
+    positionTools();
+    await tick();
+    toolsPanel?.showPopover?.();
+    positionTools();
+    toolsPanel?.querySelector<HTMLButtonElement>("button")?.focus();
+  }
+  function closeTools(restoreFocus = false): void {
+    toolsPanel?.hidePopover?.();
+    toolsOpen = false;
+    if (restoreFocus) toolsButton?.focus();
+  }
+  function outsideTools(event: PointerEvent): void {
+    if (!toolsOpen || !(event.target instanceof Node)) return;
+    if (
+      !toolsPanel?.contains(event.target) &&
+      !toolsButton?.contains(event.target)
+    )
+      closeTools();
+  }
+  function escapeTools(event: KeyboardEvent): void {
+    if (event.key === "Escape" && toolsOpen) {
+      event.preventDefault();
+      closeTools(true);
+    }
+  }
+  onMount(() => {
+    const updateWidth = (event: MediaQueryListEvent) => {
+      estreita = event.matches;
+    };
+    consulta?.addEventListener("change", updateWidth);
+    let lastWidth = 0;
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver((entries) => {
+            const width = entries[0]?.contentRect.width || 0;
+            if (Math.abs(width - lastWidth) > 1) {
+              lastWidth = width;
+              ajustarAltura();
+              if (toolsOpen) positionTools();
+            }
+          });
+    if (campo) observer?.observe(campo);
+    ajustarAltura();
+    return () => {
+      observer?.disconnect();
+      consulta?.removeEventListener("change", updateWidth);
+      closeTools();
+    };
+  });
   let templateOpen = false;
   let templateId = "";
   let values: Record<string, string> = {};
@@ -96,10 +183,11 @@
     ) ||
     selected.lifecycle === "resolved" ||
     Boolean(selected.assignee && selected.assignee.id !== currentUser);
-  $: if (campo && "" === body) ajustarAltura();
+  $: resizeForBody(body);
   $: if (selected.id !== owner) {
     owner = selected.id;
     closeTemplate();
+    closeTools();
     menuValue = "";
   }
   function closeTemplate(): void {
@@ -109,24 +197,31 @@
     templateError = "";
   }
   function changeMode(nextMode: string): void {
-    if (nextMode === "note") closeTemplate();
+    closeTemplate();
+    closeTools();
     onMode(nextMode);
+    tick().then(() => campo?.focus());
   }
   function choose(): void {
-    if (menuValue.startsWith("template:")) {
+    const choice = String(menuValue);
+    if (choice.startsWith("template:")) {
       templateOpen = true;
-      templateId = menuValue.slice(9);
+      templateId = choice.slice(9);
       values = {};
       templateError = "";
       onLoadTemplates();
     } else {
-      const response = canned.find((item) => String(item.id) === menuValue);
+      const response = canned.find((item) => String(item.id) === choice);
       if (response && !selected.reply_blocked_reason) {
         body += `${body ? "\n" : ""}${response.body}`;
         onInput();
       }
     }
     menuValue = "";
+    closeTools();
+    tick().then(() => {
+      if (!templateOpen) campo?.focus();
+    });
   }
   function selectTemplate(): void {
     values = {};
@@ -147,21 +242,28 @@
   }
 </script>
 
+<svelte:window
+  on:pointerdown={outsideTools}
+  on:keydown={escapeTools}
+  on:resize={() => {
+    ajustarAltura();
+    if (toolsOpen) positionTools();
+  }}
+/>
+
 <footer
   class="inbox-composer"
   class:note-mode={note}
   class:template-mode={templateOpen && !note}
 >
   <div class="inbox-composer-top">
-    <div class="inbox-composer-tabs">
-      <button class:active={!note} on:click={() => changeMode("reply")}
-        ><Icon name="reply" />{publicReply
+    <span class="inbox-composer-mode">
+      <Icon name={note ? "note" : "reply"} />{note
+        ? t("mautic.inbox.ui.internal_note_010aa1")
+        : publicReply
           ? t("mautic.inbox.ui.public_reply_42dc43")
-          : t("mautic.inbox.ui.private_reply_ecd924")}</button
-      ><button class:active={note} on:click={() => changeMode("note")}
-        ><Icon name="note" />{t("mautic.inbox.ui.internal_note_010aa1")}</button
-      >
-    </div>
+          : t("mautic.inbox.ui.private_reply_ecd924")}
+    </span>
     <span
       id="inbox-composer-channel"
       class="inbox-secondary inbox-composer-channel"
@@ -258,45 +360,121 @@
         </div>{/if}
     {/if}
   </div>
-  <textarea
-    id="inbox-composer-text"
-    bind:this={campo}
-    bind:value={body}
-    maxlength={maximum}
-    rows="3"
-    placeholder={estreita
-      ? t(
-          note
-            ? "mautic.inbox.ui.note_placeholder_short"
-            : "mautic.inbox.ui.message_placeholder_short",
-        )
-      : note
-        ? t("mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89")
-        : publicReply
-          ? t("mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01")
-          : t("mautic.inbox.ui.write_a_private_reply_394bc1")}
-    aria-label={t("mautic.inbox.ui.reply_text_680d6f")}
-    on:input={() => {
-      ajustarAltura();
-      onInput();
-    }}
-    on:keydown={(event) => {
-      if (
-        (event.metaKey || event.ctrlKey) &&
-        event.key === "Enter" &&
-        !disabled
-      ) {
+  <div class="inbox-editor-row">
+    <button
+      id="inbox-composer-options"
+      class="inbox-icon-button inbox-composer-plus"
+      type="button"
+      bind:this={toolsButton}
+      aria-label={t("mautic.inbox.ui.composer_options")}
+      title={t("mautic.inbox.ui.composer_options")}
+      aria-expanded={toolsOpen}
+      aria-controls="inbox-composer-menu"
+      aria-haspopup="dialog"
+      popovertarget="inbox-composer-menu"
+      on:click={(event) => {
         event.preventDefault();
-        onSend();
-      }
+        void toggleTools();
+      }}><Icon name="plus" /></button
+    >
+    <textarea
+      id="inbox-composer-text"
+      bind:this={campo}
+      bind:value={body}
+      maxlength={maximum}
+      rows="1"
+      placeholder={estreita
+        ? t(
+            note
+              ? "mautic.inbox.ui.note_placeholder_short"
+              : "mautic.inbox.ui.message_placeholder_short",
+          )
+        : note
+          ? t("mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89")
+          : publicReply
+            ? t("mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01")
+            : t("mautic.inbox.ui.write_a_private_reply_394bc1")}
+      aria-label={t("mautic.inbox.ui.reply_text_680d6f")}
+      on:input={() => {
+        ajustarAltura();
+        onInput();
+      }}
+      on:keydown={(event) => {
+        if (
+          (event.metaKey || event.ctrlKey) &&
+          event.key === "Enter" &&
+          !event.isComposing &&
+          !disabled
+        ) {
+          event.preventDefault();
+          onSend();
+        }
+      }}
+    ></textarea>
+    <button
+      id="inbox-send"
+      class="btn btn-primary inbox-send-icon"
+      type="button"
+      disabled={disabled || !body.trim()}
+      aria-label={sendLabel}
+      title={sendLabel}
+      on:click={onSend}><Icon name="send" /></button
+    >
+  </div>
+  <div
+    id="inbox-composer-menu"
+    class="inbox-composer-menu"
+    class:tools-open={toolsOpen}
+    bind:this={toolsPanel}
+    popover="auto"
+    role="dialog"
+    aria-label={t("mautic.inbox.ui.composer_options")}
+    tabindex="-1"
+    style:left={`${toolsLeft}px`}
+    style:top={`${toolsTop}px`}
+    style:max-height={`${toolsHeight}px`}
+    on:toggle={(event) => {
+      toolsOpen = (event as ToggleEvent).newState === "open";
     }}
-  ></textarea>
-  <div class="inbox-composer-footer">
-    <div class="inbox-composer-tools">
-      <Icon name="bolt" />{#if !note}<select
+  >
+    <div class="inbox-composer-menu-heading">
+      <strong>{t("mautic.inbox.ui.composer_options")}</strong>
+      <button
+        type="button"
+        class="inbox-icon-button"
+        aria-label={t("mautic.inbox.ui.close_options")}
+        on:click={() => closeTools(true)}><Icon name="close" /></button
+      >
+    </div>
+    <div class="inbox-composer-menu-modes">
+      <button
+        type="button"
+        class:active={!note}
+        aria-pressed={!note}
+        on:click={() => changeMode("reply")}
+        ><Icon name="reply" />{publicReply
+          ? t("mautic.inbox.ui.public_reply_42dc43")
+          : t("mautic.inbox.ui.private_reply_ecd924")}</button
+      >
+      <button
+        type="button"
+        class:active={note}
+        aria-pressed={note}
+        on:click={() => changeMode("note")}
+        ><Icon name="note" />{t("mautic.inbox.ui.internal_note_010aa1")}</button
+      >
+    </div>
+    {#if !note}
+      <label class="inbox-composer-menu-responses">
+        <span
+          ><Icon name="bolt" />{t(
+            "mautic.inbox.ui.canned_responses_f45beb",
+          )}</span
+        >
+        <select
           id="inbox-canned"
           bind:value={menuValue}
-          class="not-chosen"
+          class="not-chosen form-control"
           aria-label={t("mautic.inbox.ui.insert_canned_response_97c0df")}
           on:change={choose}
           ><option value=""
@@ -320,16 +498,9 @@
                     >{item.name} · {item.language}</option
                   >{/each}{/if}</optgroup
             >{/if}</select
-        >{/if}
-    </div>
-    <button
-      id="inbox-send"
-      class="btn btn-primary inbox-send-icon"
-      disabled={disabled || !body.trim()}
-      aria-label={sendLabel}
-      title={sendLabel}
-      on:click={onSend}><Icon name="send" /></button
-    >
+        >
+      </label>
+    {/if}
   </div>
   <div class="inbox-editor-status">
     <span id="inbox-draft-state"

@@ -7,6 +7,17 @@
 
 # Changelog
 
+## 1.5.2 - 2026-10-07
+
+- Publica o acesso de operadores com escopo de conversas, autenticação do aplicativo, notificações push e recuperação WhatsQR já presentes no atendimento.
+- Mantém uma única mensagem visível para tentativas de reenvio e exibe diagnósticos de identidades WhatsApp não vinculadas.
+- Mostra o número QR de envio entre as opções de canal.
+- Atualiza a timeline com histórico privado importado, preservando datas, atribuição e ciclo de atendimento; mensagens antigas não acionam som, contador de novas mensagens ou push.
+- Reserva espaço para o rodapé do Mautic e adapta lista, conversa e painel de contato à largura disponível, incluindo tablets.
+- Reúne as opções do editor no botão **+**, mantém envio ao lado do texto e ajusta a altura conforme digitação, rascunho e largura.
+- Preserva notas, respostas prontas, templates, restrições do canal, atalhos e envio otimista; corrige a seleção de respostas prontas com IDs numéricos.
+- Alinha a versão declarada do plugin e documenta a dependência Meta 0.14.2 e o complemento WhatsQR 0.3.2.
+
 ## 1.3.0
 
 - Adiciona um contrato de transporte para canais externos ao Meta Bundle.
