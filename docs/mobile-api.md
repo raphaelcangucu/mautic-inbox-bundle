@@ -153,3 +153,21 @@ Checks: local app typecheck and 68 checks, including 1,000 synthetic campaigns/s
 A consulta inicial `GET conversations/{id}/email-options?include_catalog=0&email=` admite e-mail vazio para carregar apenas metadados do contato e permissões. Não consulta correspondências por e-mail vazio. Endereços não vazios continuam validados; o envio de `email-actions` mantém validação obrigatória antes de qualquer escrita.
 
 Mídias recebidas pelo WhatsApp QR no histórico/poll mobile usam o proxy nativo `media/{messageId}` com bearer. Somente URLs da própria origem na rota exata `/s/whatsqr/media/{id}` são convertidas; URLs externas, credenciais, query e fragmentos são preservadas sem receber autenticação. O proxy verifica o tipo do asset e reutiliza o controlador de mídia do WhatsQR, mantendo permissões, validação da mensagem e `private, no-store`. A rota antiga do navegador permanece igual.
+
+### Additional WhatsApp QR numbers (mobile)
+
+`GET whatsqr` keeps the existing `items` response and adds `creation: {can_create, profiles: [{id, name}]}`. Profiles are existing, active, published whatsmeow connections with valid server and webhook configuration. Service addresses and credentials are never returned. Users need the same `meta:connections:edit` permission used by the web Inbox to add a number.
+
+`POST whatsqr` accepts `{name, phone_number, profile_id, request_id}`. Names are bounded to 80 characters; phone numbers use international format; `request_id` is a UUID v4 scoped to the authenticated user. Retrying a lost response returns the same connection, and an already registered phone returns HTTP 409. The response contains only `{id, name, status, can_pair}`.
+
+The new asset receives a separate session ID and sealed webhook secret. It inherits only the configured server through `SessionDriverFactory::configureAdditionalAsset`, and starts with the normal WhatsQR send limits. `POST whatsqr/{id}/start` registers that session with the private service before opening it through whatsmeow. The app opens the pairing screen immediately, polls for the current QR, and shares the PNG through the native share sheet. Connected sessions remain protected from reset. No pairing image is stored in conversation history; temporary shared files are removed after sharing and on the next launch.
+
+The WhatsQR service must include authenticated `POST /sessions/{id}/configuration`. New secrets are stored in the private `<store_path>.sessions.json` registry and survive service restarts. Registration is additive: it cannot replace a static or existing session secret. No schema migration is needed.
+
+### WhatsQR connection recovery
+
+`GET whatsqr` also includes the asset's `phone` and recorded webhook `status` on each item, without calling every session's health endpoint. Existing connection permissions remain unchanged. The foreground mobile list refreshes every ten seconds; opening a number uses the existing five-second live status polling.
+
+`GET whatsqr/{id}` returns `stage: not_done`, `cause: service_down`, and both pairing actions disabled when the service cannot be reached. It does not expose service errors or credentials, or reset a session. A temporary `reconnecting` state waits for whatsmeow's automatic reconnection; only a confirmed lost/expired pairing offers a new QR.
+
+For conversations whose asset type is `whatsapp_qr_session`, the mobile composer can open that exact connection. After a send attempt it performs a read-only diagnosis and opens recovery if the session is no longer connected. Failed or uncertain replies remain in the local outbox; the diagnosis never resends them. Official WhatsApp and other channels keep their existing reply behavior.

@@ -115,6 +115,12 @@ final class MobileApiController extends CommonController
             }
             if ($resource === 'whatsqr' || preg_match('#^whatsqr/([1-9][0-9]*)(?:/(start))?$#D',$resource,$qrRoute)) {
                 if ($method==='GET' && $resource==='whatsqr') { return $this->data($pairing->connections()); }
+                if ($method==='POST' && $resource==='whatsqr') {
+                    if(strlen($request->getContent())>2048){return $this->error('Requisição inválida.','invalid_request',400);}
+                    try{$payload=json_decode($request->getContent(),true,4,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
+                    if(!is_array($payload)||array_is_list($payload)){return $this->error('Requisição inválida.','invalid_request',400);}
+                    return $this->data($pairing->create($payload,$user));
+                }
                 if ($method==='GET' && empty($qrRoute[2])) { return $this->data($pairing->status((int)$qrRoute[1])); }
                 if ($method==='POST' && ($qrRoute[2]??'')==='start') {
                     if(strlen($request->getContent())>1024){return $this->error('Requisição inválida.','invalid_request',400);}
