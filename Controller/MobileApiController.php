@@ -55,7 +55,9 @@ final class MobileApiController extends CommonController
                 $raw['kind'] = str_starts_with($state->getConversation()->getRecipient(),'comment:') ? 'comments' : 'inbox';
                 $a=$aiStore->get('assignment',(string)$state->getId());
                 $raw['agent']=$a ? ['key'=>$a['agent']??'', 'name'=>$a['name']??'', 'status'=>$a['status']??'paused', 'count'=>$a['count']??0] : null;
-                $raw['moderation']=$raw['kind'] === 'comments' ? $moderation->flags($raw) : ['spam'=>false,'hidden'=>false,'blockedAuthor'=>false];
+                $moderatable=$raw['kind'] === 'comments' || $state->getConversation()->getChannel() === 'webchat';
+                $raw['moderation_available']=$moderatable && $permissions->isGranted(['inbox:conversations:edit','meta:messages:edit']);
+                $raw['moderation']=$moderatable ? $moderation->flags($raw) : ['spam'=>false,'hidden'=>false,'blockedAuthor'=>false];
                 $raw['can_reply']=$raw['can_reply'] && $permissions->isGranted(['inbox:conversations:create','meta:messages:create']) && !$raw['moderation']['spam'] && !$raw['moderation']['blockedAuthor'];
                 $raw['can_take']=$raw['can_take'] && $permissions->isGranted(['inbox:conversations:edit','meta:messages:edit']);
                 $raw['can_take_and_reply']=$raw['can_take_and_reply'] && $raw['can_take'] && $permissions->isGranted(['inbox:conversations:create','meta:messages:create']) && !$raw['moderation']['spam'] && !$raw['moderation']['blockedAuthor'];
@@ -196,7 +198,7 @@ final class MobileApiController extends CommonController
                 return $this->data(['request_id' => $out->getRequestId(), 'status' => $out->getStatus(), 'item' => $query->outboundItem($out), 'summary' => $decorate($query->summary($state))], 202);
             }
             if ($operation === 'moderation') {
-                if (!str_starts_with($state->getConversation()->getRecipient(),'comment:')) { return $this->error('Moderação disponível em comentários.','not_comment',422); }
+                if (!str_starts_with($state->getConversation()->getRecipient(),'comment:') && $state->getConversation()->getChannel() !== 'webchat') { return $this->error('Moderação disponível em comentários e no WebChat.','not_comment',422); }
                 $em->refresh($state);
                 if ($state->getVersion() !== (int)($p['version']??0)) { return $this->error('A conversa mudou. Atualize antes de continuar.','version_conflict',409); }
                 try {
