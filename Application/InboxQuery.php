@@ -438,6 +438,7 @@ final class InboxQuery
             $failure = match ($diagnostic['code']) {
                 'local_cooldown' => $this->translator->trans('mautic.inbox.ui.local_cooldown', ['%seconds%' => $diagnostic['seconds']]),
                 'contact_identity_mismatch' => $this->translator->trans('mautic.inbox.ui.contact_identity_mismatch'),
+                'meta_messaging_review_required' => $this->translator->trans('mautic.inbox.ui.meta_messaging_review_required'),
                 default => $entity->getFailureReason() && str_starts_with($entity->getFailureReason(), 'mautic.inbox.') ? $this->translator->trans($entity->getFailureReason()) : $entity->getFailureReason(),
             };
             return ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'retryable' => 'failed' === $entity->getStatus() && null !== $entity->getJob(), 'failure' => $failure, 'failure_code' => $diagnostic['code'], 'cooldown_seconds' => $diagnostic['seconds'], 'retry_of' => is_string($payload['_retry_of'] ?? null) ? $payload['_retry_of'] : null, 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
