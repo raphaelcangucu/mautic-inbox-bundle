@@ -21,7 +21,7 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 /** Native bearer boundary. Business rules remain in the existing Inbox services. */
 final class MobileApiController extends CommonController
 {
-    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing, \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access): Response
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing, \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, \MauticPlugin\MauticInboxBundle\Application\Mobile\AudioStore $audioStore): Response
     {
         $previous = $tokens->getToken();
         try {
@@ -47,7 +47,7 @@ final class MobileApiController extends CommonController
                 } catch (\DomainException|\JsonException $error) { return $this->error('Registro de push inválido ou indisponível.',$error instanceof \JsonException ? 'invalid_request' : $error->getMessage(),400); }
             }
 
-            $decorate = function(array $raw) use ($user,$states,$query,$aiStore,$moderation,$permissions,$actions): array {
+            $decorate = function(array $raw) use ($user,$states,$query,$aiStore,$moderation,$permissions,$actions,$audioStore): array {
                 $state = $states->find((int) $raw['id']);
                 if (!$state) { return $raw; }
                 $raw = $query->detail($state,$user);
@@ -70,6 +70,7 @@ final class MobileApiController extends CommonController
                     ];
                     $raw['can_take_and_reply']=$raw['can_take'] && $state->getAssignee()?->getId() !== $user->getId() && ($raw['reply_modes']['public']['available'] || $raw['reply_modes']['private']['available']);
                 }
+                $raw['mobile']=['attachments'=>false,'audio'=>$audioStore->enabled() && $state->getConversation()->getAsset()->getType()->value === 'whatsapp_qr_session' && $raw['kind'] === 'inbox'];
                 return $raw;
             };
             if ($method === 'GET' && $resource === 'assistant/agents') { return $this->data($assistant->agents($user)); }
@@ -87,6 +88,27 @@ final class MobileApiController extends CommonController
                 try { $payload=json_decode($request->getContent(),true,16,JSON_THROW_ON_ERROR); } catch (\JsonException) { return $this->error('JSON inválido.','invalid_request',400); }
                 if (!is_array($payload)) { return $this->error('JSON inválido.','invalid_request',400); }
                 return $this->data($canned->create($payload,$user,$cannedRepository,$em),201);
+            }
+            if ($method === 'GET' && preg_match('#^audio/([a-f0-9]{32})$#D',$resource,$audioRoute)) {
+                try { $audio=$audioStore->record($audioRoute[1]); } catch (\DomainException) { return $this->error('Áudio indisponível.','not_found',404); }
+                $audioState=$states->find($audio['state']);if(!$audioState)return $this->error('Áudio indisponível.','not_found',404);
+                $access->assertView($audioState,$user);
+                $response=new \Symfony\Component\HttpFoundation\BinaryFileResponse($audio['file']);
+                $response->headers->set('Content-Type','audio/mp4');$response->headers->set('Cache-Control','no-store, private');$response->headers->set('X-Content-Type-Options','nosniff');return $response;
+            }
+            if ($method === 'POST' && preg_match('#^conversations/([1-9][0-9]*)/audio$#D',$resource,$audioRoute)) {
+                $audioState=$states->find((int)$audioRoute[1]);if(!$audioState)return $this->error('Conversa não encontrada.','not_found',404);
+                $access->assertView($audioState,$user);
+                if (!$permissions->isGranted(['inbox:conversations:create','meta:messages:create']))return $this->error('Ação não autorizada.','forbidden',403);
+                if (!$audioStore->enabled() || $audioState->getConversation()->getAsset()->getType()->value !== 'whatsapp_qr_session' || str_starts_with($audioState->getConversation()->getRecipient(),'comment:'))return $this->error('Este canal ainda não envia áudio.','unsupported_media',422);
+                if ($audioState->getAssignee()?->getId() !== $user->getId())return $this->error('Assuma o atendimento antes de enviar áudio.','forbidden',403);
+                if (!$decorate(['id'=>$audioState->getId()])['can_reply'])return $this->error('Esta conversa não está disponível para resposta.','reply_unavailable',409);
+                if (strlen($request->getContent())>2800000)return $this->error('Áudio muito grande.','audio_too_large',413);
+                try {
+                    $p=json_decode($request->getContent(),true,8,JSON_THROW_ON_ERROR);
+                    if(!is_array($p)||!is_string($p['data']??null)||!is_string($p['request_id']??null))throw new \DomainException('invalid_audio');
+                    return $this->data($audioStore->store((int)$audioState->getId(),(int)$user->getId(),(int)$audioState->getConversation()->getAsset()->getId(),$p['request_id'],$p['data']),201);
+                } catch (\DomainException|\JsonException $error) {return $this->error('Áudio inválido ou incompatível.',$error instanceof \JsonException?'invalid_audio':$error->getMessage(),422);}
             }
             if ($method === 'GET' && preg_match('#^media/([1-9][0-9]*)$#D',$resource,$media)) {
                 $message=$em->find(\MauticPlugin\MauticMetaBundle\Entity\MetaMessage::class,(int)$media[1]);
@@ -194,7 +216,12 @@ final class MobileApiController extends CommonController
                 $comment = str_starts_with($conversation->getRecipient(), 'comment:');
                 if (isset($p['reply_mode']) && !is_string($p['reply_mode'])) { return $this->error('Modo de resposta inválido.', 'unsupported_reply_mode', 422); }
                 $replyMode=\MauticPlugin\MauticInboxBundle\Application\ReplyMode::resolve($conversation->getChannel(),$conversation->getRecipient(),$p['reply_mode']??null);
-                $out = $actions->reply($state, $user, (string) ($p['body'] ?? ''), (string) ($p['request_id'] ?? ''), isset($p['template_id']) ? ['id' => (int) $p['template_id'], 'variables' => $p['variables'] ?? []] : null, $replyMode);
+                $audio=null;
+                if(isset($p['audio_id'])){
+                    if(!$audioStore->enabled() || !is_string($p['audio_id']) || $state->getConversation()->getAsset()->getType()->value !== 'whatsapp_qr_session')return $this->error('Este canal ainda não envia áudio.','unsupported_media',422);
+                    try{$audio=$audioStore->forReply($p['audio_id'],(int)$state->getId(),(int)$user->getId(),(string)($p['request_id']??''));}catch(\DomainException){return $this->error('O áudio não pertence a este envio.','invalid_audio',422);}
+                }
+                $out = $actions->reply($state, $user, (string) ($p['body'] ?? ''), (string) ($p['request_id'] ?? ''), isset($p['template_id']) ? ['id' => (int) $p['template_id'], 'variables' => $p['variables'] ?? []] : null, $replyMode, null, $audio);
                 return $this->data(['request_id' => $out->getRequestId(), 'status' => $out->getStatus(), 'item' => $query->outboundItem($out), 'summary' => $decorate($query->summary($state))], 202);
             }
             if ($operation === 'moderation') {
