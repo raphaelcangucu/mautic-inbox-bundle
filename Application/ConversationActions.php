@@ -174,9 +174,9 @@ final class ConversationActions
         return $draft;
     }
 
-    public function reply(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null, ?int $expectedVersion = null): OutboundRequest
+    public function reply(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null, ?int $expectedVersion = null, ?array $audio = null): OutboundRequest
     {
-        $outbound = $this->inboxIntegration->runHumanTransition($state, fn (): OutboundRequest => $this->entityManager->wrapInTransaction(function () use ($state, $author, $body, $requestId, $template, $replyMode, $expectedVersion): OutboundRequest {
+        $outbound = $this->inboxIntegration->runHumanTransition($state, fn (): OutboundRequest => $this->entityManager->wrapInTransaction(function () use ($state, $author, $body, $requestId, $template, $replyMode, $expectedVersion, $audio): OutboundRequest {
                 $locked = $this->entityManager->find(ConversationState::class, $state->getId(), LockMode::PESSIMISTIC_WRITE);
                 if (!$locked instanceof ConversationState) {
                     throw new InboxException('mautic.inbox.ui.conversation_not_found_61bc81', 404);
@@ -184,7 +184,7 @@ final class ConversationActions
 
                 $this->entityManager->refresh($locked, LockMode::PESSIMISTIC_WRITE);
                 if ($expectedVersion !== null && $locked->getVersion() !== $expectedVersion) { throw new InboxException('O atendimento mudou desde a revisão. Peça uma nova proposta.', 409); }
-                return $this->replyLocked($locked, $author, $body, $requestId, $template, $replyMode);
+                return $this->replyLocked($locked, $author, $body, $requestId, $template, $replyMode, $audio);
             }));
         if ($outbound->getJob()) {
             // The local request and conversation state are committed before any
@@ -335,10 +335,11 @@ final class ConversationActions
         return [$request, true];
     }
 
-    private function replyLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null): OutboundRequest
+    private function replyLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null, ?array $audio = null): OutboundRequest
     {
         $this->access->assertView($state,$author);
         $conversation = $state->getConversation();
+        if($audio!==null && ($template!==null || $conversation->getChannel()!=='whatsapp' || $conversation->getAsset()->getType()!==AssetType::WhatsAppQrSession || str_starts_with($conversation->getRecipient(),'comment:')))throw new InboxException('Este canal ainda não envia áudio.',422);
         $replyMode = ReplyMode::resolve($conversation->getChannel(), $conversation->getRecipient(), $replyMode);
         $publicInstagram = ReplyMode::instagramPublic($conversation->getChannel(), $conversation->getRecipient(), $replyMode);
         if ($state->getAssignee()?->getId() !== $author->getId()) {
@@ -363,7 +364,7 @@ final class ConversationActions
         }
         $existing = $this->outboundRequests->findOneBy(['requestId' => $requestId]);
         if ($existing instanceof OutboundRequest) {
-            if ($existing->getConversation()->getId() !== $state->getConversation()->getId() || $existing->getAuthor()->getId() !== $author->getId() || $existing->getBody() !== $body || ($existing->getJob()?->getPayload()['_template_id'] ?? null) !== ($prepared['payload']['_template_id'] ?? null) || ($existing->getJob()?->getPayload()['components'] ?? []) !== ($prepared['payload']['components'] ?? []) || ($conversation->getChannel() === 'instagram' && str_starts_with($conversation->getRecipient(),'comment:') && ($existing->getJob()?->getOperation() === 'instagram_public_reply') !== $publicInstagram)) {
+            if (($existing->getJob()?->getPayload()['_inbox_audio_id'] ?? null)!==($audio['id']??null) || $existing->getConversation()->getId() !== $state->getConversation()->getId() || $existing->getAuthor()->getId() !== $author->getId() || $existing->getBody() !== $body || ($existing->getJob()?->getPayload()['_template_id'] ?? null) !== ($prepared['payload']['_template_id'] ?? null) || ($existing->getJob()?->getPayload()['components'] ?? []) !== ($prepared['payload']['components'] ?? []) || ($conversation->getChannel() === 'instagram' && str_starts_with($conversation->getRecipient(),'comment:') && ($existing->getJob()?->getOperation() === 'instagram_public_reply') !== $publicInstagram)) {
                 throw new InboxException('mautic.inbox.ui.send_identifier_already_used_419540', 409);
             }
             return $existing;
@@ -371,7 +372,7 @@ final class ConversationActions
 
         if (!$prepared && null !== ($reason = $this->replyAvailability->reason($state, $replyMode))) { throw new InboxException($reason, 409); }
         [$operation, $recipient] = $publicInstagram ? ['instagram_public_reply', substr($conversation->getRecipient(),8)] : $this->outboundTarget($conversation);
-        $job = $this->queue->enqueue($asset, $prepared ? 'whatsapp_template' : $operation, ($prepared['payload'] ?? []) + [
+        $job = $this->queue->enqueue($asset, $audio ? 'whatsapp_media' : ($prepared ? 'whatsapp_template' : $operation), ($prepared['payload'] ?? []) + ($audio ? ['media_type'=>'audio','media'=>['id'=>'inbox-audio:'.$audio['id']],'_inbox_audio_id'=>$audio['id']] : []) + [
             'recipient' => $recipient,
             'text' => $body,
             '_origin' => 'inbox_human',
