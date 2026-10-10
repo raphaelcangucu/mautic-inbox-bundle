@@ -52,10 +52,18 @@ final class MessagePresentation
             }
             $text = $parts ? implode("\n\n", $parts) : $this->translator->trans('mautic.inbox.ui.template_a44434').$name.$this->translator->trans('mautic.inbox.ui.this_template_s_text_is_not_available_in_the_local_catalog_08ff0c');
             if ($parts) { $caption .= $this->translator->trans('mautic.inbox.ui.catalog_version_db4744'); }
+        } elseif ('unsupported' === $type && is_array($payload['whatsqr'] ?? null)) {
+            // The QR decoder could not sync this content. This is an Inbox
+            // placeholder, never text actually sent by the customer/operator.
+            $viewOnce = 'view_once' === ($payload['whatsqr']['unsupported_reason'] ?? $content['unsupported_reason'] ?? null);
+            $text = $this->translator->trans($viewOnce ? 'mautic.inbox.qr.content.view_once' : 'mautic.inbox.qr.content.unavailable');
+            $caption = $this->translator->trans('mautic.inbox.qr.content.placeholder');
         } elseif ('unsupported' === $type) {
             $code = $content['errors'][0]['code'] ?? null;
             $text = $this->translator->trans('mautic.inbox.ui.whatsapp_did_not_provide_this_message_s_content_1fd44c').($code ? $this->translator->trans('mautic.inbox.ui.code_cea766').$code.')' : '').$this->translator->trans('mautic.inbox.ui.open_the_conversation_in_the_original_app_or_ask_the_person_to_re_2fc435');
             $caption = $this->translator->trans('mautic.inbox.ui.message_not_provided_by_whatsapp_7dbeab');
+        } elseif (is_array($payload['whatsqr'] ?? null) && in_array($type, ['contact', 'location', 'poll', 'interactive'], true)) {
+            $caption = $this->translator->trans('mautic.inbox.qr.content.'.$type);
         } elseif (isset($content['interactive'])) {
             $reply = $content['interactive']['button_reply'] ?? $content['interactive']['list_reply'] ?? [];
             $text = (string) ($reply['title'] ?? $reply['description'] ?? $this->translator->trans('mautic.inbox.ui.interactive_reply_7e5fff'));
