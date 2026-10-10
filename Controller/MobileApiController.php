@@ -70,7 +70,7 @@ final class MobileApiController extends CommonController
                     ];
                     $raw['can_take_and_reply']=$raw['can_take'] && $state->getAssignee()?->getId() !== $user->getId() && ($raw['reply_modes']['public']['available'] || $raw['reply_modes']['private']['available']);
                 }
-                $raw['mobile']=['attachments'=>$audioStore->enabled() && $state->getConversation()->getAsset()->getType()->value === 'whatsapp_qr_session' && $raw['kind'] === 'inbox'];
+                $raw['mobile']=['attachments'=>false,'audio'=>$audioStore->enabled() && $state->getConversation()->getAsset()->getType()->value === 'whatsapp_qr_session' && $raw['kind'] === 'inbox'];
                 return $raw;
             };
             if ($method === 'GET' && $resource === 'assistant/agents') { return $this->data($assistant->agents($user)); }
