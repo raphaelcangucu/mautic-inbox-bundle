@@ -26,10 +26,17 @@ $asset=new class {public function getId():int{return 1;}public function getExter
 $conversation=new class($asset){public function __construct(private object $asset){}public function getAsset():object{return $this->asset;}public function getChannel():string{return 'facebook';}};
 $state=new ConversationState($conversation);$pages=new PageConnectionResolver();
 $publications=new PublicationContext($graph,$pages,$root.'/project');$service=new SocialVisuals($graph,$pages,$publications,$root.'/project');
-$raw=['recipient'=>'22222','origins'=>[['comment_id'=>'33333','media_id'=>'44444']]];
+$raw=['recipient'=>'22222','origins'=>[['comment_id'=>'33333','media_id'=>'44444','body'=>'First author comment']]];
 if($service->cached($state,$raw)['avatar_url']!==null||$graph->calls)throw new \RuntimeException('List triggered Graph');
 $result=$service->resolve($state,$raw);
 if(!$result['avatar_url']||!$result['asset_avatar_url']||$result['publication']['caption']!=='Reel caption'||!$result['publication']['image'])throw new \RuntimeException('Visual hydration failed');
+if(isset($result['publication']['body'])||isset($result['publication']['comment_id']))throw new \RuntimeException('Comment content cached as post metadata');
+$second=$raw;$second['origins'][0]['body']='Second author comment';$second['origins'][0]['comment_id']='66666';
+if(isset($service->resolve($state,$second)['publication']['body']))throw new \RuntimeException('Different comment body leaked through shared post cache');
+// Existing cache written by an older release must be filtered on read too.
+$legacy=$root.'/inbox-mobile-private/social-visuals/'.hash('sha256','post:1:44444').'.json';
+$data=json_decode(file_get_contents($legacy),true);$data['value']['publication']['body']='Legacy private comment';$data['value']['publication']['comment_id']='77777';file_put_contents($legacy,json_encode($data));
+if(isset($service->cached($state,$second)['publication']['body'])||isset($service->cached($state,$second)['publication']['comment_id']))throw new \RuntimeException('Legacy cache leaked commenter data');
 $count=count($graph->calls);$service->resolve($state,$raw);if(count($graph->calls)!==$count)throw new \RuntimeException('Cache failed');
 $other=$raw;$other['recipient']='55555';$graph->mismatch=true;
 if($service->resolve($state,$other)['avatar_url']!==null)throw new \RuntimeException('Different author photo leaked');
