@@ -55,3 +55,12 @@ Atualizar o plugin e copiar `Runtime/mobile-assistant.mjs` para o diretório pri
 O teste `Tests/Standalone/internal-agent-policy.php` carrega apenas as classes de política e exceção, sem kernel, banco ou rede. O teste do frontend compilado verifica seleção de tipo, ferramentas, perfis e persistência autenticada. Testes do app verificam validação da resposta da API, restauração somente de agentes autorizados e separação do histórico. Esses testes não comprovam implantação ou funcionamento no servidor de produção.
 
 Testes puros de propostas: `Tests/Standalone/assistant-actions.php` verifica allowlist, ator/agente, expiração, revogação, permissões compostas, replay, falha incerta e arquivos privados. Não usa kernel, banco nem rede.
+
+
+### Continuous comment review and public reply batches
+
+Clients advertising `comment_batches` receive validated classifications for every source row and can prepare up to 20 individual public comment actions per page. Private replies and campaign/transfer actions retain the three-action cap. Public batch replies require a complete origin comment, a legitimate classification, an open unanswered conversation, available account permissions and public reply transport, no active customer AI assignment, and no earlier outbound attempt. Confirmation repeats these checks; source/version changes stop execution. Long/truncated or unavailable contexts are preserved as uncertain.
+
+The mobile scan follows every returned cursor while foregrounded, saves progress per account and internal agent, counts each comment once, stops on repeated cursors/errors/backgrounding, and supports explicit pause/resume. It is a foreground scan, not a scheduled/background worker. Only recent batches render initially; earlier reviews remain in local history. Batch confirmation applies the exact reviewed actions sequentially, saves each result, and stops on failure. No preview is sent during scanning.
+
+`POST /inbox/mobile/assistant/actions/renew` accepts only the opaque proposal ID and selected agent. It extends the same pending proposal after fresh permissions and an unchanged original snapshot; completed, executing, failed or changed targets cannot renew. Replay retains the original request ID, so lost responses cannot cause a second reply. Scheduled comment automation settings are independent and remain off.

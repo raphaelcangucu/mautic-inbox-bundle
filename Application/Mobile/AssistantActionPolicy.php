@@ -20,7 +20,7 @@ final class AssistantActionPolicy
         if($tool==='mautic_reply_inbox'){
             $body=$input['body']??null;$mode=$input['reply_mode']??'private';
             if(!is_string($body)||trim($body)===''||mb_strlen($body)>4000||!in_array($mode,['public','private'],true))throw new InboxException('Resposta inválida.',422);
-            return $out+['body'=>trim($body),'reply_mode'=>$mode];
+            return $out+['body'=>trim($body),'reply_mode'=>$mode]+(!empty($input['comment_batch'])?['comment_batch'=>true]:[]);
         }
         if($tool==='campaign_update'){
             $data=$input['data']??[];if(!is_array($data)||!$data||array_diff(array_keys($data),['name','description','allowRestart']))throw new InboxException('Esta ação altera somente nome, descrição e reinício da campanha. Para mudar o fluxo, abra o editor do Mautic.',422);

@@ -22,7 +22,7 @@ final class AssistantCommentModeration
         $can=$this->access->granted($user,'inbox:conversations:edit')&&$this->access->granted($user,'meta:messages:edit');
         $operations=[];
         if($can)foreach(['spam','restore','block','unblock','hide','show'] as $operation){try{AssistantModerationPolicy::snapshot($source,$flags,$operation);$operations[]=$operation;}catch(InboxException){}}
-        return ['id'=>$id,'name'=>$summary['contact_name'],'channel'=>$source['channel'],'account'=>$summary['asset'],'body'=>$source['body'],'context_complete'=>true,'origin'=>$source['origin'],'flags'=>$flags,'operations'=>$operations,'source'=>$source];
+        return ['id'=>$id,'name'=>$summary['contact_name'],'channel'=>$source['channel'],'account'=>$summary['asset'],'body'=>$source['body'],'context_complete'=>empty($source['body_truncated']),'origin'=>$source['origin'],'flags'=>$flags,'operations'=>$operations,'source'=>$source];
     }
     public function preview(array $action,User $user): array
     {

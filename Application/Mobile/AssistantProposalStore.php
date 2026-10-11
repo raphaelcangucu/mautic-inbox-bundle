@@ -43,6 +43,22 @@ final class AssistantProposalStore
             catch(\Throwable $e){$record['state']='failed';$this->save($file,$record);throw $e;}
         }finally{flock($file,LOCK_UN);fclose($file);}
     }
+    /** Extend the same pending ID only after checking the original action and fresh target; never re-send. */
+    public function renew(string $id,int $actor,string $agent,callable $authorize,callable $validate): array
+    {
+        if(!preg_match('/^[a-f0-9]{48}$/D',$id))throw new InboxException('Ação não encontrada.',404);
+        $path=$this->directory.'/'.$id.'.json';if(!is_file($path)||is_link($path))throw new InboxException('Ação não encontrada.',404);
+        $file=fopen($path,'r+');if(!$file)throw new InboxException('Ação não encontrada.',404);
+        try{
+            if(!flock($file,LOCK_EX|LOCK_NB))throw new InboxException('A ação está sendo processada.',409);
+            $record=json_decode(stream_get_contents($file),true,32,JSON_THROW_ON_ERROR);
+            if(($record['actor']??0)!==$actor||($record['agent']??null)!==$agent)throw new InboxException('Ação não encontrada.',404);
+            $authorize($record['action']);
+            if(($record['state']??'')!=='pending')throw new InboxException('Confira o resultado antes de tentar novamente.',409);
+            $validate($record['action']);$record['expires']=time()+600;$this->save($file,$record);
+            return ['id'=>$id,'expires_at'=>gmdate(DATE_ATOM,$record['expires']),'agent_key'=>$agent]+$record['preview'];
+        }finally{flock($file,LOCK_UN);fclose($file);}
+    }
     /** Read an executed result only; this endpoint can never execute a proposal. */
     public function result(string $id,int $actor,string $agent,callable $authorize): array
     {

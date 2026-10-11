@@ -22,6 +22,22 @@ final class AssistantActions
         $flags=$this->moderation->flags($this->inbox->summary($state));if($flags['spam']||$flags['blockedAuthor'])return 'moderated';
         return $this->actions->publicReplyBlockedReason($state);
     }
+    public function commentReplyAvailable(int $id,User $user): bool
+    {
+        $data=$this->commentModeration->read($id,$user);
+        if(!AssistantCommentBatchPolicy::replyEligible($data['source'])||$this->publicReplyReason($id,$user)!==null)return false;
+        // A queued/failed outbound attempt is handled by the normal chat retry flow, never by a second batch reply.
+        $state=$this->states->find($id);
+        if($state->getAssignee()&&$state->getAssignee()->getId()!==$user->getId())return false;
+        return null===$this->em->getRepository(\MauticPlugin\MauticInboxBundle\Entity\OutboundRequest::class)->findOneBy(['conversation'=>$state->getConversation()]);
+    }
+    public function renew(string $id,User $user,string $agent,callable $authorize): array
+    {
+        return $this->proposals->renew($id,(int)$user->getId(),$agent,$authorize,function($action)use($user){
+            $preview=$this->snapshot($action,$user);
+            if(!hash_equals($action['snapshot'],$preview['snapshot']))throw new InboxException('O alvo mudou. Peça uma nova análise.',409);
+        });
+    }
     public function preview(array $input,User $user,string $agent): array
     {
         $action=AssistantActionPolicy::normalize($input);$preview=$this->snapshot($action,$user);
@@ -73,6 +89,7 @@ final class AssistantActions
             $detail=$this->inbox->detail($state,$user);$summary=$detail['conversation']??$this->inbox->summary($state);
             $conversation=$state->getConversation();$assignee=$state->getAssignee()?->getId();$fields=[];
             if($tool==='mautic_reply_inbox'){
+                if(!empty($action['comment_batch'])&&!$this->commentReplyAvailable($id,$user))throw new InboxException('Comentário já atendido ou indisponível para resposta em lote.',409);
                 if($assignee!==null&&$assignee!==$user->getId())throw new InboxException('Assuma este atendimento no chat antes de responder.',409);
                 if($assignee===null&&(!$this->access->granted($user,'inbox:conversations:edit')||!$this->access->granted($user,'meta:messages:edit')))throw new InboxException('Sem permissão para assumir o atendimento.',403);
                 $flags=$this->moderation->flags($this->inbox->summary($state));if($flags['spam']||$flags['blockedAuthor'])throw new InboxException('Restaure o atendimento antes de responder.',422);
