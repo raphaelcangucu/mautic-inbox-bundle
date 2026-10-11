@@ -7,7 +7,7 @@ final class AiStore {
     public function __construct(private EntityManagerInterface $em){}
     public function find(string $kind,string $key): ?AiRecord {$r=$this->em->getRepository(AiRecord::class)->findOneBy(['kind'=>$kind,'recordKey'=>$key]);if($r)$this->em->refresh($r);return $r;}
     public function get(string $kind,string $key): array {return $this->find($kind,$key)?->getData()??[];}
-    public function all(string $kind): array{return array_map(fn(AiRecord $r)=>['key'=>$r->getRecordKey(),'revision'=>$r->getRevision()]+$r->getData(),$this->em->getRepository(AiRecord::class)->findBy(['kind'=>$kind],['id'=>'ASC']));}
+    public function all(string $kind,bool $refresh=false): array{return array_map(function(AiRecord $r)use($refresh){if($refresh)$this->em->refresh($r);return ['key'=>$r->getRecordKey(),'revision'=>$r->getRevision()]+$r->getData();},$this->em->getRepository(AiRecord::class)->findBy(['kind'=>$kind],['id'=>'ASC']));}
     public function page(string $kind,int $page=1,int $limit=25): array {
         $rows=$this->em->getRepository(AiRecord::class)->findBy(['kind'=>$kind],['id'=>'DESC'],$limit+1,($page-1)*$limit);
         return ['items'=>array_map(fn(AiRecord $r)=>['key'=>$r->getRecordKey(),'revision'=>$r->getRevision()]+$r->getData(),array_slice($rows,0,$limit)), 'page'=>$page, 'hasMore'=>count($rows)>$limit];
@@ -29,8 +29,8 @@ final class AiStore {
         $limits=array_values(array_filter([self::globalLimit($config),self::agentLimit($agent)],static fn(int $limit):bool=>$limit>0));
         return $limits?min($limits):0;
     }
-    public function context(array $agent): array {
-        $out=[];foreach($this->all('document') as $d){$v=$d['published']??null;if(!$v)continue;if(($v['scope']??'')==='global'||in_array($d['key'],$agent['documents']??[],true))$out[]=['key'=>$d['key'],'version'=>$v['version'],'name'=>$v['name'],'body'=>$v['body']];}
+    public function context(array $agent,bool $refresh=false): array {
+        $out=[];foreach($this->all('document',$refresh) as $d){$v=$d['published']??null;if(!$v)continue;if(($v['scope']??'')==='global'||in_array($d['key'],$agent['documents']??[],true))$out[]=['key'=>$d['key'],'version'=>$v['version'],'name'=>$v['name'],'body'=>$v['body']];}
         if(mb_strlen(implode('',array_column($out,'body')))>60000)throw new InboxException('mautic.inbox.ai.context_large');return $out;
     }
     public function saveDocument(array $p,int $actor): array {

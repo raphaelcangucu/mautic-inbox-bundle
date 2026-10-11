@@ -48,14 +48,14 @@ namespace {
         public function getResult():array{return array_slice(array_values(array_filter($this->em->rows[CommentContext::class]??[],fn($c)=>$c->getMessage()->getId()>$this->parameters['cursor'] && in_array($c->getPublicConversation()->getAsset()->getId(),$this->parameters['assets'],true))),0,$this->limit);}
     }
     final class MemoryEm implements \Doctrine\ORM\EntityManagerInterface {
-        public array $rows=[];private int $sequence=1000;
+        public array $rows=[];public array $refreshedDocuments=[];private int $sequence=1000;
         public function getRepository(string $class):MemoryRepository{return new MemoryRepository($this,$class);}
         public function persist(object $row):void{
             $class=$row::class;foreach($this->rows[$class]??[] as $existing)if($existing===$row)return;
             if($row instanceof AiRecord){$id=new ReflectionProperty(AiRecord::class,'id');$id->setValue($row,++$this->sequence);}
             $this->rows[$class][]=$row;
         }
-        public function refresh(object $row):void{}public function flush():void{}
+        public function refresh(object $row):void{if($row instanceof AiRecord && $row->getKind()==='document')$this->refreshedDocuments[]=$row->getRecordKey();}public function flush():void{}
         public function find(string $class,int $id):?object{foreach($this->rows[$class]??[] as $row)if($row->getId()===$id)return $row;return null;}
         public function createQueryBuilder():MemoryQuery{return new MemoryQuery($this);}
         public function getConnection():object{return new class {public function fetchOne(string $sql):int{if(!str_contains($sql,'GET_LOCK')&&!str_contains($sql,'RELEASE_LOCK'))throw new RuntimeException('Database SQL forbidden in this suite');return 1;}};}
@@ -123,6 +123,12 @@ namespace {
         verify($service->runs()['items'][0]['status']==='cancelled','Cancelled execution is audit-visible');
         $latest=$store->find('comment_config','qa');
         try{$service->saveConfig(array_replace($config,['revision'=>$latest->getRevision(),'mode'=>'automatic','document_version'=>99]),42);throw new RuntimeException('Unknown rule version accepted');}catch(\MauticPlugin\MauticInboxBundle\Application\InboxException){}
+        $active=$service->saveConfig(array_replace($config,['revision'=>$latest->getRevision(),'mode'=>'automatic']),42);
+        $global=$store->saveDocument(['key'=>'global-context','revision'=>0,'name'=>'global.md','body'=>'Public policy one','scope'=>'global','publish'=>true],42);
+        incoming($em,106,'Visite nossa loja e compre agora!');
+        $pi->before=function()use($store,$global,$em){$store->saveDocument(['key'=>'global-context','revision'=>$global['revision'],'name'=>'global.md','body'=>'Public policy two','scope'=>'global','publish'=>true],42);$em->refreshedDocuments=[];};$service->work();
+        verify($service->runs()['items'][0]['status']==='cancelled','Publishing a global context document during generation cancels the action');
+        verify(in_array('global-context',$em->refreshedDocuments,true),'Post-generation reads refresh global documents instead of Doctrine snapshots');
         verify(count($em->rows[EventLog::class]??[])===3,'Spam, sent reply and reviewed spam leave audit events');
         $key=$job->getPayload()['_comment_automation'];$interrupted=$store->get('comment_run',$key);$interrupted['status']='sending';$store->put('comment_run',$key,$interrupted);
         $blocked=new \MauticPlugin\MauticMetaBundle\Entity\MetaOutboundJob($job->getId(),$job->getAsset(),$job->getOperation(),$job->getPayload(),'blocked');$guard->failed($blocked);

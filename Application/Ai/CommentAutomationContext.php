@@ -17,7 +17,8 @@ final class CommentAutomationContext
     /** Attach this rule without changing the normal chat agent context. */
     public function documents(array $config,array $agent): array
     {
-        $documents=$this->store->context($agent);
+        // A long-lived worker must not reuse Doctrine's pre-generation document snapshots.
+        $documents=$this->store->context($agent,true);
         $rule=$this->store->get('document',$config['document_key']??'')['published']??[];
         if($rule && !in_array($config['document_key'],array_column($documents,'key'),true))$documents[]=['key'=>$config['document_key']]+$rule;
         if(mb_strlen(implode('',array_column($documents,'body')))>60000)throw new \MauticPlugin\MauticInboxBundle\Application\InboxException('mautic.inbox.ai.context_large');

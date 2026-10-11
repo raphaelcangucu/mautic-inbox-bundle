@@ -55,7 +55,7 @@ Envio externo real e moderação no Inbox de um comentário de teste dependem de
 
 ### Resultado desta entrega (2026-10-11)
 
-- 63 verificações da política/executor e 22 dos adaptadores reais, sem banco nem rede.
+- 63 verificações da política/executor e 24 dos adaptadores reais, sem banco nem rede.
 - 94 testes JavaScript/TypeScript, build e checagem Svelte aprovados.
 - Pi/CMS reais validados; quatro casos do classificador real aprovados.
 - Documento `automacao-comentarios-v1`, versão publicada 1, selecionado no agente `macro` apenas para automação.
