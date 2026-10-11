@@ -79,6 +79,8 @@ final class OperatorAssistant
             $context=$selected?['id'=>(int)$selected->getId(),'name'=>$this->inbox->summary($selected)['contact_name']]:[];
             $results=[];$names=[];
             $explicit=AssistantQueryHints::calls($message);
+            // Full-scan intent has a deterministic first read: avoid spending the HTTP budget on an unnecessary model planner.
+            if(!$explicit&&AssistantCommentBatchPolicy::explicitScan($message,$payload))$explicit=[['tool'=>'inbox_comments','filters'=>['queue'=>'all','lifecycle'=>'all','limit'=>20]]];
             if(is_array($payload['comment_page']??null)&&is_string($payload['comment_page']['cursor']??null)&&strlen($payload['comment_page']['cursor'])<=512)$explicit=[['tool'=>'inbox_comments','filters'=>array_replace($this->inboxFilters((array)($payload['comment_page']['filters']??[])),['cursor'=>$payload['comment_page']['cursor']])]];
             $explicit=array_values(array_filter($explicit,static fn($call)=>in_array($call['tool'],$agent['tools'],true)));
             for($round=0;$round<2;$round++){
@@ -245,7 +247,7 @@ final class OperatorAssistant
     }
     private function run(array $payload): array
     {
-        $process=new Process(['/usr/bin/node',$this->pi->home().'/mobile-assistant.mjs'],$this->pi->home());$process->setInput(json_encode($payload,JSON_THROW_ON_ERROR));$process->setTimeout(50);
+        $process=new Process(['/usr/bin/node',$this->pi->home().'/mobile-assistant.mjs'],$this->pi->home());$process->setInput(json_encode($payload,JSON_THROW_ON_ERROR));$process->setTimeout(!empty($payload['comment_batches'])?25:50);
         try {$process->run();$result=json_decode($process->getOutput(),true,32,JSON_THROW_ON_ERROR);if(!$process->isSuccessful()||!is_array($result)||isset($result['error'])){throw new \RuntimeException('assistant_unavailable');}return $result;}
         catch(\Throwable $e){throw new InboxException('mautic.inbox.ai.pi_failed',503,$e);}
     }
