@@ -74,7 +74,7 @@ final class ContactDirectory
     {
         $contact=$this->contact($id,$user);$campaigns=$this->campaigns($user);
         $members=$this->db->fetchFirstColumn('SELECT campaign_id FROM '.$this->table('campaign_leads').' WHERE lead_id = ? AND manually_removed = 0',[$id]);
-        return ['id'=>$id,'name'=>$contact->getName() ?: $contact->getEmail() ?: '#'.$id,'email'=>$contact->getEmail()??'','phone'=>$contact->getMobile() ?: $contact->getPhone() ?: '', 'campaigns'=>array_values(array_filter($campaigns,static fn(array $c):bool=>in_array((string)$c['id'],array_map('strval',$members),true))),'channels'=>$this->options($contact,$user)];
+        return ['id'=>$id,'name'=>$contact->getName() ?: $contact->getEmail() ?: '#'.$id,'email'=>$contact->getEmail()??'','phone'=>$contact->getMobile() ?: $contact->getPhone() ?: '', 'social_profiles'=>SocialProfileLinks::contact($contact), 'campaigns'=>array_values(array_filter($campaigns,static fn(array $c):bool=>in_array((string)$c['id'],array_map('strval',$members),true))),'channels'=>$this->options($contact,$user)];
     }
 
     private function options(Lead $contact, User $user): array
