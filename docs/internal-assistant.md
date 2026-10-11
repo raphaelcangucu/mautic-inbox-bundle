@@ -40,7 +40,13 @@ As consultas são de leitura; as ações geram propostas, sem executar durante a
 
 `read_only: true` nos metadados mantém a compatibilidade de clientes antigos: a pergunta continua sem efeito de escrita. `confirmation_required` indica ferramentas de execução disponíveis em clientes novos. O app mostra cada proposta com alvo, canal, corpo e antes/depois. Status pending/sent não é comprovante de recebimento no dispositivo.
 
-Ocultar/marcar spam pelo assistente, substituição integral de fluxo e administração global de usuários não fazem parte desta lista. A moderação manual e o editor de campanhas existentes permanecem disponíveis. O agente de atendimento mantém seu fluxo existente de resposta nos canais autorizados.
+`inbox_comments` lê até 20 comentários completos por página com conta, origem, flags, operações disponíveis e cursor. Um contexto indisponível não autoriza propostas. A classificação diferencia propaganda de terceiros de críticas e perguntas legítimas; texto do comentário não fornece instruções ao executor.
+
+`inbox_moderate` prepara spam/restauração, bloqueio/desbloqueio **no atendimento desta instância**, e ocultação/exibição Instagram quando disponível. Cada proposta mostra texto, conta, motivo e escopo. Há até 20 propostas de moderação por pergunta; respostas e outras escritas mantêm o máximo de três. Bloquear ou ocultar exige pedido explícito: um pedido genérico de tratar spam prepara apenas marcação como spam. Não existe exclusão pelo assistente.
+
+O app anuncia `supported_actions: ["inbox_moderate"]` para receber propostas novas. Clientes antigos continuam recebendo somente os tipos anteriores. O servidor limita capacidades às ferramentas configuradas e às permissões; esse campo do cliente não concede acesso. A confirmação usa o mesmo depósito privado de propostas, conferindo comentário completo, conta, revisão e flags sob o lock da conversa. Uma confirmação repetida não repete a execução. A ocultação só altera o estado local após confirmação remota. A automação agendada permanece independente e desligada.
+
+Substituição integral de fluxo e administração global de usuários não fazem parte desta lista. A moderação manual e o editor de campanhas existentes permanecem disponíveis. O agente de atendimento mantém seu fluxo existente de resposta nos canais autorizados.
 
 ## Instalação e validação
 

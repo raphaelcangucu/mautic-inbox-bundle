@@ -12,6 +12,11 @@ final class AssistantActionPolicy
         $tool=$input['tool']??'';$id=$input['id']??null;
         if(!is_int($id)||$id<1)throw new InboxException('Escolha um alvo exato antes de preparar a ação.',422);
         $out=['tool'=>$tool,'id'=>$id];
+        if($tool==='inbox_moderate'){
+            $operation=$input['operation']??null;$reason=$input['reason']??'';
+            if(!in_array($operation,['spam','restore','block','unblock','hide','show'],true)||!is_string($reason)||trim($reason)===''||mb_strlen($reason)>500)throw new InboxException('Moderação inválida. Informe a ação e o motivo.',422);
+            return $out+['operation'=>$operation,'reason'=>trim($reason)];
+        }
         if($tool==='mautic_reply_inbox'){
             $body=$input['body']??null;$mode=$input['reply_mode']??'private';
             if(!is_string($body)||trim($body)===''||mb_strlen($body)>4000||!in_array($mode,['public','private'],true))throw new InboxException('Resposta inválida.',422);

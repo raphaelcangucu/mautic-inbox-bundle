@@ -30,3 +30,5 @@ check(Policy::effectiveTools($write,fn($p)=>$p==='inbox:conversations:create')==
 check(Policy::effectiveTools($write,fn($p)=>in_array($p,['inbox:conversations:create','meta:messages:create','inbox:conversations:view','meta:messages:view'],true))===['mautic_reply_inbox'],'all required reply permissions');
 check(Policy::effectiveTools($write,fn($p)=>in_array($p,['campaign:campaigns:editown','campaign:campaigns:viewown','lead:leads:viewown'],true))===[],'campaign membership needs contact edit too');
 echo "Internal agent policy: all checks passed\n";
+check(Policy::effectiveTools(['mcp_tools'=>['inbox_moderate']],fn($p)=>$p==='inbox:conversations:edit')===[],'moderation cannot bypass Meta permissions');
+check(Policy::effectiveTools(['mcp_tools'=>['inbox_moderate']],fn($p)=>true)===['inbox_moderate'],'moderation requires every current permission');

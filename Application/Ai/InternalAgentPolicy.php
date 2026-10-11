@@ -26,6 +26,8 @@ final class InternalAgentPolicy
             ['name'=>'campaign_update', 'label'=>'tool_campaign_update', 'permissions'=>['campaign:campaigns:editown','campaign:campaigns:editother'], 'required_any'=>[['campaign:campaigns:viewown','campaign:campaigns:viewother']], 'write'=>true],
             ['name'=>'campaign_add_contacts', 'label'=>'tool_campaign_contacts', 'permissions'=>['campaign:campaigns:editown','campaign:campaigns:editother'], 'required_any'=>[['campaign:campaigns:viewown','campaign:campaigns:viewother'],['lead:leads:viewown','lead:leads:viewother'],['lead:leads:editown','lead:leads:editother']], 'write'=>true],
             ['name'=>'inbox_transfer', 'label'=>'tool_inbox_transfer', 'permissions'=>['inbox:conversations:edit'], 'required'=>['meta:messages:edit','inbox:conversations:view','meta:messages:view'], 'write'=>true],
+            ['name'=>'inbox_comments', 'label'=>'tool_inbox_comments', 'permissions'=>['inbox:conversations:view'], 'required'=>['meta:messages:view']],
+            ['name'=>'inbox_moderate', 'label'=>'tool_inbox_moderate', 'permissions'=>['inbox:conversations:edit'], 'required'=>['meta:messages:edit','inbox:conversations:view','meta:messages:view'], 'write'=>true],
         ];
     }
 

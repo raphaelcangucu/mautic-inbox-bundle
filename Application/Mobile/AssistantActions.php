@@ -14,7 +14,7 @@ use MauticPlugin\MauticMcpBundle\Mcp\Tool\Management\ManageCampaignsTool;
 
 final class AssistantActions
 {
-    public function __construct(private AssistantProposalStore $proposals,private ConversationStateRepository $states,private EntityManagerInterface $em,private ConversationAccess $access,private ConversationActions $actions,private InboxQuery $inbox,private ModerationStore $moderation,private FetchCampaignTool $campaign,private FetchContactTool $contact,private ManageCampaignsTool $manage){}
+    public function __construct(private AssistantProposalStore $proposals,private ConversationStateRepository $states,private EntityManagerInterface $em,private ConversationAccess $access,private ConversationActions $actions,private InboxQuery $inbox,private ModerationStore $moderation,private FetchCampaignTool $campaign,private FetchContactTool $contact,private ManageCampaignsTool $manage,private AssistantCommentModeration $commentModeration){}
     public function publicReplyReason(int $id,User $user): ?string
     {
         $state=$this->states->find($id);if(!$state)throw new InboxException('Conversa não encontrada.',404);$this->access->assertView($state,$user);
@@ -33,6 +33,7 @@ final class AssistantActions
         return $this->proposals->execute($id,(int)$user->getId(),$agent,$authorize,function(array $action,string $request)use($user):array{
             $current=$this->snapshot($action,$user);
             if(!hash_equals($action['snapshot'],$current['snapshot']))throw new InboxException('O alvo mudou desde a revisão. Peça uma nova proposta.',409);
+            if($action['tool']==='inbox_moderate')return $this->commentModeration->apply($action,$user);
             if($action['tool']==='mautic_reply_inbox'){
                 $state=$this->states->find($action['id']);
                 if(!$state->getAssignee()){
@@ -66,6 +67,7 @@ final class AssistantActions
     private function snapshot(array $action,User $user): array
     {
         $id=$action['id'];$tool=$action['tool'];
+        if($tool==='inbox_moderate')return $this->commentModeration->preview($action,$user);
         if(in_array($tool,['mautic_reply_inbox','inbox_transfer'],true)){
             $state=$this->states->find($id);if(!$state)throw new InboxException('Conversa não encontrada.',404);$this->em->refresh($state);$this->access->assertView($state,$user);
             $detail=$this->inbox->detail($state,$user);$summary=$detail['conversation']??$this->inbox->summary($state);
