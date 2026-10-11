@@ -19,7 +19,7 @@ final class SocialVisuals
     {
         if (!in_array($state->getConversation()->getChannel(),['instagram','facebook'],true)) return [];
         $asset=(int)$state->getConversation()->getAsset()->getId();
-        return ['avatar_url'=>PublicationContext::image($this->read('author:'.$asset.':'.($raw['recipient']??''))['url']??null), 'asset_avatar_url'=>PublicationContext::image($this->read('asset:'.$asset)['url']??null), 'publication'=>$this->read('post:'.$asset.':'.($raw['origins'][0]['media_id']??''))['publication']??null];
+        return ['avatar_url'=>PublicationContext::image($this->read('author:'.$asset.':'.($raw['recipient']??''))['url']??null), 'asset_avatar_url'=>PublicationContext::image($this->read('asset:'.$asset)['url']??null), 'publication'=>$this->postMetadata($this->read('post:'.$asset.':'.($raw['origins'][0]['media_id']??''))['publication']??null)];
     }
 
     public function resolve(ConversationState $state, array $raw): array
@@ -46,9 +46,11 @@ final class SocialVisuals
                 return ['url'=>PublicationContext::image($profile['profile_pic']??$profile['picture']['data']['url']??null)];
             });
         }
-        if (!empty($origin['media_id'])) $this->remember('post:'.$assetId.':'.$origin['media_id'],fn()=>['publication'=>$this->publications->resolve($state,$raw['origins']??[])['items'][0]??null]);
+        if (!empty($origin['media_id'])) $this->remember('post:'.$assetId.':'.$origin['media_id'],fn()=>['publication'=>$this->postMetadata($this->publications->resolve($state,$raw['origins']??[])['items'][0]??null)]);
         return ['available'=>true]+$this->cached($state,$raw);
     }
+    /** A post can have many commenters. Never share comment body/IDs between them. */
+    private function postMetadata(?array $post):?array { return $post===null ? null : array_intersect_key($post,array_flip(['caption','permalink','image'])); }
     private function path(string $key):string { return $this->directory.'/'.hash('sha256',$key); }
     private function read(string $key):array
     {
