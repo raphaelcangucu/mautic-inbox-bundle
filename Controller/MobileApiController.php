@@ -21,7 +21,7 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 /** Native bearer boundary. Business rules remain in the existing Inbox services. */
 final class MobileApiController extends CommonController
 {
-    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing, \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, \MauticPlugin\MauticInboxBundle\Application\Mobile\AudioStore $audioStore): Response
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing, \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, \MauticPlugin\MauticInboxBundle\Application\Mobile\AudioStore $audioStore, \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialVisuals $visuals): Response
     {
         $previous = $tokens->getToken();
         try {
@@ -47,12 +47,16 @@ final class MobileApiController extends CommonController
                 } catch (\DomainException|\JsonException $error) { return $this->error('Registro de push inválido ou indisponível.',$error instanceof \JsonException ? 'invalid_request' : $error->getMessage(),400); }
             }
 
-            $decorate = function(array $raw) use ($user,$states,$query,$aiStore,$moderation,$permissions,$actions,$audioStore): array {
+            $decorate = function(array $raw) use ($user,$states,$query,$aiStore,$moderation,$permissions,$actions,$audioStore,$visuals): array {
                 $state = $states->find((int) $raw['id']);
                 if (!$state) { return $raw; }
                 $raw = $query->detail($state,$user);
                 unset($raw['realtime'],$raw['webchat']['realtime']);
                 $raw['kind'] = str_starts_with($state->getConversation()->getRecipient(),'comment:') ? 'comments' : 'inbox';
+                $pictures=$visuals->cached($state,$raw);
+                $raw['avatar_url']=$pictures['avatar_url'] ?? $raw['avatar_url'] ?? null;
+                $raw['asset_avatar_url']=$pictures['asset_avatar_url'] ?? null;
+                if(!empty($pictures['publication']) && !empty($raw['origins'][0])) $raw['origins'][0]=array_replace($raw['origins'][0],array_filter($pictures['publication'],static fn($v)=>$v!==null && $v!==''));
                 $a=$aiStore->get('assignment',(string)$state->getId());
                 $raw['agent']=$a ? ['key'=>$a['agent']??'', 'name'=>$a['name']??'', 'status'=>$a['status']??'paused', 'count'=>$a['count']??0] : null;
                 $moderatable=$raw['kind'] === 'comments' || $state->getConversation()->getChannel() === 'webchat';
@@ -70,7 +74,7 @@ final class MobileApiController extends CommonController
                     ];
                     $raw['can_take_and_reply']=$raw['can_take'] && $state->getAssignee()?->getId() !== $user->getId() && ($raw['reply_modes']['public']['available'] || $raw['reply_modes']['private']['available']);
                 }
-                $raw['mobile']=['attachments'=>false,'audio'=>$audioStore->enabled() && $state->getConversation()->getAsset()->getType()->value === 'whatsapp_qr_session' && $raw['kind'] === 'inbox'];
+                $raw['mobile']=['attachments'=>false,'social_visuals'=>in_array($state->getConversation()->getChannel(),['instagram','facebook'],true),'audio'=>$audioStore->enabled() && $state->getConversation()->getAsset()->getType()->value === 'whatsapp_qr_session' && $raw['kind'] === 'inbox'];
                 return $raw;
             };
             if ($method === 'GET' && $resource === 'assistant/agents') { return $this->data($assistant->agents($user)); }
@@ -187,7 +191,7 @@ final class MobileApiController extends CommonController
                 }
                 return $this->error('Método não permitido.','method_not_allowed',405);
             }
-            if (!preg_match('#^conversations/([1-9][0-9]*)(?:/(history|templates|take|state|reply|note|draft|ai|email-options|email-actions|moderation|publication))?$#D', $resource, $parts)) {
+            if (!preg_match('#^conversations/([1-9][0-9]*)(?:/(history|templates|take|state|reply|note|draft|ai|email-options|email-actions|moderation|publication|visuals))?$#D', $resource, $parts)) {
                 return $this->error('Recurso não disponível nesta versão da API.', 'unsupported', 404);
             }
             $id = (int) $parts[1]; $operation = $parts[2] ?? ''; $state = $states->find($id);
@@ -197,6 +201,7 @@ final class MobileApiController extends CommonController
                 return match ($operation) {
                     '' => $this->data($decorate($query->summary($state))),
                     'history' => $this->data((function() use ($query,$state,$request): array { $timeline=$query->timeline($state,$request->query->get('before'),$request->query->getInt('limit',40));$timeline['items']=\MauticPlugin\MauticInboxBundle\Application\Mobile\MediaRoutes::items($timeline['items'],$request->getSchemeAndHttpHost());return $timeline; })()),
+                    'visuals' => $this->data($visuals->resolve($state,$query->summary($state)+['origins'=>$query->origins($state)])),
                     'publication' => $this->data($publications->resolve($state,$query->origins($state),$request->query->getBoolean('refresh'))),
                     'templates' => $this->data(['items' => $templates->catalog($state), 'blocked_reason' => ($reason = $templates->blockedReason($state)) ? $this->translator->trans($reason) : null]),
                     'email-options' => $this->data($linking->options($state->getConversation(), (!$request->query->getBoolean('include_catalog', true) && '' === trim($request->query->getString('email'))) ? '' : $linking->email($request->query->getString('email')), $user, $request->query->getBoolean('include_catalog', true))),

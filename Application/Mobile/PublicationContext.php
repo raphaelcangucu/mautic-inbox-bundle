@@ -24,7 +24,7 @@ final class PublicationContext
     public static function image(mixed $url): ?string
     {
         if (!is_string($url)) { return null; } $parts=parse_url($url);$host=strtolower($parts['host'] ?? '');
-        return ($parts['scheme'] ?? '') === 'https' && !isset($parts['user']) && !isset($parts['pass']) && (str_ends_with($host,'.cdninstagram.com') || str_ends_with($host,'.fbcdn.net')) ? $url : null;
+        return ($parts['scheme'] ?? '') === 'https' && !isset($parts['user']) && !isset($parts['pass']) && (str_ends_with($host,'.cdninstagram.com') || str_ends_with($host,'.fbcdn.net') || str_ends_with($host,'.fbsbx.com')) ? $url : null;
     }
     public function cached(int $asset, string $media): array
     {
@@ -42,8 +42,8 @@ final class PublicationContext
             try {
                 $connection=$channel === 'facebook' ? $this->pages->resolve($asset) : $asset->getConnection();
                 $fields=$channel === 'instagram' ? 'id,caption,permalink,media_type,media_url,thumbnail_url' : 'id,message,permalink_url,full_picture';
-                $result=$this->graph->get($connection,$media,['fields'=>$fields]);
-                $cached=['caption'=>mb_substr((string)($result['caption'] ?? $result['message'] ?? ''),0,5000),'permalink'=>self::link($result['permalink'] ?? $result['permalink_url'] ?? null,$channel),'image'=>self::image($result['thumbnail_url'] ?? (($result['media_type'] ?? '') === 'VIDEO' ? null : ($result['media_url'] ?? $result['full_picture'] ?? null)))];
+                try { $result=$this->graph->get($connection,$media,['fields'=>$fields]); } catch(\Throwable $error) { if($channel!=='facebook')throw $error; $result=$this->graph->get($connection,$media,['fields'=>'id,description,permalink_url,picture']); }
+                $cached=['caption'=>mb_substr((string)($result['caption'] ?? $result['message'] ?? $result['description'] ?? ''),0,5000),'permalink'=>self::link($result['permalink'] ?? $result['permalink_url'] ?? null,$channel),'image'=>self::image($result['thumbnail_url'] ?? (($result['media_type'] ?? '') === 'VIDEO' ? null : ($result['media_url'] ?? $result['full_picture'] ?? $result['picture'] ?? null)))];
                 $this->store((int)$asset->getId(),$media,$cached);
             } catch (\Throwable) { $available=false; $cached=$this->cached((int)$asset->getId(),$media); }
         }
