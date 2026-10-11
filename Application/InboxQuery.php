@@ -140,6 +140,7 @@ final class InboxQuery
                 'id' => $contact->getId(), 'name' => $contact->getName() ?: $this->translator->trans('mautic.inbox.ui.unnamed_contact_666b99'), 'email' => $contact->getEmail(),
                 'phone' => $contact->getMobile() ?: $contact->getPhone(),
                 'url' => '/s/contacts/view/'.$contact->getId(),
+                'social_profiles' => \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialProfileLinks::contact($contact),
             ],
             'origins' => $this->origins($state),
             'drafts' => $drafts,
@@ -378,6 +379,7 @@ final class InboxQuery
         }
         $summary = [
             'contact_handle' => $handle,
+            'profile_url' => \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialProfileLinks::url($c->getChannel(), $identity['contact']['profile']['link'] ?? $identity['from']['link'] ?? null) ?? ('instagram' === $c->getChannel() ? \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialProfileLinks::url('instagram', $handle, true) : null),
             'avatar_url' => $this->participantAvatars?->url($c) ?? ($profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null)),
             'preview' => $preview,
             'id' => (int) $state->getId(), 'conversation_id' => (int) $c->getId(), 'version' => $state->getVersion(),
