@@ -8,6 +8,10 @@ final class AiStore {
     public function find(string $kind,string $key): ?AiRecord {$r=$this->em->getRepository(AiRecord::class)->findOneBy(['kind'=>$kind,'recordKey'=>$key]);if($r)$this->em->refresh($r);return $r;}
     public function get(string $kind,string $key): array {return $this->find($kind,$key)?->getData()??[];}
     public function all(string $kind): array{return array_map(fn(AiRecord $r)=>['key'=>$r->getRecordKey(),'revision'=>$r->getRevision()]+$r->getData(),$this->em->getRepository(AiRecord::class)->findBy(['kind'=>$kind],['id'=>'ASC']));}
+    public function page(string $kind,int $page=1,int $limit=25): array {
+        $rows=$this->em->getRepository(AiRecord::class)->findBy(['kind'=>$kind],['id'=>'DESC'],$limit+1,($page-1)*$limit);
+        return ['items'=>array_map(fn(AiRecord $r)=>['key'=>$r->getRecordKey(),'revision'=>$r->getRevision()]+$r->getData(),array_slice($rows,0,$limit)), 'page'=>$page, 'hasMore'=>count($rows)>$limit];
+    }
     public function put(string $kind,string $key,array $data,?int $revision=null): AiRecord {
         $r=$this->find($kind,$key);if($revision!==null&&($r?->getRevision()??0)!==$revision)throw new InboxException('mautic.inbox.ai.conflict',409);
         $r??=(new AiRecord())->initialize($kind,$key);$r->change($data);$this->em->persist($r);$this->em->flush();return $r;

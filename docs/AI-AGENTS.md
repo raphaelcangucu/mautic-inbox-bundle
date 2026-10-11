@@ -21,7 +21,7 @@ php bin/console mautic:inbox:ai:setup --env=prod
 php bin/console mautic:inbox:ai:work --env=prod
 ```
 
-O primeiro comando cria somente a tabela `inbox_ai_records` e documentos/agente iniciais ausentes. É repetível e não sobrescreve documentos editados. O segundo processa até dez atribuições ativas com bloqueio de execução concorrente. Agendar a cada minuto; manter também o processador normal da fila Meta. O tempo de resposta inclui o intervalo desses workers e a geração do modelo.
+O primeiro comando cria somente a tabela `inbox_ai_records` e documentos/agente iniciais ausentes. É repetível e não sobrescreve documentos editados. O segundo processa até dez atribuições ativas e até dez comentários novos nas automações explicitamente habilitadas, com bloqueios independentes de execução concorrente. Agendar a cada minuto; manter também o processador normal da fila Meta. O tempo de resposta inclui o intervalo desses workers e a geração do modelo.
 
 Na primeira instalação, a IA vem globalmente desativada, com permissões vazias. Validar o Pi, escolher contas/canais e ativar globalmente e por agente. Contas WABA não são caixas de mensagens e não aparecem como destinos. Instagram/Facebook separam mensagens e comentários; WhatsApp permite mensagens.
 
@@ -45,7 +45,7 @@ No WebChat, cada nova mensagem atualiza o idioma e a página atual. A IA recebe 
 
 O limite de respostas é configurável em dois níveis: global e por agente. `0` significa ilimitado e é o padrão. Se ambos forem positivos, o menor valor limita a conversa. A verificação acontece antes de chamar o modelo; ao atingir o teto, a última resposta permitida segue normalmente e a atribuição pausa para a equipe continuar. Transferir mantém a contagem. O botão de reinício gera uma nova sessão segura, zera contador e reincidência fora do escopo e invalida gerações ou envios antigos. Permite-se uma troca entre agentes por sessão para evitar alternância acidental.
 
-Cada geração continua limitada a três turnos de modelo e 65 segundos; a saída tem até 900 caracteres. Não há repetição automática de uma geração ou envio de IA que falhou. Mesmo com `0`, documentos, histórico e consultas consomem tokens.
+Cada geração é limitada a seis turnos de modelo e 90 segundos; a saída tem até 900 caracteres. Não há repetição automática de uma geração ou envio de IA que falhou. Mesmo com `0`, documentos, histórico e consultas consomem tokens.
 
 A retomada humana invalida a geração e a resposta ainda na fila. Antes do envio, o conector verifica novamente atribuição, permissões e a mensagem mais recente sob o mesmo bloqueio da retomada humana. Falhas pausam o agente e devolvem a necessidade de resposta à equipe. As restrições de janela do canal e consentimento continuam aplicáveis; IA não dispara templates automaticamente fora da janela. Instagram usa resposta privada ao comentário; Facebook usa resposta pública.
 
@@ -54,3 +54,7 @@ Desativar globalmente ou por agente impede os próximos envios. Nenhuma configur
 ## Validação
 
 Testes funcionais verificam publicação de documentos/conflito de edição, interseção de permissões, limite efetivo e pausa segura, reinício, deduplicação, retomada humana, falha de entrega, consulta ao funil e proteção de comentários públicos. Testes Node verificam a tela administrativa e a filtragem dos dados públicos do CMS. A validação real do Pi/CMS é isolada e não envia mensagens a clientes.
+
+## Automação de comentários
+
+A aba Automação mantém os controles de comentários separados do atendimento normal do agente. Padrão desligado, seleção explícita da versão publicada, contas autorizadas e ações independentes. Consulte [COMMENT-AUTOMATION.md](COMMENT-AUTOMATION.md) para configuração, segurança e validação. Não precisa de nova tabela nem novo cron.

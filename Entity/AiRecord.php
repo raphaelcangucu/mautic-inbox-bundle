@@ -23,4 +23,6 @@ class AiRecord extends CommonEntity
     public function getRevision(): int{return $this->revision;}
     public function initialize(string $kind,string $key): self{$this->kind=$kind;$this->recordKey=$key;return $this;}
     public function change(array $data): self{$this->data=$data;++$this->revision;return $this;}
+    /** Worker bookkeeping under the admin lock, without invalidating the configuration lease. */
+    public function checkpoint(array $data): self{$this->data=$data;return $this;}
 }

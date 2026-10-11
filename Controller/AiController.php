@@ -3,7 +3,7 @@ namespace MauticPlugin\MauticInboxBundle\Controller;
 use Mautic\CoreBundle\Controller\CommonController;
 use Mautic\CoreBundle\Helper\UserHelper;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
-use MauticPlugin\MauticInboxBundle\Application\Ai\{AiStore,AiService,PiClient,InternalAgentPolicy};
+use MauticPlugin\MauticInboxBundle\Application\Ai\{AiStore,AiService,PiClient,InternalAgentPolicy,CommentAutomation};
 use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationStateRepository;
 use Symfony\Component\HttpFoundation\{Request,Response,JsonResponse};
@@ -11,14 +11,17 @@ use Doctrine\ORM\EntityManagerInterface;
 use MauticPlugin\MauticMetaBundle\Application\Queue\OutboundQueue;
 final class AiController extends CommonController {
  public function index(UserHelper $users): Response {if(!$users->getUser(true)?->isAdmin())throw $this->createAccessDeniedException();return $this->delegateView(['contentTemplate'=>'@MauticInbox/Ai/index.html.twig','passthroughVars'=>['mauticContent'=>'inboxai','route'=>$this->generateUrl('mautic_inbox_ai')],'viewParameters'=>[]]);}
- public function data(UserHelper $users,AiStore $store,AiService $service,PiClient $pi,EntityManagerInterface $em): JsonResponse {if(!$users->getUser(true)?->isAdmin())throw $this->createAccessDeniedException();$agents=$store->all('agent');foreach($agents as&$agent){$agent['limit']=AiStore::agentLimit($agent);}unset($agent);return new JsonResponse(['documents'=>$store->all('document'),'agents'=>$agents,'config'=>$store->config(),'assets'=>$service->assets(),'health'=>$store->get('health','pi'),'installed'=>$pi->installed(),'mcp_tools'=>InternalAgentPolicy::catalog(),'roles'=>array_map(static fn($role)=>['id'=>(int)$role->getId(),'name'=>$role->getName()],$em->getRepository(\Mautic\UserBundle\Entity\Role::class)->findAll())]);}
- public function action(Request $request,UserHelper $users,AiStore $store,AiService $service,PiClient $pi,EntityManagerInterface $em): JsonResponse {
+ public function data(UserHelper $users,AiStore $store,AiService $service,PiClient $pi,EntityManagerInterface $em,CommentAutomation $comments): JsonResponse {if(!$users->getUser(true)?->isAdmin())throw $this->createAccessDeniedException();$agents=$store->all('agent');foreach($agents as&$agent){$agent['limit']=AiStore::agentLimit($agent);}unset($agent);return new JsonResponse(['documents'=>$store->all('document'),'agents'=>$agents,'config'=>$store->config(),'assets'=>$service->assets(),'health'=>$store->get('health','pi'),'installed'=>$pi->installed(),'comment_configs'=>$comments->configurations(),'comment_runs'=>$comments->runs(),'mcp_tools'=>InternalAgentPolicy::catalog(),'roles'=>array_map(static fn($role)=>['id'=>(int)$role->getId(),'name'=>$role->getName()],$em->getRepository(\Mautic\UserBundle\Entity\Role::class)->findAll())]);}
+ public function action(Request $request,UserHelper $users,AiStore $store,AiService $service,PiClient $pi,EntityManagerInterface $em,CommentAutomation $comments): JsonResponse {
   $user=$users->getUser(true);if(!$user?->isAdmin()||!$this->isCsrfTokenValid('mautic_inbox',$request->headers->get('X-CSRF-Token','')))throw $this->createAccessDeniedException();
   try{$p=json_decode($request->getContent(),true,32,JSON_THROW_ON_ERROR);if(!is_array($p))throw new \JsonException();}catch(\JsonException){return new JsonResponse(['error'=>'Invalid JSON'],400);}
   $db=$em->getConnection();if((int)$db->fetchOne("SELECT GET_LOCK('inbox_ai_admin',1)")!==1)return new JsonResponse(['error'=>$this->translator->trans('mautic.inbox.ai.conflict')],409);
   try{$result=[];switch($p['action']??''){
    case 'document':$result=$store->saveDocument($p,(int)$user->getId());break;
    case 'agent':$result=$service->saveAgent($p);break;
+   case 'comment_config':$result=$comments->saveConfig($p,(int)$user->getId());break;
+   case 'comment_review':$result=$comments->review($p,$user);break;
+   case 'comment_runs':$result=$comments->runs(max(1,(int)($p['page']??1)));break;
    case 'config':$config=$store->config();$model=(string)($p['model']??$config['model']);$health=$store->get('health','pi');$available=(array)($health['models']??[]);if(!$available){$probe=$pi->call('models');$available=$probe['models']??[];}if(!in_array($model,array_column($available,'id'),true))throw new InboxException('mautic.inbox.ai.model_invalid');$changed=$model!==$config['model'];$config=['enabled'=>!empty($p['enabled']),'limit'=>AiStore::normalizeLimit($p['limit']??0),'limit_configured'=>true,'permissions'=>array_values(array_filter((array)($p['permissions']??[]),'is_string')),'model'=>$model,'provider'=>'openai-codex','limit_action'=>'pause'];$store->put('config','global',$config);if($changed){$health['validated']=false;$store->put('health','pi',$health);}break;
    case 'install':$result=$pi->install();break;
    case 'import-auth':$result=$pi->call('import-auth');$store->put('health','pi',['validated'=>false]);break;

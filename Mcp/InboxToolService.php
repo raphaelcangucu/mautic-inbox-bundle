@@ -25,6 +25,7 @@ final class InboxToolService
         private ConversationActions $actions, private EntityManagerInterface $em,
         private ConversationManager $conversations, private WhatsAppTemplates $templates,
         private AiStore $store, private AiService $agents, private PiClient $pi,
+        private \MauticPlugin\MauticInboxBundle\Application\Ai\CommentAutomation $comments,
         private CsrfTokenManagerInterface $csrf,
         private \Symfony\Component\HttpFoundation\RequestStack $requests,
         private \MauticPlugin\MauticInboxBundle\Application\ChannelTransportRegistry $channelTransports,
@@ -71,10 +72,10 @@ final class InboxToolService
     public function readAi(string $resource,?string $key): array
     {
         $this->authorize('view',true);
-        $data=$this->result($this->ai->data($this->users,$this->store,$this->agents,$this->pi,$this->em));
+        $data=$this->result($this->ai->data($this->users,$this->store,$this->agents,$this->pi,$this->em,$this->comments));
         if($resource==='overview')return $data;
-        if(!in_array($resource,['documents','agents','config','assets','health'],true))throw new \InvalidArgumentException('Unsupported AI resource.');
-        if($key!==null && in_array($resource,['documents','agents'],true)){
+        if(!in_array($resource,['documents','agents','config','assets','health','comment_configs','comment_runs'],true))throw new \InvalidArgumentException('Unsupported AI resource.');
+        if($key!==null && in_array($resource,['documents','agents','comment_configs'],true)){
             foreach($data[$resource] as $row)if($row['key']===$key)return ['item'=>$row];
             throw new \InvalidArgumentException('Record not found.');
         }
@@ -84,9 +85,9 @@ final class InboxToolService
     public function manageAi(string $action,array $data): array
     {
         $this->authorize('edit',true);
-        if(!in_array($action,['document','agent','config','install','import-auth','health','validate'],true))throw new \InvalidArgumentException('Unsupported AI action.');
+        if(!in_array($action,['document','agent','config','install','import-auth','health','validate','comment_config','comment_review','comment_runs'],true))throw new \InvalidArgumentException('Unsupported AI action.');
         $request=$this->request(['action'=>$action]+$data);
-        try { return $this->result($this->ai->action($request,$this->users,$this->store,$this->agents,$this->pi,$this->em)); } finally { $this->requests->pop(); }
+        try { return $this->result($this->ai->action($request,$this->users,$this->store,$this->agents,$this->pi,$this->em,$this->comments)); } finally { $this->requests->pop(); }
     }
 
     private function id(?int $id): int {if(!$id || $id<1)throw new \InvalidArgumentException('A conversation state ID is required.');return $id;}

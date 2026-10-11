@@ -28,6 +28,7 @@ test("AI Svelte workspace keeps every admin action and active production hook", 
     twig,
     english,
     portuguese,
+    automation,
   ] = await Promise.all([
     read("Frontend/ai/AiApp.svelte"),
     read("Frontend/ai/DocumentsView.svelte"),
@@ -38,8 +39,11 @@ test("AI Svelte workspace keeps every admin action and active production hook", 
     read("Resources/views/Ai/index.html.twig"),
     read("Translations/en_US/messages.ini"),
     read("Translations/pt_BR/messages.ini"),
+    read("Frontend/ai/CommentAutomationView.svelte"),
   ]);
-  const source = [app, documents, pi, agents, permissions].join("\n");
+  const source = [app, documents, pi, agents, permissions, automation].join(
+    "\n",
+  );
 
   for (const action of [
     "document",
@@ -160,7 +164,7 @@ test("the compiled AI workspace loads data and sends authenticated admin actions
         enabled: true,
         limit: 0,
         documents: [],
-        permissions: ["9:message"],
+        permissions: ["9:message", "4:comment"],
       },
     ],
     mcp_tools: [
@@ -171,13 +175,36 @@ test("the compiled AI workspace loads data and sends authenticated admin actions
       },
     ],
     roles: [{ id: 2, name: "Operator" }],
-    assets: [{ id: 9, name: "WhatsApp", channel: "whatsapp" }],
+    comment_configs: [],
+    comment_runs: {
+      items: [
+        {
+          key: "review-one",
+          revision: 2,
+          state: 40,
+          asset_id: 4,
+          comment_id: "123456",
+          publication_id: "987654",
+          decision: "spam",
+          status: "review",
+          reason: "Test advertisement",
+          text: "",
+          date: "2026-10-11",
+        },
+      ],
+      page: 1,
+      hasMore: false,
+    },
+    assets: [
+      { id: 9, name: "WhatsApp", channel: "whatsapp" },
+      { id: 4, name: "Instagram QA", channel: "instagram" },
+    ],
     installed: true,
     config: {
       enabled: true,
       model: "gpt-test",
       limit: 0,
-      permissions: ["9:message"],
+      permissions: ["9:message", "4:comment"],
     },
     health: {
       authenticated: true,
@@ -329,6 +356,54 @@ test("the compiled AI workspace loads data and sends authenticated admin actions
     requests.filter((request) => request.method === "GET").length >= 2,
     "the workspace refreshes after an admin action",
   );
+
+  app
+    .querySelector('[data-ai-tab="automation"]')
+    .dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(app.querySelector("#ai-comment-mode").value, "off");
+  assert.equal(app.querySelector("#ai-comment-spam").checked, false);
+  assert.equal(app.querySelector("#ai-comment-reply").checked, false);
+  const mode = app.querySelector("#ai-comment-mode");
+  mode.value = "review";
+  mode.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const rule = app.querySelector("#ai-comment-document");
+  rule.value = "support";
+  rule.dispatchEvent(new window.Event("change", { bubbles: true }));
+  const account = app.querySelector('#ai-comment-assets input[value="4"]');
+  assert.equal(account.disabled, false);
+  account.checked = true;
+  account.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  app
+    .querySelector("#ai-comment-save")
+    .dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const automationSave = requests.find(
+    (request) => request.body?.action === "comment_config",
+  );
+  assert.equal(automationSave.body.mode, "review");
+  assert.equal(automationSave.body.key, "agent-one");
+  assert.deepEqual(automationSave.body.asset_ids, [4]);
+  assert.equal(automationSave.body.document_version, 1);
+  assert.equal(automationSave.body.mark_spam_enabled, false);
+  assert.equal(automationSave.body.public_reply_enabled, false);
+  assert.equal(automationSave.headers.get("X-CSRF-Token"), "csrf-token");
+  const approval = Array.from(app.querySelectorAll("button")).find(
+    (button) => button.textContent === "automation_approve_spam",
+  );
+  assert.ok(approval);
+  approval.dispatchEvent(new window.Event("click", { bubbles: true }));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const approved = requests.find(
+    (request) => request.body?.action === "comment_review",
+  );
+  assert.equal(approved.body.run_key, "review-one");
+  assert.equal(approved.body.revision, 2);
+  assert.equal(approved.body.decision, "approve");
+  assert.equal(approved.headers.get("X-CSRF-Token"), "csrf-token");
 
   app.remove();
   await new Promise((resolve) => setTimeout(resolve, 0));
