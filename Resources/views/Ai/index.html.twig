@@ -6,6 +6,7 @@
 {% block content %}
 {{ includeStylesheet('plugins/MauticInboxBundle/Assets/css/ai.css?ai=20260915-limit2') }}
 {% set aiLabelKeys = [
+    'automation', 'automation_hint', 'automation_refresh', 'automation_paused', 'automation_review_pending', 'automation_mode', 'automation_off', 'automation_review', 'automation_automatic', 'automation_mode_hint', 'automation_rule', 'automation_choose_rule', 'automation_rule_hint', 'automation_mark_spam', 'automation_public_reply', 'automation_actions_hint', 'automation_accounts', 'automation_publications', 'automation_new_only', 'automation_classify_limit', 'automation_reply_limit', 'automation_interval', 'automation_notices', 'automation_history', 'automation_empty', 'automation_approve_spam', 'automation_approve_reply', 'automation_reject', 'automation_previous', 'automation_next', 'automation_status_generating', 'automation_status_review', 'automation_status_executing_spam', 'automation_status_executing_reply', 'automation_status_spam', 'automation_status_queued', 'automation_status_sending', 'automation_status_sent', 'automation_status_failed', 'automation_status_uncertain', 'automation_status_cancelled', 'automation_status_rejected', 'automation_invalid', 'automation_not_ready', 'automation_account_conflict',
     'title', 'eyebrow', 'subtitle', 'workspace_ready', 'documents', 'pi', 'agents', 'back',
     'new', 'name', 'scope', 'global', 'specific', 'edit', 'preview', 'versions', 'draft',
     'publish', 'published', 'unpublished', 'saved', 'loading', 'install', 'detect',
@@ -29,5 +30,5 @@
     data-inbox-url="{{ path('mautic_inbox_index') }}"
     data-csrf="{{ csrf_token('mautic_inbox') }}"
 ></div>
-{{ includeScript('plugins/MauticInboxBundle/Assets/dist/inbox-app.js?ai=20261007-internal1', 'inboxaiOnLoad', 'inboxaiOnLoad') }}
+{{ includeScript('plugins/MauticInboxBundle/Assets/dist/inbox-app.js?ai=20261011-comment1', 'inboxaiOnLoad', 'inboxaiOnLoad') }}
 {% endblock %}

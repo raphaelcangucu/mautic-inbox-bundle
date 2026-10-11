@@ -2,14 +2,21 @@
   import { onDestroy, onMount } from "svelte";
   import { aiBootstrap, emptyAiData, translator } from "../shared/bootstrap";
   import { jsonRequest } from "../shared/api";
-  import type { AiAgent, AiData, AiDocument } from "../shared/types";
+  import type {
+    AiAgent,
+    AiData,
+    AiDocument,
+    CommentAutomationConfig,
+    CommentAutomationRun,
+  } from "../shared/types";
   import DocumentsView from "./DocumentsView.svelte";
   import PiView from "./PiView.svelte";
   import AgentsView from "./AgentsView.svelte";
+  import CommentAutomationView from "./CommentAutomationView.svelte";
 
   export let root: HTMLElement;
 
-  type Tab = "documents" | "pi" | "agents";
+  type Tab = "documents" | "pi" | "agents" | "automation";
   type AiActionResponse = { ok?: boolean; result?: unknown };
 
   const config = aiBootstrap(root);
@@ -29,6 +36,7 @@
     { key: "documents", index: "01" },
     { key: "pi", index: "02" },
     { key: "agents", index: "03" },
+    { key: "automation", index: "04" },
   ];
 
   function showFeedback(message: string, error = false): void {
@@ -177,6 +185,35 @@
     showFeedback(t("saved"));
   }
 
+  async function saveAutomation(value: CommentAutomationConfig): Promise<void> {
+    await request({ ...value, action: "comment_config" });
+    await load();
+    showFeedback(t("saved"));
+  }
+
+  async function reviewComment(
+    run: CommentAutomationRun,
+    decision: "approve" | "reject",
+  ): Promise<void> {
+    await request({
+      action: "comment_review",
+      run_key: run.key,
+      revision: run.revision,
+      decision,
+    });
+    await load();
+    showFeedback(t("saved"));
+  }
+
+  async function loadCommentPage(page: number): Promise<void> {
+    const response = await request<AiActionResponse>({
+      action: "comment_runs",
+      page,
+    });
+    data = { ...data, comment_runs: response.result as AiData["comment_runs"] };
+    feedback = "";
+  }
+
   onMount(() => {
     root.dataset.svelteInboxMounted = "1";
     void perform(async () => {
@@ -253,6 +290,15 @@
     {t}
     onSave={() => perform(saveConfig)}
     onAction={(action) => perform(() => runPiAction(action))}
+  />
+{:else if tab === "automation"}
+  <CommentAutomationView
+    {data}
+    {busy}
+    {t}
+    onSave={(value) => perform(() => saveAutomation(value))}
+    onReview={(run, decision) => perform(() => reviewComment(run, decision))}
+    onPage={(page) => perform(() => loadCommentPage(page))}
   />
 {:else}
   <AgentsView

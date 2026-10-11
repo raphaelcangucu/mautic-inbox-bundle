@@ -233,6 +233,12 @@ export interface AiAsset {
   channel: string;
 }
 export interface AiData {
+  comment_configs?: CommentAutomationConfig[];
+  comment_runs?: {
+    items: CommentAutomationRun[];
+    page: number;
+    hasMore: boolean;
+  };
   mcp_tools?: AiTool[];
   roles?: AiRole[];
   documents: AiDocument[];
@@ -251,6 +257,39 @@ export interface AiData {
     validated?: boolean;
     cms?: { configured?: boolean; url?: string };
   };
+}
+
+export interface CommentAutomationConfig {
+  key: string;
+  revision: number;
+  mode: "off" | "review" | "automatic";
+  asset_ids: number[];
+  publication_ids: string[];
+  document_key: string;
+  document_version: number;
+  mark_spam_enabled: boolean;
+  public_reply_enabled: boolean;
+  classify_limit: number;
+  reply_limit: number;
+  min_interval: number;
+  notify: boolean;
+  paused?: boolean;
+  pause_reason?: string;
+}
+
+export interface CommentAutomationRun {
+  key: string;
+  revision: number;
+  state: number;
+  asset_id: number;
+  comment_id: string;
+  publication_id: string;
+  decision?: string;
+  status: string;
+  reason?: string;
+  text?: string;
+  comment_excerpt?: string;
+  date: string;
 }
 
 /** O que a tela de ajustes precisa saber sobre a notificacao do navegador. */

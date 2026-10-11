@@ -26,6 +26,7 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
         private EntityManagerInterface $entityManager,
         private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access,
         private \MauticPlugin\MauticInboxBundle\Application\Push\PendingNotifications $notifications,
+        private \MauticPlugin\MauticInboxBundle\Application\Ai\CommentAutomationQueueGuard $commentGuard,
     ) {
     }
 
@@ -184,6 +185,15 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
 
     public function runAiGuarded(MetaOutboundJob $job, callable $operation): mixed
     {
+        if (!empty($job->getPayload()['_comment_automation'])) {
+            $db=$this->entityManager->getConnection();
+            if(1!==(int)$db->fetchOne("SELECT GET_LOCK('inbox_ai_admin',35)"))throw new \RuntimeException('Configuration lock unavailable.');
+            try {
+                $state=$this->states->find((int)($job->getPayload()['_ai_state']??0));
+                if(!$state)throw new \DomainException('Comment conversation missing.');
+                return $this->runHumanTransition($state,fn()=>$this->commentGuard->execute($state,$job,$operation));
+            } finally {$db->fetchOne("SELECT RELEASE_LOCK('inbox_ai_admin')");}
+        }
         $p=$job->getPayload();$state=$this->states->find((int)($p['_ai_state']??0));
         if (!$state) throw new \DomainException('Automation paused: conversation missing.');
         return $this->withLocks($this->lockKeys($state->getConversation()->getAsset(),$state->getConversation()->getRecipient()),function()use($state,$job,$p,$operation){
@@ -208,6 +218,14 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
     public function outboundJobChanged(MetaOutboundJob $job): void
     {
         $payload = $job->getPayload();
+        if(!empty($payload['_comment_automation'])) {
+            if(in_array($job->getStatus(),['failed','blocked','uncertain'],true)) {
+                $db=$this->entityManager->getConnection();
+                if(1!==(int)$db->fetchOne("SELECT GET_LOCK('inbox_ai_admin',35)"))throw new \RuntimeException('Configuration lock unavailable.');
+                try{$this->commentGuard->failed($job);}finally{$db->fetchOne("SELECT RELEASE_LOCK('inbox_ai_admin')");}
+            }
+            return;
+        }
         if (($payload['_origin'] ?? '') === 'inbox_ai' && in_array($job->getStatus(), ['failed', 'blocked', 'uncertain'], true)) {
             $state = $this->states->find((int) ($payload['_ai_state'] ?? 0));
             if ($state instanceof ConversationState) {
