@@ -5,6 +5,12 @@ namespace MauticPlugin\MauticInboxBundle\Application\Mobile;
 /** Batch capacity applies only to fully read, individually authorized public comments. */
 final class AssistantCommentBatchPolicy
 {
+    public static function explicitScan(string $question,array $payload): bool
+    {
+        return in_array('comment_batches',(array)($payload['supported_actions']??[]),true)
+            && preg_match('/(?:coment|comment|spam)/iu',$question)===1
+            && preg_match('/(?:todos|todas|varr|sweep|all\b|every)/iu',$question)===1;
+    }
     public static function replyEligible(array $source): bool
     {
         return in_array($source['channel']??'', ['instagram','facebook'],true) && !empty($source['asset_active'])

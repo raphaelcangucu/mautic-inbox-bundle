@@ -3,6 +3,9 @@
 require __DIR__.'/../../Application/Mobile/AssistantCommentBatchPolicy.php';
 use MauticPlugin\MauticInboxBundle\Application\Mobile\AssistantCommentBatchPolicy as Policy;
 function check($v,$m){if(!$v)throw new RuntimeException($m);}
+check(Policy::explicitScan('Scan all available comments',['supported_actions'=>['comment_batches']]),'full scan bypasses unnecessary model planning');
+check(!Policy::explicitScan('All campaigns',['supported_actions'=>['comment_batches']]),'campaigns do not become comment scans');
+check(!Policy::explicitScan('Scan all comments',[]),'old client keeps its existing workflow');
 $s=['channel'=>'instagram','asset_active'=>true,'body'=>'Hello','publication_id'=>'post','lifecycle'=>'open','needs_response'=>true];
 check(Policy::replyEligible($s),'unanswered public comment eligible');
 foreach(['already_replied','deleted','own_comment','body_truncated','spam','blocked','ai_assigned'] as $flag)check(!Policy::replyEligible($s+[$flag=>true]),'preserve '.$flag);
