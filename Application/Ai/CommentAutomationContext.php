@@ -38,7 +38,7 @@ final class CommentAutomationContext
         $assignment=$this->store->get('assignment',(string)$state->getId());
         return ['state_id'=>(int)$state->getId(),'state_version'=>$state->getVersion(),'asset_id'=>(int)$asset->getId(),
             'channel'=>$conversation->getChannel(),'recipient'=>$conversation->getRecipient(),'comment_id'=>$context->getCommentId(),
-            'publication_id'=>$context->getMediaId(),'inbound_id'=>(int)$message->getId(),'body'=>mb_substr((string)($payload['text']??''),0,8000),
+            'publication_id'=>$context->getMediaId(),'inbound_id'=>(int)$message->getId(),'body'=>mb_substr((string)($payload['text']??''),0,8000),'body_truncated'=>mb_strlen((string)($payload['text']??''))>8000,
             'human'=>null!==$state->getAssignee() || $state->isHumanTakeover(), 'lifecycle'=>$state->getLifecycle(),'needs_response'=>$state->needsResponse(),
             'deleted'=>!empty($payload['removed']), 'own_comment'=>in_array($context->getParticipantId(),[$context->getAccountId(),$asset->getExternalId()],true),
             'ai_assigned'=>in_array($assignment['status']??'', ['active','queued','finishing'],true),

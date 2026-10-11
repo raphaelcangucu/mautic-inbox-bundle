@@ -12,10 +12,15 @@ final class AssistantActionPolicy
         $tool=$input['tool']??'';$id=$input['id']??null;
         if(!is_int($id)||$id<1)throw new InboxException('Escolha um alvo exato antes de preparar a ação.',422);
         $out=['tool'=>$tool,'id'=>$id];
+        if($tool==='inbox_moderate'){
+            $operation=$input['operation']??null;$reason=$input['reason']??'';
+            if(!in_array($operation,['spam','restore','block','unblock','hide','show'],true)||!is_string($reason)||trim($reason)===''||mb_strlen($reason)>500)throw new InboxException('Moderação inválida. Informe a ação e o motivo.',422);
+            return $out+['operation'=>$operation,'reason'=>trim($reason)];
+        }
         if($tool==='mautic_reply_inbox'){
             $body=$input['body']??null;$mode=$input['reply_mode']??'private';
             if(!is_string($body)||trim($body)===''||mb_strlen($body)>4000||!in_array($mode,['public','private'],true))throw new InboxException('Resposta inválida.',422);
-            return $out+['body'=>trim($body),'reply_mode'=>$mode];
+            return $out+['body'=>trim($body),'reply_mode'=>$mode]+(!empty($input['comment_batch'])?['comment_batch'=>true]:[]);
         }
         if($tool==='campaign_update'){
             $data=$input['data']??[];if(!is_array($data)||!$data||array_diff(array_keys($data),['name','description','allowRestart']))throw new InboxException('Esta ação altera somente nome, descrição e reinício da campanha. Para mudar o fluxo, abra o editor do Mautic.',422);

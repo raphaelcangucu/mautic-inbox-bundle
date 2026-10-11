@@ -14,13 +14,29 @@ use MauticPlugin\MauticMcpBundle\Mcp\Tool\Management\ManageCampaignsTool;
 
 final class AssistantActions
 {
-    public function __construct(private AssistantProposalStore $proposals,private ConversationStateRepository $states,private EntityManagerInterface $em,private ConversationAccess $access,private ConversationActions $actions,private InboxQuery $inbox,private ModerationStore $moderation,private FetchCampaignTool $campaign,private FetchContactTool $contact,private ManageCampaignsTool $manage){}
+    public function __construct(private AssistantProposalStore $proposals,private ConversationStateRepository $states,private EntityManagerInterface $em,private ConversationAccess $access,private ConversationActions $actions,private InboxQuery $inbox,private ModerationStore $moderation,private FetchCampaignTool $campaign,private FetchContactTool $contact,private ManageCampaignsTool $manage,private AssistantCommentModeration $commentModeration){}
     public function publicReplyReason(int $id,User $user): ?string
     {
         $state=$this->states->find($id);if(!$state)throw new InboxException('Conversa não encontrada.',404);$this->access->assertView($state,$user);
         if(!$this->access->granted($user,'inbox:conversations:create')||!$this->access->granted($user,'meta:messages:create'))return 'permission_denied';
         $flags=$this->moderation->flags($this->inbox->summary($state));if($flags['spam']||$flags['blockedAuthor'])return 'moderated';
         return $this->actions->publicReplyBlockedReason($state);
+    }
+    public function commentReplyAvailable(int $id,User $user): bool
+    {
+        $data=$this->commentModeration->read($id,$user);
+        if(!AssistantCommentBatchPolicy::replyEligible($data['source'])||$this->publicReplyReason($id,$user)!==null)return false;
+        // A queued/failed outbound attempt is handled by the normal chat retry flow, never by a second batch reply.
+        $state=$this->states->find($id);
+        if($state->getAssignee()&&$state->getAssignee()->getId()!==$user->getId())return false;
+        return null===$this->em->getRepository(\MauticPlugin\MauticInboxBundle\Entity\OutboundRequest::class)->findOneBy(['conversation'=>$state->getConversation()]);
+    }
+    public function renew(string $id,User $user,string $agent,callable $authorize): array
+    {
+        return $this->proposals->renew($id,(int)$user->getId(),$agent,$authorize,function($action)use($user){
+            $preview=$this->snapshot($action,$user);
+            if(!hash_equals($action['snapshot'],$preview['snapshot']))throw new InboxException('O alvo mudou. Peça uma nova análise.',409);
+        });
     }
     public function preview(array $input,User $user,string $agent): array
     {
@@ -33,6 +49,7 @@ final class AssistantActions
         return $this->proposals->execute($id,(int)$user->getId(),$agent,$authorize,function(array $action,string $request)use($user):array{
             $current=$this->snapshot($action,$user);
             if(!hash_equals($action['snapshot'],$current['snapshot']))throw new InboxException('O alvo mudou desde a revisão. Peça uma nova proposta.',409);
+            if($action['tool']==='inbox_moderate')return $this->commentModeration->apply($action,$user);
             if($action['tool']==='mautic_reply_inbox'){
                 $state=$this->states->find($action['id']);
                 if(!$state->getAssignee()){
@@ -66,11 +83,13 @@ final class AssistantActions
     private function snapshot(array $action,User $user): array
     {
         $id=$action['id'];$tool=$action['tool'];
+        if($tool==='inbox_moderate')return $this->commentModeration->preview($action,$user);
         if(in_array($tool,['mautic_reply_inbox','inbox_transfer'],true)){
             $state=$this->states->find($id);if(!$state)throw new InboxException('Conversa não encontrada.',404);$this->em->refresh($state);$this->access->assertView($state,$user);
             $detail=$this->inbox->detail($state,$user);$summary=$detail['conversation']??$this->inbox->summary($state);
             $conversation=$state->getConversation();$assignee=$state->getAssignee()?->getId();$fields=[];
             if($tool==='mautic_reply_inbox'){
+                if(!empty($action['comment_batch'])&&!$this->commentReplyAvailable($id,$user))throw new InboxException('Comentário já atendido ou indisponível para resposta em lote.',409);
                 if($assignee!==null&&$assignee!==$user->getId())throw new InboxException('Assuma este atendimento no chat antes de responder.',409);
                 if($assignee===null&&(!$this->access->granted($user,'inbox:conversations:edit')||!$this->access->granted($user,'meta:messages:edit')))throw new InboxException('Sem permissão para assumir o atendimento.',403);
                 $flags=$this->moderation->flags($this->inbox->summary($state));if($flags['spam']||$flags['blockedAuthor'])throw new InboxException('Restaure o atendimento antes de responder.',422);

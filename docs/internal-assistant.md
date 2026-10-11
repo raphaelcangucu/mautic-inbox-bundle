@@ -40,7 +40,13 @@ As consultas são de leitura; as ações geram propostas, sem executar durante a
 
 `read_only: true` nos metadados mantém a compatibilidade de clientes antigos: a pergunta continua sem efeito de escrita. `confirmation_required` indica ferramentas de execução disponíveis em clientes novos. O app mostra cada proposta com alvo, canal, corpo e antes/depois. Status pending/sent não é comprovante de recebimento no dispositivo.
 
-Ocultar/marcar spam pelo assistente, substituição integral de fluxo e administração global de usuários não fazem parte desta lista. A moderação manual e o editor de campanhas existentes permanecem disponíveis. O agente de atendimento mantém seu fluxo existente de resposta nos canais autorizados.
+`inbox_comments` lê até 20 comentários completos por página com conta, origem, flags, operações disponíveis e cursor. Um contexto indisponível não autoriza propostas. A classificação diferencia propaganda de terceiros de críticas e perguntas legítimas; texto do comentário não fornece instruções ao executor.
+
+`inbox_moderate` prepara spam/restauração, bloqueio/desbloqueio **no atendimento desta instância**, e ocultação/exibição Instagram quando disponível. Cada proposta mostra texto, conta, motivo e escopo. Há até 20 propostas de moderação por pergunta; respostas e outras escritas mantêm o máximo de três. Bloquear ou ocultar exige pedido explícito: um pedido genérico de tratar spam prepara apenas marcação como spam. Não existe exclusão pelo assistente.
+
+O app anuncia `supported_actions: ["inbox_moderate"]` para receber propostas novas. Clientes antigos continuam recebendo somente os tipos anteriores. O servidor limita capacidades às ferramentas configuradas e às permissões; esse campo do cliente não concede acesso. A confirmação usa o mesmo depósito privado de propostas, conferindo comentário completo, conta, revisão e flags sob o lock da conversa. Uma confirmação repetida não repete a execução. A ocultação só altera o estado local após confirmação remota. A automação agendada permanece independente e desligada.
+
+Substituição integral de fluxo e administração global de usuários não fazem parte desta lista. A moderação manual e o editor de campanhas existentes permanecem disponíveis. O agente de atendimento mantém seu fluxo existente de resposta nos canais autorizados.
 
 ## Instalação e validação
 
@@ -49,3 +55,12 @@ Atualizar o plugin e copiar `Runtime/mobile-assistant.mjs` para o diretório pri
 O teste `Tests/Standalone/internal-agent-policy.php` carrega apenas as classes de política e exceção, sem kernel, banco ou rede. O teste do frontend compilado verifica seleção de tipo, ferramentas, perfis e persistência autenticada. Testes do app verificam validação da resposta da API, restauração somente de agentes autorizados e separação do histórico. Esses testes não comprovam implantação ou funcionamento no servidor de produção.
 
 Testes puros de propostas: `Tests/Standalone/assistant-actions.php` verifica allowlist, ator/agente, expiração, revogação, permissões compostas, replay, falha incerta e arquivos privados. Não usa kernel, banco nem rede.
+
+
+### Continuous comment review and public reply batches
+
+Clients advertising `comment_batches` receive validated classifications for every source row and can prepare up to 20 individual public comment actions per page. Private replies and campaign/transfer actions retain the three-action cap. Public batch replies require a complete origin comment, a legitimate classification, an open unanswered conversation, available account permissions and public reply transport, no active customer AI assignment, and no earlier outbound attempt. Confirmation repeats these checks; source/version changes stop execution. Long/truncated or unavailable contexts are preserved as uncertain.
+
+The mobile scan follows every returned cursor while foregrounded, saves progress per account and internal agent, counts each comment once, stops on repeated cursors/errors/backgrounding, and supports explicit pause/resume. It is a foreground scan, not a scheduled/background worker. Only recent batches render initially; earlier reviews remain in local history. Batch confirmation applies the exact reviewed actions sequentially, saves each result, and stops on failure. No preview is sent during scanning.
+
+`POST /inbox/mobile/assistant/actions/renew` accepts only the opaque proposal ID and selected agent. It extends the same pending proposal after fresh permissions and an unchanged original snapshot; completed, executing, failed or changed targets cannot renew. Replay retains the original request ID, so lost responses cannot cause a second reply. Scheduled comment automation settings are independent and remain off.

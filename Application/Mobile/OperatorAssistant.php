@@ -18,7 +18,7 @@ use Psr\Log\LoggerInterface;
 
 final class OperatorAssistant
 {
-    public function __construct(private AiStore $store, private ReadInboxTool $readInbox, private PiClient $pi, private EntityManagerInterface $em, private SearchCampaignsTool $campaigns, private FetchCampaignTool $campaign, private SearchContactsTool $contacts, private FetchContactTool $contact, private InboxQuery $inbox, private ConversationStateRepository $states, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, private LoggerInterface $logger, private AssistantCampaignReports $reports, private AssistantActions $actions, #[Autowire('%kernel.project_dir%')] private string $projectDir) {}
+    public function __construct(private AiStore $store, private ReadInboxTool $readInbox, private PiClient $pi, private EntityManagerInterface $em, private SearchCampaignsTool $campaigns, private FetchCampaignTool $campaign, private SearchContactsTool $contacts, private FetchContactTool $contact, private InboxQuery $inbox, private ConversationStateRepository $states, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, private LoggerInterface $logger, private AssistantCampaignReports $reports, private AssistantActions $actions, private AssistantCommentModeration $commentModeration, #[Autowire('%kernel.project_dir%')] private string $projectDir) {}
     /** Public provider description only: no credentials, tools, model calls or CRM reads. */
     public function privacy(): array { return $this->run(['mode'=>'privacy']); }
     /** Metadata only; tools are intersected with fresh user permissions. */
@@ -63,6 +63,7 @@ final class OperatorAssistant
             if (!is_string($payload['sharing_policy_id']) || !hash_equals((string)($policy['policy_id']??''),$payload['sharing_policy_id'])) { throw new InboxException('O provedor do assistente mudou. Confira e autorize o compartilhamento novamente.',409); }
         }
         $agent=$this->selectAgent($payload,$user);
+        $agent['tools']=AssistantModerationPolicy::clientTools($agent['tools'],$payload);
         $documents=$agent['key']!==''?$this->store->context($this->store->get('agent',$agent['key'])):[];
         $message=trim((string)($payload['message']??''));
         if ($message === '' || mb_strlen($message)>4000) { throw new InboxException('mautic.inbox.ui.invalid_request_43c865',422); }
@@ -78,6 +79,7 @@ final class OperatorAssistant
             $context=$selected?['id'=>(int)$selected->getId(),'name'=>$this->inbox->summary($selected)['contact_name']]:[];
             $results=[];$names=[];
             $explicit=AssistantQueryHints::calls($message);
+            if(is_array($payload['comment_page']??null)&&is_string($payload['comment_page']['cursor']??null)&&strlen($payload['comment_page']['cursor'])<=512)$explicit=[['tool'=>'inbox_comments','filters'=>array_replace($this->inboxFilters((array)($payload['comment_page']['filters']??[])),['cursor'=>$payload['comment_page']['cursor']])]];
             $explicit=array_values(array_filter($explicit,static fn($call)=>in_array($call['tool'],$agent['tools'],true)));
             for($round=0;$round<2;$round++){
             $plan=$round===0&&$explicit?['calls'=>$explicit,'needs_followup'=>true]:$this->run(['mode'=>'plan','message'=>$message,'history'=>$history,'context'=>$context,'tools'=>array_values(array_diff($agent['tools'],InternalAgentPolicy::writes())),'documents'=>$documents,'results'=>$results]);
@@ -90,6 +92,7 @@ final class OperatorAssistant
                 $fresh=$this->selectAgent(['agent_key'=>$agent['key']],$user);
                 if(!in_array($tool,$fresh['tools'],true)){$results[]=['tool'=>$tool,'data'=>['error'=>'permission_denied']];continue;}
                 $arguments=['query'=>$query,'id'=>$id,'page'=>$page];
+                if($tool==='inbox_comments')$arguments['filters']=$this->inboxFilters((array)($call['filters']??[]));
                 if($tool==='mautic_read_inbox')$arguments+=['resource'=>(string)($call['resource']??'conversations'),'filters'=>$this->inboxFilters((array)($call['filters']??[]))];
                 try {
                     $result=match($tool){
@@ -101,6 +104,7 @@ final class OperatorAssistant
                         'campaign_report'=>$this->reports->report(array_replace($call,['_user'=>$user])),
                         'campaign_comments'=>$this->reports->comments($id,$user,isset($call['date'])?(string)$call['date']:null),
                         'mautic_read_inbox'=>$this->readForAssistant($arguments['resource'],$id>0?$id:null,$arguments['filters'],$user),
+                        'inbox_comments'=>$this->commentsForAssistant($call,$user),
                         'inbox_context'=>$selected?['conversation'=>$this->inbox->detail($selected,$user),'history'=>$this->inbox->timeline($selected,null,30,$user)]:$this->inbox->conversations($user,['kind'=>'private','queue'=>'all','needs_response'=>true,'limit'=>20]),
                     };
                     // Ephemeral WebChat tokens are never provided to the model.
@@ -110,18 +114,36 @@ final class OperatorAssistant
                     $result=$this->sanitize($result);
                 } catch (InboxException $e) { $result=['error'=>$e->httpStatus===403||$e->httpStatus===404?'permission_denied':'resource_unavailable']; } catch (\InvalidArgumentException) { $result=['error'=>'invalid_arguments']; } catch (\Symfony\Component\Security\Core\Exception\AccessDeniedException) { $result=['error'=>'permission_denied']; } catch (HttpExceptionInterface $e) { $result=['error'=>$e->getStatusCode()===403?'permission_denied':'resource_unavailable']; }
                 $this->logger->info('Inbox internal assistant tool', ['actor'=>(int)$user->getId(),'agent'=>$agent['key'],'tool'=>$tool,'failed'=>isset($result['error']),'items'=>isset($result['items'])&&is_array($result['items'])?count($result['items']):null]);
-                $results[]=['tool'=>$tool,'arguments'=>$arguments,'data'=>$result];$names[]=$tool;
+                $entry=['tool'=>$tool,'arguments'=>$arguments,'data'=>$result];
+                if(strlen(json_encode([$results,$entry],JSON_THROW_ON_ERROR))>100000){$results[]=['tool'=>$tool,'data'=>['error'=>'context_budget_reached']];break 2;}
+                $results[]=$entry;$names[]=$tool;
             }
-            if(empty($plan['calls'])||empty($plan['needs_followup']))break;
+            if(empty($plan['calls'])||empty($plan['needs_followup'])||array_filter($results,static fn($r)=>$r['tool']==='inbox_comments'&&!isset($r['data']['error'])))break;
             }
             $fresh=$this->selectAgent(['agent_key'=>$agent['key']],$user);
             $results=array_values(array_filter($results,static fn(array $result)=>in_array($result['tool'],$fresh['tools'],true)));
-            $answer=$this->run(['mode'=>'answer','message'=>$message,'history'=>$history,'context'=>$context,'tools'=>$fresh['tools'],'documents'=>$documents,'results'=>$results]);
+            $fresh['tools']=AssistantModerationPolicy::clientTools($fresh['tools'],$payload);
+            $batchSupported=in_array('comment_batches',(array)($payload['supported_actions']??[]),true);
+            $commentItems=[];foreach($results as $r)if($r['tool']==='inbox_comments')$commentItems=$r['data']['items']??[];
+            $answer=$this->run(['mode'=>'answer','comment_batches'=>$batchSupported,'message'=>$message,'history'=>$history,'context'=>$context,'tools'=>$fresh['tools'],'documents'=>$documents,'results'=>$results]);
             $proposals=[];$proposalErrors=[];
-            foreach(array_slice((array)($answer['proposals']??[]),0,3) as $draft){
+            $classifications=AssistantCommentBatchPolicy::classifications((array)($answer['classifications']??[]),$commentItems);
+            $decisions=array_column($classifications,'classification','id');
+            $writeCount=0;$seen=[];
+            foreach(array_slice((array)($answer['proposals']??[]),0,20) as $draft){
                 try{
                     if(!is_array($draft))throw new \InvalidArgumentException('invalid_proposal');
                     $draft=AssistantActionPolicy::normalize($draft);
+                    if(!in_array($draft['tool'],$fresh['tools'],true))throw new InboxException('Atualize o aplicativo para revisar esta ação.',422);
+                    unset($draft['comment_batch']);
+                    $batchReply=AssistantCommentBatchPolicy::batchReply($draft,$commentItems,$batchSupported);
+                    if($batchSupported&&$commentItems&&$draft['tool']==='mautic_reply_inbox'){
+                        if(!$batchReply||($decisions[$draft['id']]??'')!=='legitimate')throw new InboxException('Resposta em lote exige comentário legítimo, completo e disponível.',422);
+                        $draft['comment_batch']=true;
+                    }
+                    if($batchSupported&&$commentItems&&$draft['tool']==='inbox_moderate'&&$draft['operation']==='spam'&&($decisions[$draft['id']]??'')!=='spam')throw new InboxException('Preservado: classificação de spam não confirmada.',422);
+                    if($draft['tool']!=='inbox_moderate'&&!$batchReply&&++$writeCount>3)continue;
+                    $dedup=($batchSupported&&in_array($draft['id'],array_column($commentItems,'id'),true)?'comment':$draft['tool']).':'.$draft['id'];if(isset($seen[$dedup]))continue;$seen[$dedup]=true;
                     $this->authorizeAction($draft,$user,$agent['key']);
                     $this->assertActionEvidence($draft,$results,$context);
                     $proposals[]=$this->actions->preview($draft,$user,$agent['key']);
@@ -130,7 +152,8 @@ final class OperatorAssistant
             if($proposalErrors)$answer['text']=($answer['text']??'')."\n\nNão foi possível preparar a ação: ".implode(' ',$proposalErrors);
             if(!is_string($answer['text']??null)||trim($answer['text'])===''){throw new InboxException('mautic.inbox.ai.pi_failed',503);}
             $this->selectAgent(['agent_key'=>$agent['key']],$user);
-            return ['role'=>'assistant','text'=>mb_substr($answer['text'],0,4000),'tool'=>implode(' · ',array_unique($names))?:'Pi · leitura','read_only'=>true,'agent_key'=>$agent['key'],'agent_name'=>$agent['name'],'proposals'=>$proposals];
+            $nextPage=null;foreach($results as $result)if($result['tool']==='inbox_comments')$nextPage=!empty($result['data']['next_cursor'])?['cursor'=>$result['data']['next_cursor'],'filters'=>$result['arguments']['filters']??[]]:null;
+            return ['comment_classifications'=>$classifications,'comment_page'=>$nextPage,'role'=>'assistant','text'=>mb_substr($answer['text'],0,4000),'tool'=>implode(' · ',array_unique($names))?:'Pi · leitura','read_only'=>true,'agent_key'=>$agent['key'],'agent_name'=>$agent['name'],'proposals'=>$proposals];
         } finally {flock($lock,LOCK_UN);fclose($lock);}
     }
     public function confirm(array $payload,User $user): array
@@ -138,6 +161,12 @@ final class OperatorAssistant
         if(($payload['confirm']??null)!==true||!is_string($payload['proposal_id']??null))throw new InboxException('Confirme a ação revisada.',422);
         $agent=$this->selectAgent($payload,$user);
         return $this->actions->confirm($payload['proposal_id'],$user,$agent['key'],fn($action)=>$this->authorizeAction($action,$user,$agent['key']));
+    }
+    public function renewAction(array $payload,User $user): array
+    {
+        if(!is_string($payload['proposal_id']??null))throw new InboxException('Ação inválida.',422);
+        $agent=$this->selectAgent($payload,$user);
+        return $this->actions->renew($payload['proposal_id'],$user,$agent['key'],fn($action)=>$this->authorizeAction($action,$user,$agent['key']));
     }
     public function actionStatus(array $payload,User $user): array
     {
@@ -152,22 +181,24 @@ final class OperatorAssistant
     }
     private function assertActionEvidence(array $action,array $results,array $context): void
     {
-        $campaigns=[];$conversations=isset($context['id'])?[(int)$context['id']]:[];$contacts=[];$users=[];
+        $campaigns=[];$conversations=isset($context['id'])?[(int)$context['id']]:[];$contacts=[];$users=[];$moderations=[];
         foreach($results as $result){
             $data=$result['data'];$tool=$result['tool'];if(isset($data['error']))continue;
             if(in_array($tool,['mautic_search_campaigns','campaign_report'],true))foreach($data['items']??[] as $row)$campaigns[]=(int)($row['id']??0);
             if($tool==='mautic_fetch_campaign')$campaigns[]=(int)($data['id']??0);
             if($tool==='mautic_read_campaign_flow')$campaigns[]=(int)($data['campaignId']??0);
             if($tool==='campaign_comments')$campaigns[]=(int)($data['campaign_id']??0);
+            if($tool==='inbox_comments')foreach($data['items']??[] as $row){$conversations[]=(int)($row['id']??0);$moderations[(int)($row['id']??0)]=$row['operations']??[];}
             if($tool==='inbox_context')foreach($data['items']??[] as $row)$conversations[]=(int)($row['id']??0);
             if($tool==='mautic_search_contacts')foreach($data['items']??[] as $row)$contacts[]=(int)($row['id']??0);
             if($tool==='mautic_fetch_contact')$contacts[]=(int)($data['id']??0);
             if($tool==='mautic_read_inbox'){
                 if(($result['arguments']['resource']??'')==='conversations')foreach($data['items']??[] as $row)$conversations[]=(int)($row['id']??0);
-                if(($result['arguments']['resource']??'')==='conversation')$conversations[]=(int)($result['arguments']['id']??0);
+                if(($result['arguments']['resource']??'')==='conversation'){$cid=(int)($result['arguments']['id']??0);$conversations[]=$cid;$moderations[$cid]=$data['moderation_context']['operations']??[];}
                 if(($result['arguments']['resource']??'')==='users')foreach($data['items']??[] as $row)$users[]=(int)($row['id']??0);
             }
         }
+        if($action['tool']==='inbox_moderate'&&!in_array($action['operation'],$moderations[$action['id']]??[],true))throw new \InvalidArgumentException('comment_not_read_or_operation_unavailable');
         $ids=str_starts_with((string)($action['tool']??''),'campaign_')?$campaigns:$conversations;
         if(!in_array($action['id']??null,$ids,true))throw new \InvalidArgumentException('unknown_target');
         foreach($action['contact_ids']??[] as $id)if(!in_array($id,$contacts,true))throw new \InvalidArgumentException('unknown_contact');
@@ -178,6 +209,7 @@ final class OperatorAssistant
         $data=($this->readInbox)($resource,$id,$filters);
         if($resource==='conversation'&&$id){
             $state=$this->states->find($id);
+            if($state&&str_starts_with($state->getConversation()->getRecipient(),'comment:')){try{$data['moderation_context']=$this->commentModeration->read($id,$user);unset($data['moderation_context']['source']);}catch(InboxException){$data['moderation_context']=['operations'=>[]];}}
             if($state&&$state->getConversation()->getChannel()==='instagram'&&str_starts_with($state->getConversation()->getRecipient(),'comment:')){
                 $this->access->assertView($state,$user);
                 $reason=$this->actions->publicReplyReason($id,$user);
@@ -185,6 +217,17 @@ final class OperatorAssistant
             }
         }
         return $data;
+    }
+    private function commentsForAssistant(array $call,User $user): array
+    {
+        $filters=$this->inboxFilters((array)($call['filters']??[]));$filters['kind']='comments';$filters['lifecycle']=$filters['lifecycle']??'all';
+        $page=$this->inbox->conversations($user,$filters);$items=[];$budget=70000;
+        foreach($page['items']??[] as $row){
+            try{$data=$this->commentModeration->read((int)$row['id'],$user);$data['reply_available']=$this->actions->commentReplyAvailable((int)$row['id'],$user);unset($data['source']);$size=strlen(json_encode($data,JSON_THROW_ON_ERROR));if($size>$budget)throw new InboxException('context_budget_reached',422);$budget-=$size;$items[]=$data;}
+            catch(InboxException){$items[]=['id'=>$row['id'],'name'=>$row['contact_name'],'body'=>$row['preview'],'operations'=>[],'context_unavailable'=>true];}
+        }
+        $page['items']=$items;$page['analyzed_count']=count(array_filter($items,static fn($item)=>!empty($item['context_complete'])));$page['page_count']=count($items);$page['scope']='page_only';
+        return $page;
     }
     private function inboxFilters(array $input): array
     {

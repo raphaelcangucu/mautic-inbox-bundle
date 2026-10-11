@@ -40,5 +40,13 @@ $f=$store->create(1,'admin',['tool'=>'campaign_update','id'=>3],[]);try{$store->
 denied(fn()=>$store->execute($f['id'],1,'admin',fn()=>null,$execute),409);check($calls===1,'failed actions not blindly repeated');
 $path=$root.'/inbox-mobile-private/assistant-actions/'.$f['id'].'.json';check((fileperms($path)&0777)===0600,'private file');
 $e=$store->create(1,'admin',['tool'=>'x'],[]);$path=$root.'/inbox-mobile-private/assistant-actions/'.$e['id'].'.json';$record=json_decode(file_get_contents($path),true);$record['expires']=time()-1;file_put_contents($path,json_encode($record));denied(fn()=>$store->execute($e['id'],1,'admin',fn()=>null,$execute),409);
+$renewed=$store->renew($e['id'],1,'admin',fn()=>null,fn()=>null);check($renewed['id']===$e['id']&&strtotime($renewed['expires_at'])>time(),'renew keeps the exact pending ID');
+denied(fn()=>$store->renew($e['id'],2,'admin',fn()=>null,fn()=>null),404);
+denied(fn()=>$store->renew($e['id'],1,'other',fn()=>null,fn()=>null),404);
+denied(fn()=>$store->renew($e['id'],1,'admin',fn()=>throw new InboxException('revoked',403),fn()=>null),403);
+denied(fn()=>$store->renew($e['id'],1,'admin',fn()=>null,fn()=>throw new InboxException('changed',409)),409);
+denied(fn()=>$store->renew($p['id'],1,'admin',fn()=>null,fn()=>null),409);
+denied(fn()=>$store->renew($f['id'],1,'admin',fn()=>null,fn()=>null),409);
+check($calls===1,'renew never executes or duplicates');
 foreach(glob($root.'/inbox-mobile-private/assistant-actions/*.json')as$file)unlink($file);rmdir($root.'/inbox-mobile-private/assistant-actions');rmdir($root.'/inbox-mobile-private');rmdir($root.'/project');rmdir($root);
 echo "Assistant actions: all checks passed\n";
