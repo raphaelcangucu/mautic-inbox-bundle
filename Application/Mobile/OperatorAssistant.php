@@ -67,6 +67,8 @@ final class OperatorAssistant
         $documents=$agent['key']!==''?$this->store->context($this->store->get('agent',$agent['key'])):[];
         $message=trim((string)($payload['message']??''));
         if ($message === '' || mb_strlen($message)>4000) { throw new InboxException('mautic.inbox.ui.invalid_request_43c865',422); }
+        // Do not ask the model to draft batches that this client cannot review.
+        if(AssistantCommentBatchPolicy::needsUpgrade($message,$payload))return ['role'=>'assistant','text'=>'Esta versão do aplicativo ainda não exibe a revisão de moderação e respostas em lote. Atualize o Mautic Inbox pelo TestFlight e, no Assistente, toque em analisar todos os comentários. Nenhum comentário foi alterado e nenhuma resposta foi enviada nesta solicitação.','read_only'=>true,'agent_key'=>$agent['key'],'agent_name'=>$agent['name'],'proposals'=>[],'comment_classifications'=>[],'comment_page'=>null,'tool'=>'Compatibilidade do aplicativo'];
         $dir=$this->projectDir.'/var/inbox-mobile'; if(!is_dir($dir)){mkdir($dir,0700,true);}
         $lock=fopen($dir.'/assistant.lock','c+');if(!$lock){throw new InboxException('mautic.inbox.ai.pi_failed',503);}chmod($dir.'/assistant.lock',0600);
         if(!flock($lock,LOCK_EX|LOCK_NB)){fclose($lock);throw new InboxException('mautic.inbox.ai.pi_failed',429);}
@@ -80,8 +82,9 @@ final class OperatorAssistant
             $results=[];$names=[];
             $explicit=AssistantQueryHints::calls($message);
             // Full-scan intent has a deterministic first read: avoid spending the HTTP budget on an unnecessary model planner.
-            if(!$explicit&&AssistantCommentBatchPolicy::explicitScan($message,$payload))$explicit=[['tool'=>'inbox_comments','filters'=>['queue'=>'all','lifecycle'=>'all','limit'=>20]]];
+            if(!$explicit&&AssistantCommentBatchPolicy::explicitScan($message,$payload))$explicit=[['tool'=>'inbox_comments','filters'=>['queue'=>'all','lifecycle'=>'all','limit'=>AssistantCommentBatchPolicy::PAGE_SIZE]]];
             if(is_array($payload['comment_page']??null)&&is_string($payload['comment_page']['cursor']??null)&&strlen($payload['comment_page']['cursor'])<=512)$explicit=[['tool'=>'inbox_comments','filters'=>array_replace($this->inboxFilters((array)($payload['comment_page']['filters']??[])),['cursor'=>$payload['comment_page']['cursor']])]];
+            foreach($explicit as &$call)if($call['tool']==='inbox_comments'&&in_array('comment_batches',(array)($payload['supported_actions']??[]),true))$call['filters']['limit']=AssistantCommentBatchPolicy::PAGE_SIZE;unset($call);
             $explicit=array_values(array_filter($explicit,static fn($call)=>in_array($call['tool'],$agent['tools'],true)));
             for($round=0;$round<2;$round++){
             $plan=$round===0&&$explicit?['calls'=>$explicit,'needs_followup'=>true]:$this->run(['mode'=>'plan','message'=>$message,'history'=>$history,'context'=>$context,'tools'=>array_values(array_diff($agent['tools'],InternalAgentPolicy::writes())),'documents'=>$documents,'results'=>$results]);
@@ -136,7 +139,7 @@ final class OperatorAssistant
                 try{
                     if(!is_array($draft))throw new \InvalidArgumentException('invalid_proposal');
                     $draft=AssistantActionPolicy::normalize($draft);
-                    if(!in_array($draft['tool'],$fresh['tools'],true))throw new InboxException('Atualize o aplicativo para revisar esta ação.',422);
+                    if(!in_array($draft['tool'],$fresh['tools'],true))throw new InboxException($draft['tool']==='inbox_moderate'&&!in_array('inbox_moderate',(array)($payload['supported_actions']??[]),true)?'Atualize o aplicativo pelo TestFlight para revisar a moderação.':'Ação indisponível para as permissões deste assistente.',403);
                     unset($draft['comment_batch']);
                     $batchReply=AssistantCommentBatchPolicy::batchReply($draft,$commentItems,$batchSupported);
                     if($batchSupported&&$commentItems&&$draft['tool']==='mautic_reply_inbox'){
@@ -151,7 +154,8 @@ final class OperatorAssistant
                     $proposals[]=$this->actions->preview($draft,$user,$agent['key']);
                 }catch(InboxException $e){$proposalErrors[]=$e->getMessage();}catch(\InvalidArgumentException $e){$this->logger->error('Inbox internal assistant invalid proposal',['actor'=>(int)$user->getId(),'agent'=>$agent['key'],'reason'=>$e->getMessage(),'tool'=>$draft['tool']??null,'target'=>$draft['id']??null,'fields'=>array_keys($draft)]);$proposalErrors[]='Identifique o alvo exato antes de preparar a ação.';}
             }
-            if($proposalErrors)$answer['text']=($answer['text']??'')."\n\nNão foi possível preparar a ação: ".implode(' ',$proposalErrors);
+            if($batchSupported&&$commentItems&&(AssistantCommentBatchPolicy::explicitScan($message,$payload)||is_array($payload['comment_page']??null))){$hasMore=false;foreach($results as $result)if($result['tool']==='inbox_comments')$hasMore=!empty($result['data']['next_cursor']);$answer['text']=AssistantCommentBatchPolicy::summary($message,$classifications,count($proposals),$hasMore);}
+            $answer['text']=($answer['text']??'').AssistantModerationPolicy::errorsText($proposalErrors);
             if(!is_string($answer['text']??null)||trim($answer['text'])===''){throw new InboxException('mautic.inbox.ai.pi_failed',503);}
             $this->selectAgent(['agent_key'=>$agent['key']],$user);
             $nextPage=null;foreach($results as $result)if($result['tool']==='inbox_comments')$nextPage=!empty($result['data']['next_cursor'])?['cursor'=>$result['data']['next_cursor'],'filters'=>$result['arguments']['filters']??[]]:null;
@@ -249,6 +253,6 @@ final class OperatorAssistant
     {
         $process=new Process(['/usr/bin/node',$this->pi->home().'/mobile-assistant.mjs'],$this->pi->home());$process->setInput(json_encode($payload,JSON_THROW_ON_ERROR));$process->setTimeout(!empty($payload['comment_batches'])?25:50);
         try {$process->run();$result=json_decode($process->getOutput(),true,32,JSON_THROW_ON_ERROR);if(!$process->isSuccessful()||!is_array($result)||isset($result['error'])){throw new \RuntimeException('assistant_unavailable');}return $result;}
-        catch(\Throwable $e){throw new InboxException('mautic.inbox.ai.pi_failed',503,$e);}
+        catch(\Throwable $e){$this->logger->warning('Inbox internal assistant runtime unavailable',['mode'=>$payload['mode']??'unknown','batch'=>!empty($payload['comment_batches']),'failure'=>($result['reason']??null)==='deadline'?'deadline':($e instanceof \Symfony\Component\Process\Exception\ProcessTimedOutException?'process_timeout':'response_failed'),'exit_code'=>$process->getExitCode()]);throw new InboxException('mautic.inbox.ai.pi_failed',503,$e);}
     }
 }

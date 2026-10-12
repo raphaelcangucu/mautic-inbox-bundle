@@ -14,6 +14,12 @@ Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, In
 - Limite opcional de respostas por sessão de IA. O padrão `0` é ilimitado e o contador pode ser reiniciado pela interface.
 - Contrato de transporte para canais externos, com metadados, envio humano e por IA, leitura e tempo real.
 
+## Assistente interno no aplicativo
+
+A análise de todos os comentários usa paginação, com até 10 comentários completos por requisição. O aplicativo mantém o progresso e permite pausar e retomar a varredura. O total analisado não fica limitado ao primeiro lote. Classificações incertas preservam o comentário; propostas de spam e respostas públicas exigem revisão e confirmação antes de qualquer alteração.
+
+O cliente anuncia as capacidades `inbox_moderate` e `comment_batches`. Aplicativos antigos que pedem tratamento em lote recebem um único aviso de atualização antes de consultar o modelo, sem propostas que não conseguem revisar. As consultas existentes continuam disponíveis. Erros repetidos de propostas são agrupados. O resumo de cada lote usa as classificações validadas, a quantidade real de propostas e a paginação do servidor; o modelo não estima quantos comentários ainda faltam. Falhas operacionais registram somente metadados, sem perguntas, credenciais ou conteúdo dos contatos.
+
 ## Frontend Svelte 5
 
 O atendimento e a configuração dos agentes usam componentes Svelte 5 com TypeScript, mantendo o visual, as rotas e as garantias do Mautic. Twig fornece somente os pontos de montagem e os dados iniciais escapados. O bundle compilado e versionado em `Assets/dist/inbox-app.js` contém o runtime necessário, portanto a instalação por Composer não exige Node.js em produção.

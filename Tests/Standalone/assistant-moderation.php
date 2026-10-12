@@ -45,6 +45,8 @@ $context->source['channel']='whatsapp';denied(fn()=>$service->preview($action,$u
 $context->source['channel']='instagram';$context->source['own_comment']=true;denied(fn()=>$service->preview($action,$user),403);
 foreach(['delete','delete_profile','remove_user','send'] as $operation)denied(fn()=>Action::normalize(['tool'=>'inbox_moderate','id'=>8,'operation'=>$operation,'reason'=>'x']),422);
 check(Policy::clientTools(['inbox_moderate','mautic_reply_inbox'],[])===['mautic_reply_inbox'],'old app cannot receive unknown proposals');check(Policy::clientTools(['inbox_moderate'],['supported_actions'=>['inbox_moderate']])===['inbox_moderate'],'new client opt-in never grants server permissions');
+check(substr_count(Policy::errorsText(array_fill(0,18,'Atualize o aplicativo.')),'Atualize o aplicativo.')===1,'repeated proposal errors shown only once');
+check(Policy::errorsText([])==='','no empty error paragraph');
 unlink($root.'/var/inbox-mobile/moderation.json');rmdir($root.'/var/inbox-mobile');rmdir($root.'/var');rmdir($root);
 echo "Assistant moderation: all checks passed (memory adapters, no database)\n";
 }
