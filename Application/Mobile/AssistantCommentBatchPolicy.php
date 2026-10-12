@@ -48,4 +48,13 @@ final class AssistantCommentBatchPolicy
         foreach($items as $item)if(($item['id']??0)===$action['id'])return !empty($item['context_complete'])&&!empty($item['reply_available']);
         return false;
     }
+    /** The model cannot invent remaining totals or claim actions were applied. */
+    public static function summary(string $question,array $classifications,int $proposals,bool $hasMore): string
+    {
+        $counts=array_count_values(array_column($classifications,'classification'));
+        $total=count($classifications);$spam=$counts['spam']??0;$legitimate=$counts['legitimate']??0;$uncertain=$counts['uncertain']??0;
+        if(preg_match('/\b(?:comments|scan|sweep|classify|reply|every)\b/iu',$question))return "Classified $total comments in this batch: $spam spam, $legitimate legitimate and $uncertain uncertain. Prepared $proposals actions for review. Uncertain comments were preserved. ".($hasMore?'More comments are available in the next batch.':'This is the last available batch.').' No actions have been applied.';
+        if(preg_match('/(?:todos los|analiza|clasifica)/iu',$question))return "Clasificados $total comentarios en este lote: $spam spam, $legitimate legítimos y $uncertain inciertos. Preparadas $proposals acciones para revisión. Los inciertos se conservaron. ".($hasMore?'Hay más comentarios en el próximo lote.':'Este es el último lote disponible.').' No se aplicó ninguna acción.';
+        return "Classificados $total comentários neste lote: $spam spam, $legitimate legítimos e $uncertain incertos. Preparadas $proposals ações para revisão. Os incertos foram preservados. ".($hasMore?'Há mais comentários no próximo lote.':'Este é o último lote disponível.').' Nenhuma ação foi aplicada.';
+    }
 }

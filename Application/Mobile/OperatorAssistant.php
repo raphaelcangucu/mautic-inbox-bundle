@@ -154,6 +154,7 @@ final class OperatorAssistant
                     $proposals[]=$this->actions->preview($draft,$user,$agent['key']);
                 }catch(InboxException $e){$proposalErrors[]=$e->getMessage();}catch(\InvalidArgumentException $e){$this->logger->error('Inbox internal assistant invalid proposal',['actor'=>(int)$user->getId(),'agent'=>$agent['key'],'reason'=>$e->getMessage(),'tool'=>$draft['tool']??null,'target'=>$draft['id']??null,'fields'=>array_keys($draft)]);$proposalErrors[]='Identifique o alvo exato antes de preparar a ação.';}
             }
+            if($batchSupported&&$commentItems&&(AssistantCommentBatchPolicy::explicitScan($message,$payload)||is_array($payload['comment_page']??null))){$hasMore=false;foreach($results as $result)if($result['tool']==='inbox_comments')$hasMore=!empty($result['data']['next_cursor']);$answer['text']=AssistantCommentBatchPolicy::summary($message,$classifications,count($proposals),$hasMore);}
             $answer['text']=($answer['text']??'').AssistantModerationPolicy::errorsText($proposalErrors);
             if(!is_string($answer['text']??null)||trim($answer['text'])===''){throw new InboxException('mautic.inbox.ai.pi_failed',503);}
             $this->selectAgent(['agent_key'=>$agent['key']],$user);

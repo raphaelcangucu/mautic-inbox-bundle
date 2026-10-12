@@ -18,7 +18,7 @@ Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, In
 
 A análise de todos os comentários usa paginação, com até 10 comentários completos por requisição. O aplicativo mantém o progresso e permite pausar e retomar a varredura. O total analisado não fica limitado ao primeiro lote. Classificações incertas preservam o comentário; propostas de spam e respostas públicas exigem revisão e confirmação antes de qualquer alteração.
 
-O cliente anuncia as capacidades `inbox_moderate` e `comment_batches`. Aplicativos antigos que pedem tratamento em lote recebem um único aviso de atualização antes de consultar o modelo, sem propostas que não conseguem revisar. As consultas existentes continuam disponíveis. Erros repetidos de propostas são agrupados e falhas operacionais registram somente metadados, sem perguntas, credenciais ou conteúdo dos contatos.
+O cliente anuncia as capacidades `inbox_moderate` e `comment_batches`. Aplicativos antigos que pedem tratamento em lote recebem um único aviso de atualização antes de consultar o modelo, sem propostas que não conseguem revisar. As consultas existentes continuam disponíveis. Erros repetidos de propostas são agrupados. O resumo de cada lote usa as classificações validadas, a quantidade real de propostas e a paginação do servidor; o modelo não estima quantos comentários ainda faltam. Falhas operacionais registram somente metadados, sem perguntas, credenciais ou conteúdo dos contatos.
 
 ## Frontend Svelte 5
 
