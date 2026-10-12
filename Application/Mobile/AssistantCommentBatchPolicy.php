@@ -5,11 +5,23 @@ namespace MauticPlugin\MauticInboxBundle\Application\Mobile;
 /** Batch capacity applies only to fully read, individually authorized public comments. */
 final class AssistantCommentBatchPolicy
 {
+    public const PAGE_SIZE=10;
+    public static function scanIntent(string $question): bool
+    {
+        return preg_match('/(?:coment|comment|spam)/iu',$question)===1
+            && preg_match('/(?:todos|todas|varr|sweep|all\b|every)/iu',$question)===1;
+    }
+    public static function needsUpgrade(string $question,array $payload): bool
+    {
+        return self::scanIntent($question)
+            && preg_match('/(?:trat|limp|marc|respond|reply|classif|moderat|clean|handle|agir)/iu',$question)===1
+            && (!in_array('comment_batches',(array)($payload['supported_actions']??[]),true)
+                || !in_array('inbox_moderate',(array)($payload['supported_actions']??[]),true));
+    }
     public static function explicitScan(string $question,array $payload): bool
     {
         return in_array('comment_batches',(array)($payload['supported_actions']??[]),true)
-            && preg_match('/(?:coment|comment|spam)/iu',$question)===1
-            && preg_match('/(?:todos|todas|varr|sweep|all\b|every)/iu',$question)===1;
+            && self::scanIntent($question);
     }
     public static function replyEligible(array $source): bool
     {

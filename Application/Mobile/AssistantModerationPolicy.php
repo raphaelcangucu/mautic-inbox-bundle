@@ -16,4 +16,9 @@ final class AssistantModerationPolicy
     {
         return in_array('inbox_moderate',(array)($payload['supported_actions']??[]),true)?$tools:array_values(array_diff($tools,['inbox_moderate']));
     }
+    public static function errorsText(array $errors): string
+    {
+        $errors=array_values(array_unique(array_filter($errors,'is_string')));
+        return $errors ? "\n\nNão foi possível preparar a ação: ".implode(' ',array_slice($errors,0,3)) : '';
+    }
 }
