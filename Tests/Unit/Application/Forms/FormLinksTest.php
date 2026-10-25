@@ -25,6 +25,14 @@ final class FormLinksTest extends TestCase
         self::assertMatchesRegularExpression('#^Responda, por favor:\n\[Pesquisa: por que nao depositou\]\(https://localhost:8443/inbox/f/[A-Za-z0-9_-]+\)$#', $body);
     }
 
+    /** Achado no teste real: "DEP 04 - Feedback livre (o que faltou)" virava "Feedback livre  o que faltou". */
+    public function testParenthesesInTheFormNameSurviveOnlyBracketsGo(): void
+    {
+        $body = (new FormLinks($this->entities(true, "DEP 04 - Feedback [livre]\n(o que faltou)"), $this->signer()))->expand('[[form:12]]', $this->conversation(), true, self::NOW);
+
+        self::assertMatchesRegularExpression('#^\[DEP 04 - Feedback livre \(o que faltou\)\]\(https://localhost:8443/inbox/f/[A-Za-z0-9_-]+\)$#', $body);
+    }
+
     public function testTheSameMarkerBecomesAPlainLinkOnWhatsApp(): void
     {
         $body = (new FormLinks($this->entities(), $this->signer()))->expand('[[form:12]]', $this->conversation(), false, self::NOW);
@@ -76,9 +84,9 @@ final class FormLinksTest extends TestCase
         self::assertSame([12, 7], FormLinks::markers('[[form:12]] e [[form:7]] e [[form:12]]'));
     }
 
-    private function entities(bool $published = true): EntityManagerInterface
+    private function entities(bool $published = true, string $name = 'Pesquisa: por que nao depositou'): EntityManagerInterface
     {
-        $form = (new Form())->setName('Pesquisa: por que nao depositou');
+        $form = (new Form())->setName($name);
         $form->setIsPublished($published);
         $entities = $this->createMock(EntityManagerInterface::class);
         $entities->method('find')->willReturnCallback(static fn (string $class, mixed $id): ?object => Form::class === $class && 12 === $id ? $form : null);

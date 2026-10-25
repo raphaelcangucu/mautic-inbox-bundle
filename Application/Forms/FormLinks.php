@@ -65,7 +65,8 @@ final class FormLinks
             $form = $this->entityManager->find(Form::class, $id);
             if (!$form instanceof Form || !$form->isPublished()) { throw new InboxException('mautic.inbox.ui.form_unpublished', 422); }
             $url = $this->url($id, (int) $contact->getId(), (int) $conversation->getId(), $now);
-            $name = trim((string) preg_replace('/[\[\]()\r\n]+/', ' ', (string) $form->getName())) ?: 'Formulário';
+            // Only brackets and line breaks break a markdown link text; parentheses in it are fine.
+            $name = trim((string) preg_replace('/\s+/', ' ', (string) preg_replace('/[\[\]\r\n]+/', ' ', (string) $form->getName()))) ?: 'Formulário';
             $links[$id] = $markdown ? '['.$name.']('.$url.')' : $name.': '.$url;
         }
 
