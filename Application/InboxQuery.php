@@ -481,6 +481,7 @@ final class InboxQuery
             $failure = match ($diagnostic['code']) {
                 'local_cooldown' => $this->translator->trans('mautic.inbox.ui.local_cooldown', ['%seconds%' => $diagnostic['seconds']]),
                 'contact_identity_mismatch' => $this->translator->trans('mautic.inbox.ui.contact_identity_mismatch'),
+                'meta_messaging_review_required' => $this->translator->trans('mautic.inbox.ui.meta_messaging_review_required'),
                 default => $entity->getFailureReason() && str_starts_with($entity->getFailureReason(), 'mautic.inbox.') ? $this->translator->trans($entity->getFailureReason()) : $entity->getFailureReason(),
             };
             $email = 'email' === $entity->getConversation()->getChannel() ? $this->outboundEmail($entity, $payload) : [];
