@@ -16,11 +16,20 @@ final class MessagePresentation
         private \Symfony\Contracts\Translation\TranslatorInterface $translator,
         private UrlGeneratorInterface $urlGenerator,
         private ?AttachmentRegistry $attachmentMedia = null,
+        private ?Email\EmailContentRegistry $emailContent = null,
+        private ?Email\EmailHtmlSanitizer $emailHtml = null,
     ) {}
 
-    public function present(MetaMessage $message): array
+    /**
+     * @param bool $withHtml false para quem so le o texto (previa da lista, contexto da IA): o
+     *                       saneamento do HTML de e-mail custa um parser por mensagem
+     */
+    public function present(MetaMessage $message, bool $withHtml = true): array
     {
         $payload = $message->getPayload();
+        if ('email' === $message->getChannel() && is_array($payload['email'] ?? null)) {
+            return $this->presentEmail($message, $payload['email'], $withHtml);
+        }
         $content = is_array($payload['message'] ?? null) ? $payload['message'] : $payload;
         $type = $message->getMessageType();
         $text = $content['text']['body'] ?? $content['text'] ?? $payload['text'] ?? '';
@@ -83,6 +92,113 @@ final class MessagePresentation
             if ('' === $text) { $text = $label; }
         }
         return ['body' => $text ?: $this->translator->trans('mautic.inbox.ui.message_type_89f48a').$type, 'content_label' => $caption, 'attachments' => $attachments, 'failure' => $this->failure($message->getError())];
+    }
+
+    /**
+     * A mensagem de e-mail na forma do contrato (plano, secao 1.6): `body` e o texto novo em
+     * markdown, `subject` vem a parte, `email` carrega cabecalhos e marcas, e os anexos sao
+     * varios. O HTML vai saneado em `email.html`, para o iframe do web; o app nao o recebe.
+     *
+     * @param array<string,mixed> $email
+     * @return array<string,mixed>
+     */
+    public function presentEmail(MetaMessage $message, array $email, bool $withHtml = true): array
+    {
+        $kind = in_array($email['kind'] ?? null, ['message', 'auto_reply', 'bounce', 'unreadable'], true) ? $email['kind'] : 'message';
+        $from = self::address($email['from'] ?? null);
+        $text = is_string($email['text'] ?? null) ? trim($email['text']) : '';
+        $html = is_string($email['html'] ?? null) ? $email['html'] : '';
+        $stored = null !== $message->getId() && (bool) $this->emailContent?->supports($message);
+        $attachments = [];
+        $byCid = [];
+        foreach (is_array($email['attachments'] ?? null) ? array_values($email['attachments']) : [] as $position => $attachment) {
+            if (!is_array($attachment)) { continue; }
+            $index = is_numeric($attachment['index'] ?? null) ? (int) $attachment['index'] : $position;
+            $available = $stored && !empty($attachment['available']) && $index >= 0;
+            $url = $available ? $this->urlGenerator->generate('mautic_inbox_email_attachment', ['messageId' => $message->getId(), 'index' => $index], UrlGeneratorInterface::ABSOLUTE_URL) : null;
+            $type = in_array($attachment['type'] ?? null, ['image', 'audio', 'video', 'document'], true) ? $attachment['type'] : 'document';
+            $name = is_string($attachment['name'] ?? null) ? trim(basename(str_replace('\\', '/', $attachment['name']))) : '';
+            $attachments[] = [
+                'type' => $type,
+                'label' => '' !== $name ? mb_substr($name, 0, 200) : $this->translator->trans('mautic.inbox.ui.email_attachment'),
+                'url' => $url,
+                'available' => $available,
+                'size' => max(0, (int) ($attachment['size'] ?? 0)),
+                'mime' => is_string($attachment['mime'] ?? null) ? strtolower(trim($attachment['mime'])) : '',
+            ];
+            if (is_string($attachment['cid'] ?? null) && '' !== trim($attachment['cid'], " <>")) {
+                $byCid[strtolower(trim($attachment['cid'], " <>"))] = $url;
+            }
+        }
+        if ('' === $text) {
+            $text = match ($kind) {
+                'unreadable' => $this->translator->trans('mautic.inbox.ui.email_unreadable', ['%sender%' => $from['address'] ?: $message->getRecipient()]),
+                default => '' !== $html ? $this->translator->trans('mautic.inbox.ui.email_html_only') : ([] !== $attachments ? $this->translator->trans('mautic.inbox.ui.email_attachment') : $this->translator->trans('mautic.inbox.ui.email_empty')),
+            };
+        }
+        $clean = $withHtml && '' !== trim($html) && null !== $this->emailHtml
+            ? $this->emailHtml->sanitize($html, static fn (string $cid): ?string => $byCid[strtolower($cid)] ?? null)
+            : '';
+        // O +tag do Reply-To carrega o token da conversa e nao aparece na interface. O canal ja
+        // grava o endereco da conta sem ele; esta e a garantia de que um payload antigo ou
+        // escrito por outro caminho tambem nao o mostre.
+        $account = strtolower(trim((string) ($message->getAsset()->getSettings()['email_address'] ?? '')));
+        $untag = static function (array $list) use ($account): array {
+            if ('' === $account || !str_contains($account, '@')) { return $list; }
+            [$local, $domain] = explode('@', $account, 2);
+            foreach ($list as &$item) {
+                if (preg_match('/^'.preg_quote($local, '/').'\+[^@]*@'.preg_quote($domain, '/').'$/D', $item['address'])) { $item['address'] = $account; }
+            }
+            unset($item);
+
+            return $list;
+        };
+
+        return [
+            'body' => $text,
+            'subject' => is_string($email['subject'] ?? null) ? mb_substr(trim($email['subject']), 0, 500) : null,
+            'content_label' => match ($kind) {
+                'auto_reply' => $this->translator->trans('mautic.inbox.ui.email_auto_reply'),
+                'bounce' => $this->translator->trans('mautic.inbox.ui.email_bounce'),
+                default => null,
+            },
+            'email' => [
+                'from' => $from,
+                'to' => $untag(self::addresses($email['to'] ?? [])),
+                'cc' => $untag(self::addresses($email['cc'] ?? [])),
+                'quoted' => is_string($email['quoted'] ?? null) && '' !== trim($email['quoted']) ? $email['quoted'] : null,
+                'has_html' => '' !== trim($html),
+                'has_original' => $stored && !empty($email['has_original']),
+                'auto_reply' => !empty($email['auto_reply']) || 'auto_reply' === $kind,
+                'unverified_sender' => !empty($email['unverified_sender']),
+                'kind' => $kind,
+            ] + ($withHtml ? ['html' => $clean] : []),
+            'attachments' => $attachments,
+            'failure' => $this->failure($message->getError()),
+        ];
+    }
+
+    /** @return array{name:string,address:string} */
+    public static function address(mixed $value): array
+    {
+        if (is_string($value)) { $value = ['address' => $value]; }
+        $address = is_array($value) && is_string($value['address'] ?? null) ? strtolower(trim($value['address'])) : '';
+        $name = is_array($value) && is_string($value['name'] ?? null) ? trim(str_replace(["\r", "\n"], ' ', $value['name'])) : '';
+
+        return ['name' => mb_substr($name, 0, 200), 'address' => mb_substr($address, 0, 254)];
+    }
+
+    /** @return list<array{name:string,address:string}> */
+    public static function addresses(mixed $value): array
+    {
+        if (!is_array($value)) { return []; }
+        $list = [];
+        foreach (array_slice(array_values($value), 0, 50) as $item) {
+            $address = self::address($item);
+            if ('' !== $address['address']) { $list[] = $address; }
+        }
+
+        return $list;
     }
 
     private function url(mixed $url): ?string

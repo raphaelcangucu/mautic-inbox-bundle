@@ -203,7 +203,7 @@ final class InboxController extends CommonController
         return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query): array {
             $payload = $this->payload($request);
             $state = $this->requireState($states, $stateId);
-            $outbound = $actions->reply($state, $this->user($users), (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null);
+            $outbound = $actions->reply($state, $this->user($users), (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null, null, null, null, is_string($payload['subject'] ?? null) ? $payload['subject'] : null);
 
             // O envio devolve o que acabou de criar porque senao ele custa mais duas idas ao
             // servidor: uma para o historico mostrar a mensagem e outra para a lista nao ficar

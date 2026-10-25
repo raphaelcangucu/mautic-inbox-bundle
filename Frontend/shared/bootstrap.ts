@@ -36,6 +36,8 @@ export function inboxBootstrap(root: HTMLElement): InboxBootstrap {
       note: data.noteUrl || "",
       emailOptions: data.emailOptionsUrl || "",
       emailApply: data.emailApplyUrl || "",
+      forms: data.formsUrl || "",
+      original: data.originalUrl || "",
       draft: data.draftUrl || "",
       canned: data.cannedUrl || "",
       cannedItem: data.cannedItemUrl || "",

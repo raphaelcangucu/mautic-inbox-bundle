@@ -85,7 +85,7 @@ final class InboxQuery
         }
         $channel = trim((string) ($filters['channel'] ?? ''));
         if ('' !== $channel) {
-            if (!in_array($channel, ['whatsapp', 'instagram', 'facebook', 'webchat'], true)) { throw new InboxException('mautic.inbox.ui.invalid_channel_df77fb'); }
+            if (!in_array($channel, ['whatsapp', 'instagram', 'facebook', 'webchat', 'email'], true)) { throw new InboxException('mautic.inbox.ui.invalid_channel_df77fb'); }
             $qb->andWhere('c.channel = :channel')->setParameter('channel', $channel);
         }
         $kind = (string) ($filters['kind'] ?? 'private');
@@ -357,10 +357,13 @@ final class InboxQuery
         $c = $state->getConversation();
         $contact = $c->getContact();
         $latest = array_key_exists((int) $c->getId(), $this->latestMessages) ? $this->latestMessages[(int) $c->getId()] : $this->entityManager->getRepository(MetaMessage::class)->findOneBy(['conversation' => $c], ['dateAdded' => 'DESC', 'id' => 'DESC']);
-        $preview = $latest instanceof MetaMessage ? mb_substr($this->timelineItem($latest, 'message', 4)['body'], 0, 180) : '';
+        // A previa so le o texto: pedir o item inteiro aqui sanearia o HTML de cada e-mail da
+        // pagina so para jogar fora.
+        $latestPresented = $latest instanceof MetaMessage ? $this->presentation->present($latest, false) : null;
+        $preview = null !== $latestPresented ? mb_substr((string) $latestPresented['body'], 0, 180) : '';
         $inbound = array_key_exists((int) $c->getId(), $this->latestInbound) ? $this->latestInbound[(int) $c->getId()] : $this->entityManager->getRepository(MetaMessage::class)->findOneBy(['conversation' => $c, 'direction' => 'inbound'], ['dateAdded' => 'DESC', 'id' => 'DESC']);
         $identity = $inbound?->getPayload() ?? [];
-        $participantName = $identity['contact']['profile']['name'] ?? $identity['commenterName'] ?? '';
+        $participantName = $identity['contact']['profile']['name'] ?? $identity['commenterName'] ?? $identity['email']['from']['name'] ?? '';
         $participantName = is_string($participantName) ? $participantName : '';
         $profilePhoto = $identity['contact']['profile']['profile_pic'] ?? null;
         $photoHost = is_string($profilePhoto) ? parse_url($profilePhoto, PHP_URL_HOST) : null;
@@ -389,17 +392,55 @@ final class InboxQuery
             // 24h e modelos, o outro nao tem nem um nem outro.
             'channel' => $c->getChannel(), 'asset' => ['id' => $c->getAsset()->getId(), 'name' => $c->getAsset()->getName(), 'handle' => $c->getAsset()->getUsername(), 'phone' => $c->getAsset()->getPhoneNumber(), 'type' => $c->getAsset()->getType()->value],
             'recipient' => $participant, 'contact_name' => $displayName,
-            'conversation_kind' => $public ? ('reel' === ($identity['origin_media']['kind'] ?? null) ? $this->translator->trans('mautic.inbox.ui.reel_comment_6f7cab') : $this->translator->trans('mautic.inbox.ui.public_comment_4a1398')) : ('facebook' === $c->getChannel() ? 'Messenger' : $this->translator->trans('mautic.inbox.ui.private_message_e7efc2')),
+            'conversation_kind' => $public ? ('reel' === ($identity['origin_media']['kind'] ?? null) ? $this->translator->trans('mautic.inbox.ui.reel_comment_6f7cab') : $this->translator->trans('mautic.inbox.ui.public_comment_4a1398')) : ('facebook' === $c->getChannel() ? 'Messenger' : ('email' === $c->getChannel() ? $this->translator->trans('mautic.inbox.ui.email_conversation') : $this->translator->trans('mautic.inbox.ui.private_message_e7efc2'))),
             'reply_public' => $public && 'facebook' === $c->getChannel(),
             'assignee' => null === $state->getAssignee() ? null : ['id' => $state->getAssignee()->getId(), 'name' => $state->getAssignee()->getName()],
             'lifecycle' => $state->getLifecycle(), 'needs_response' => $state->needsResponse(), 'unread' => $c->getUnreadCount(),
             'human_takeover' => $state->isHumanTakeover(), 'snoozed_until' => $state->getSnoozedUntil()?->format(DATE_ATOM),
             'last_message_at' => $c->getLastMessageAt()->format(DATE_ATOM), 'updated_at' => $state->getDateModified()->format(DATE_ATOM),
         ];
+        if ('email' === $c->getChannel()) {
+            $summary = $this->emailSummary($summary, $state, $latestPresented);
+        }
 
         $transport = $this->channelTransports->for($c);
 
         return null === $transport ? $summary : array_replace($summary, $transport->conversationMetadata($state));
+    }
+
+    /**
+     * O que a conversa de e-mail soma ao resumo (plano, secao 1.6): o assunto da ultima
+     * mensagem, o endereco da conta e a saude da leitura da caixa. Os nomes das chaves de
+     * `settings` sao do Multi Mail (secao 1.2).
+     *
+     * @param array<string,mixed>      $summary
+     * @param array<string,mixed>|null $latest  a ultima mensagem ja apresentada, sem HTML
+     * @return array<string,mixed>
+     */
+    private function emailSummary(array $summary, ConversationState $state, ?array $latest): array
+    {
+        $conversation = $state->getConversation();
+        $settings = $conversation->getAsset()->getSettings();
+        $subject = is_string($latest['subject'] ?? null) && '' !== $latest['subject'] ? $latest['subject'] : null;
+        if (null === $subject) {
+            // Nenhuma mensagem gravada ainda tem assunto: a primeira resposta da conversa so
+            // existe como pedido na fila ate o canal envia-la.
+            $request = $this->entityManager->getRepository(OutboundRequest::class)->findOneBy(['conversation' => $conversation], ['id' => 'DESC']);
+            $pending = $request instanceof OutboundRequest ? ($request->getJob()?->getPayload()['subject'] ?? null) : null;
+            $subject = is_string($pending) && '' !== trim($pending) ? trim($pending) : null;
+        }
+        $status = (string) ($settings['email_inbound_status'] ?? 'ok');
+        $since = $settings['email_inbound_since'] ?? null;
+        $summary['subject'] = $subject;
+        $summary['asset']['address'] = is_string($settings['email_address'] ?? null) ? strtolower(trim($settings['email_address'])) : null;
+        // O contrato so conhece "ok" e "delayed". Senha recusada tambem e leitura parada, e o
+        // atendente precisa da mesma faixa: o envio segue, a resposta do lead nao chega.
+        $summary['email'] = [
+            'inbound' => in_array($status, ['delayed', 'auth_failed'], true) ? 'delayed' : 'ok',
+            'inbound_since' => in_array($status, ['delayed', 'auth_failed'], true) && is_string($since) && '' !== $since ? $since : null,
+        ];
+
+        return $summary;
     }
 
     /**
@@ -442,9 +483,74 @@ final class InboxQuery
                 'contact_identity_mismatch' => $this->translator->trans('mautic.inbox.ui.contact_identity_mismatch'),
                 default => $entity->getFailureReason() && str_starts_with($entity->getFailureReason(), 'mautic.inbox.') ? $this->translator->trans($entity->getFailureReason()) : $entity->getFailureReason(),
             };
-            return (!empty($payload['_inbox_audio_id']) && preg_match('/^[a-f0-9]{32}$/D',(string)$payload['_inbox_audio_id']) ? ['attachments'=>[['type'=>'audio','mime'=>'audio/mp4','label'=>'Áudio','available'=>true,'url'=>'/inbox/mobile/api/audio/'.$payload['_inbox_audio_id']]]] : []) + ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'retryable' => 'failed' === $entity->getStatus() && null !== $entity->getJob(), 'failure' => $failure, 'failure_code' => $diagnostic['code'], 'cooldown_seconds' => $diagnostic['seconds'], 'retry_of' => is_string($payload['_retry_of'] ?? null) ? $payload['_retry_of'] : null, 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
+            $email = 'email' === $entity->getConversation()->getChannel() ? $this->outboundEmail($entity, $payload) : [];
+
+            return $email + (!empty($payload['_inbox_audio_id']) && preg_match('/^[a-f0-9]{32}$/D',(string)$payload['_inbox_audio_id']) ? ['attachments'=>[['type'=>'audio','mime'=>'audio/mp4','label'=>'Áudio','available'=>true,'url'=>'/inbox/mobile/api/audio/'.$payload['_inbox_audio_id']]]] : []) + ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'retryable' => 'failed' === $entity->getStatus() && null !== $entity->getJob(), 'failure' => $failure, 'failure_code' => $diagnostic['code'], 'cooldown_seconds' => $diagnostic['seconds'], 'retry_of' => is_string($payload['_retry_of'] ?? null) ? $payload['_retry_of'] : null, 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
         }
-        return ['kind' => 'event', 'id' => $entity->getId(), 'event' => $entity->getEventType(), 'author' => $entity->getActor()?->getName(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
+        return self::eventDetails($entity) + ['kind' => 'event', 'id' => $entity->getId(), 'event' => $entity->getEventType(), 'author' => $entity->getActor()?->getName(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
+    }
+
+    /**
+     * Os eventos do formulario e da campanha dizem QUAL formulario e QUAL campanha; os outros
+     * eventos continuam saindo so com o tipo, como sempre.
+     *
+     * @return array<string,mixed>
+     */
+    private static function eventDetails(EventLog $event): array
+    {
+        $details = $event->getDetails();
+
+        return match ($event->getEventType()) {
+            'form_opened' => ['form' => ['id' => (int) ($details['form_id'] ?? 0), 'name' => (string) ($details['form_name'] ?? '')]],
+            'form_submitted' => [
+                'form' => ['id' => (int) ($details['form_id'] ?? 0), 'name' => (string) ($details['form_name'] ?? '')],
+                'answers' => array_values(array_filter(is_array($details['answers'] ?? null) ? $details['answers'] : [], static fn (mixed $answer): bool => is_array($answer) && is_string($answer['label'] ?? null) && is_string($answer['value'] ?? null))),
+            ],
+            'campaign_email_started' => ['campaign' => ['id' => (int) ($details['campaign_id'] ?? 0), 'name' => (string) ($details['campaign_name'] ?? '')]],
+            default => [],
+        };
+    }
+
+    /**
+     * O envio do atendente por e-mail, na mesma forma da mensagem recebida. O assunto vem do
+     * payload do job, porque OutboundRequest nao tem coluna para ele. Depois que o canal envia,
+     * a MetaMessage de saida tem os cabecalhos reais (From com o nome do atendente, o HTML
+     * gerado); antes disso eles sao montados a partir da conta e da conversa.
+     *
+     * @param array<string,mixed> $payload
+     * @return array<string,mixed>
+     */
+    private function outboundEmail(OutboundRequest $request, array $payload): array
+    {
+        $subject = is_string($payload['subject'] ?? null) && '' !== trim($payload['subject']) ? trim($payload['subject']) : null;
+        $messageId = $request->getJob()?->getMessageLogId();
+        $message = null !== $messageId ? $this->entityManager->find(MetaMessage::class, $messageId) : null;
+        if ($message instanceof MetaMessage && is_array($message->getPayload()['email'] ?? null)) {
+            $presented = $this->presentation->present($message);
+
+            return ['subject' => $presented['subject'] ?? $subject, 'email' => $presented['email'], 'attachments' => $presented['attachments']];
+        }
+        $conversation = $request->getConversation();
+        $settings = $conversation->getAsset()->getSettings();
+        $author = trim((string) ($payload['author_name'] ?? '')) ?: $request->getAuthor()->getName();
+        $account = trim((string) ($settings['email_from_name'] ?? '')) ?: $conversation->getAsset()->getName();
+
+        return [
+            'subject' => $subject,
+            'email' => [
+                'from' => ['name' => '' !== $author ? $author.' · '.$account : $account, 'address' => strtolower(trim((string) ($settings['email_address'] ?? '')))],
+                'to' => [['name' => (string) ($conversation->getContact()?->getName() ?? ''), 'address' => $conversation->getRecipient()]],
+                'cc' => [],
+                'quoted' => null,
+                'has_html' => false,
+                'has_original' => false,
+                'auto_reply' => false,
+                'unverified_sender' => false,
+                'kind' => 'message',
+                'html' => '',
+            ],
+            'attachments' => [],
+        ];
     }
 
     /** @return list<array<string,mixed>> */

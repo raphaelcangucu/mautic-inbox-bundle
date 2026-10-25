@@ -19,6 +19,9 @@ return function (ContainerConfigurator $configurator): void {
     $excludes[] = 'Application/Push/VapidKeys.php'; // construtor privado: nao e servico
     $excludes[] = 'Application/Push/PushResult.php'; // objeto de valor, argumentos escalares
     $excludes[] = 'DependencyInjection/Compiler';
+    // As ferramentas MCP entram pelo manifesto Config/mcp.php, que o MCP bundle registra com
+    // os bindings delas. Carregar de novo aqui, sem bindings, so funciona se o MCP vier depois.
+    $excludes[] = 'Mcp';
     $services->load('MauticPlugin\\MauticInboxBundle\\', '../')->exclude('../{'.implode(',', $excludes).'}');
     $services->load('MauticPlugin\\MauticInboxBundle\\Entity\\', '../Entity/*Repository.php')->tag(ServiceRepositoryCompilerPass::REPOSITORY_SERVICE_TAG);
     $services->set(\MauticPlugin\MauticInboxBundle\EventListener\ChatQueryIndexes::class)->tag('doctrine.event_listener', ['event' => 'loadClassMetadata']);

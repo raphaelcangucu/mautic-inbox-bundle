@@ -31,6 +31,18 @@ final class NotificationBatchTest extends TestCase
         self::assertTrue($result['notifications_more']);
     }
 
+    public function testAnAutomaticEmailReplyOrBounceCallsNobody(): void
+    {
+        $result = NotificationBatch::present([
+            ['id' => 31, 'state_id' => 4, 'notification_payload' => ['email' => ['kind' => 'auto_reply', 'auto_reply' => true, 'text' => 'Estou de férias']]],
+            ['id' => 32, 'state_id' => 4, 'notification_payload' => ['email' => ['kind' => 'bounce', 'text' => '550 mailbox not found']]],
+            ['id' => 33, 'state_id' => 4, 'notification_payload' => ['email' => ['kind' => 'message', 'auto_reply' => false, 'text' => 'Qual o depósito mínimo?']]],
+        ], 30);
+
+        self::assertSame([['id' => 33, 'state_id' => 4]], $result['notifications']);
+        self::assertSame(33, $result['notification_cursor']);
+    }
+
     public function testLegacyNotificationsAndEmptyBatchKeepTheirBehavior(): void
     {
         self::assertSame(['notifications' => [], 'notification_cursor' => 25, 'notifications_more' => false], NotificationBatch::present([], 25));

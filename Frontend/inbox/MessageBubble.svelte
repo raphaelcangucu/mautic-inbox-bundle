@@ -32,6 +32,26 @@
     )[status || ""] ||
     status ||
     t("mautic.inbox.ui.unconfirmed_90d72f");
+  /** Os eventos do formulario e da campanha dizem qual; o resto continua so com o tipo. */
+  const named = (entry: TimelineItem): string | null =>
+    entry.event === "form_opened"
+      ? t("mautic.inbox.ui.form_opened").replace(
+          "%form%",
+          entry.form?.name || "",
+        )
+      : entry.event === "form_submitted"
+        ? t("mautic.inbox.ui.form_submitted").replace(
+            "%form%",
+            entry.form?.name || "",
+          )
+        : entry.event === "campaign_email_started"
+          ? t("mautic.inbox.ui.campaign_email_started").replace(
+              "%campaign%",
+              entry.campaign?.name || "",
+            )
+          : entry.event === "email_unsubscribed"
+            ? t("mautic.inbox.ui.email_unsubscribed")
+            : null;
   const event = (name?: string) =>
     (
       ({
@@ -70,7 +90,13 @@
   class:outbound={isOutbound}
   class:ai-authored={Boolean(item.ai)}
 >
-  {#if item.kind === "event"}{event(item.event)} · {time(item.timestamp)}
+  {#if item.kind === "event"}{named(item) ?? event(item.event)} · {time(
+      item.timestamp,
+    )}
+    {#if item.answers?.length}<dl class="inbox-form-answers">
+        {#each item.answers as answer}<dt>{answer.label}</dt>
+          <dd>{answer.value}</dd>{/each}
+      </dl>{/if}
   {:else}
     {#if item.ai}<div class="inbox-ai-message-badge">
         ✦ {item.ai.agent || "AI"} · AI

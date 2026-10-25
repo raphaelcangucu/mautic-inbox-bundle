@@ -28,7 +28,7 @@ Todas as rotas abaixo começam em `/inbox/mobile/api/`. Header: `Authorization: 
 | GET `conversations/{id}` | Contexto real e capacidades do operador |
 | GET `conversations/{id}/history?limit=40&before=…` | Timeline por identidade `kind:id`, recibos reais |
 | GET `updates?since=…&state_id=…` | Poll legado; o chat mobile atualiza o histórico para captar recibos alterados |
-| POST `conversations/{id}/reply` | `body`, `request_id`, template/variáveis ou `reply_mode`; exige responsável/permissão e janela do canal |
+| POST `conversations/{id}/reply` | `body`, `request_id`, template/variáveis ou `reply_mode`; `subject` opcional só no e-mail; exige responsável/permissão e janela do canal |
 | POST `conversations/{id}/take` | `version`; assumir e pausar IA |
 | POST `conversations/{id}/state` | `version`, `action`: read/resolve/reopen/transfer/unassign/snooze; alvo/prazo conforme ação |
 | POST `conversations/{id}/note` | Nota interna; não há retry automático |
@@ -42,12 +42,54 @@ Todas as rotas abaixo começam em `/inbox/mobile/api/`. Header: `Authorization: 
 | GET/POST `canned-responses` | Respostas prontas persistidas; edição exige permissão |
 | GET `notifications?cursor=…` | Eventos reais com state_id e flags de supressão |
 | GET `media/{id}` | Proxy privado existente sob identidade do operador |
+| GET `email/{messageId}/attachments/{index}` | Anexo de e-mail pelo proxy autenticado (ver "Canal de e-mail") |
+| POST `messages/{messageId}/original-link` | Link assinado de 5 minutos para o HTML original saneado |
+| GET `forms` | Formulários publicados `[{id,name}]` para o marcador `[[form:ID]]` |
+| GET `contacts/{id}` / POST `contacts/{id}/start` | Sheet de canais; inclui `email:{assetId}` (ver "Canal de e-mail") |
 | POST `conversations/{id}/moderation` | Spam/restore/block/unblock no atendimento; hide/show no Instagram, versionamento e registro do ator |
 | POST `assistant/messages` | Pi e MCP de leitura sob permissões do operador |
 
 Rejeições mantêm status HTTP de autenticação/permissão/conflito/validação. O app não converte erro de rede em sucesso. `202` indica aceitação; `pending/sent/delivered/read` vêm do histórico. Um `request_id` estável permite reconciliar resultados incertos. Foi corrigido o replay sequencial no transporte externo para não redisparar um outbound já processado. Concorrência simultânea de dois clientes com o mesmo ID ainda exige teste específico.
 
 Comentários conservam o tipo mesmo quando o `recipient` público é o participante. Facebook: público; Instagram: privado, conforme implementação existente. Templates não abrem a janela de texto livre até nova resposta do usuário. Upload é recusado com capacidade explicitamente indisponível.
+
+## Canal de e-mail (Inbox 1.9.0)
+
+Contrato do plano `docs/superpowers/plans/2026-10-24-canal-email-threads.md`, seção 1.6. Os campos abaixo **somam-se** aos atuais; nada existente muda de forma. Exige Meta 0.15.0; envio, leitura IMAP, anexos e original são do Multi Mail 0.5.0. Sem o Multi Mail, `has_original` e `available` saem `false` e nenhuma rota de e-mail falha com 500.
+
+**Capacidades.** `GET /inbox/mobile/config` → `capabilities.channels` inclui `"email"`.
+
+**Sheet de canais.** `GET contacts/{id}` → `channels[]` ganha uma opção por conta `email_account` ativa e publicada que ainda não tem conversa com o contato:
+
+```json
+{"key":"email:31","state_id":null,"asset_id":31,"channel":"email","name":"Macro Markets · contato@macromarkets.com","address":"contato@macromarkets.com","available":true,"reason":null}
+```
+
+Motivos de indisponível: `"Cadastre um e-mail válido no contato."`, `"O contato pediu para não receber e-mails."`, `"Esta conta de e-mail está desativada."`. A conversa de e-mail que já existe aparece como hoje (`key: "state:{id}"`, `channel: "email"`), com `address` somado. `POST contacts/{id}/start` com `{"channel_key":"email:31"}` cria (ou reencontra) a conversa `(conta, e-mail do contato em minúsculas)`, atribuída a quem abriu e com `human_takeover`, **sem enviar nada**, e devolve o resumo; e-mail já ligado a outro contato → 409.
+
+**Resumo da conversa de e-mail:**
+
+```json
+{"channel":"email","asset":{"id":31,"name":"Macro Markets","type":"email_account","address":"contato@macromarkets.com"},"recipient":"joao@example.com","subject":"Re: Por que você ainda não depositou?","email":{"inbound":"ok","inbound_since":null}}
+```
+
+`subject` é o da última mensagem (ou do primeiro envio ainda na fila; `null` numa conversa nova). `email.inbound` vira `"delayed"`, com `inbound_since` ISO-8601, quando a leitura IMAP falha há mais de 30 minutos **ou** a senha IMAP foi recusada; o envio continua disponível. `reply_blocked_reason` do e-mail: conversa resolvida, conta desativada, DNC de e-mail do contato ou destinatário sem e-mail válido. Não há janela de 24 h.
+
+**Item do histórico** (mensagem de e-mail, entrada ou saída, inclusive o envio do atendente ainda na fila):
+
+```json
+{"body":"Oi Ana, ainda estou decidindo. **Qual o depósito mínimo?**","subject":"Re: Por que você ainda não depositou?","email":{"from":{"name":"João Lead","address":"joao@example.com"},"to":[{"name":"Macro Markets","address":"contato@macromarkets.com"}],"cc":[],"quoted":"> Em 23/10, Ana escreveu: ...","has_html":true,"has_original":true,"auto_reply":false,"unverified_sender":false,"kind":"message"},"attachments":[{"type":"document","label":"extrato.pdf","url":"/inbox/mobile/api/email/7/attachments/0","available":true,"size":183422,"mime":"application/pdf"}]}
+```
+
+`body` é o texto novo em markdown; `quoted` é o citado, para o "•••". `kind`: `message` | `auto_reply` | `bounce` | `unreadable`. `content_label` traz "Resposta automática" ou "Devolvido pelo servidor de e-mail" nesses casos. O `to` mostra a conta **sem o +tag**. O app não recebe `email.html` (o web recebe o HTML saneado para o iframe). Anexo indisponível (sem antivírus, recusado, tipo não permitido ou Multi Mail ausente) sai com `available:false` e `url:null`.
+
+**Responder.** `POST conversations/{id}/reply` com `{"body":"…","request_id":"…","subject":"Re: …"}`. `subject` é opcional e ignorado fora do e-mail; vazio vira `Re: <assunto da última mensagem>`; o primeiro e-mail de uma conversa sem assunto anterior exige `subject` (422). Corpo até 4000 caracteres. O item de saída da resposta 202 traz `subject` e `email`. Modelos WhatsApp não valem no e-mail (409).
+
+**Anexos.** `GET email/{messageId}/attachments/{index}` (Bearer) entrega o arquivo com `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`, `Cache-Control: no-store, private`; imagem `inline`, todo o resto `attachment`; tipo fora da lista vira `application/octet-stream`. Exige acesso à conversa; 404 quando o anexo não existe, não está disponível ou o operador não vê a conversa. No web, o mesmo arquivo sai em `/s/inbox/api/email/{messageId}/attachments/{index}`; o histórico mobile já devolve o caminho mobile.
+
+**Original.** `POST messages/{messageId}/original-link` → `{"url":"https://…/inbox/mobile/original/{token}","expires_at":"…"}`. O token é HMAC (chave derivada do `secret_key` do Mautic), vale 5 minutos e fica amarrado à mensagem e ao usuário da sessão, que precisa continuar vendo a conversa. A página devolve o HTML saneado com `Content-Security-Policy: sandbox …; img-src data:` (imagens remotas só pelo link "Mostrar imagens" da própria página) e `no-store`. 404 quando a mensagem não tem original. No web: `GET /s/inbox/api/messages/{id}/original` → `{"html":"<saneado>"}`.
+
+**Formulários.** `GET forms` → `[{"id":12,"name":"Pesquisa: por que não depositou"}]` (exige permissão de responder). O marcador `[[form:12]]` no corpo vira, no enfileiramento, `[Nome do formulário](https://…/inbox/f/{token})` no e-mail e `Nome do formulário: https://…/inbox/f/{token}` no WhatsApp. O token identifica formulário, contato e conversa por 30 dias. Formulário despublicado, conversa sem contato ou mais de cinco formulários → 422 antes de enfileirar. Abrir o link marca o contato como rastreado, grava o evento `form_opened` e redireciona para `/form/{id}`; o envio grava `form_submitted`. No histórico, esses eventos trazem `form: {id, name}`, e `form_submitted` traz `answers: [{label, value}]`. A ação de campanha grava `campaign_email_started` com `campaign: {id, name}`; o descadastro de um clique grava `email_unsubscribed`.
 
 ## Assistente Pi + MCP
 

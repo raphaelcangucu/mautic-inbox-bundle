@@ -65,6 +65,13 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
             $this->entityManager->persist($state);
             $created = true;
         }
+        if (self::automaticEmail($message)) {
+            // Resposta automatica ("estou de ferias") e devolucao entram na linha do tempo, mas
+            // nao reabrem a conversa, nao pedem resposta e nao tocam o push: ninguem escreveu.
+            if ($created) { $state->setNeedsResponse(false); }
+            $this->entityManager->flush();
+            return;
+        }
         if (in_array($message->getChannel(), ['instagram', 'facebook'], true) && 'comment' === $message->getMessageType()) {
             $this->recordCommentContext($message);
         } elseif (in_array($message->getChannel(), ['instagram', 'facebook'], true) && in_array($message->getMessageType(), ['direct_message', 'postback'], true)) {
@@ -120,9 +127,23 @@ final class MetaInboxIntegration implements InboxIntegrationInterface
         return '' !== $name ? $name : (string) $message->getRecipient();
     }
 
+    private static function automaticEmail(MetaMessage $message): bool
+    {
+        $email = $message->getPayload()['email'] ?? null;
+
+        return 'email' === $message->getChannel() && is_array($email) && (!empty($email['auto_reply']) || in_array($email['kind'] ?? null, ['auto_reply', 'bounce'], true));
+    }
+
     private function preview(MetaMessage $message): string
     {
         $payload = $message->getPayload();
+        if (is_array($payload['email'] ?? null)) {
+            // Push de e-mail: assunto e trecho, que e o que o atendente usa para decidir abrir.
+            $subject = trim((string) ($payload['email']['subject'] ?? ''));
+            $text = trim((string) preg_replace('/\s+/u', ' ', (string) ($payload['email']['text'] ?? '')));
+
+            return '' !== $subject && '' !== $text ? $subject.' — '.$text : ($subject ?: ($text ?: 'Enviou um e-mail'));
+        }
         $content = is_array($payload['message'] ?? null) ? $payload['message'] : $payload;
         $text    = $content['text']['body'] ?? $content['text'] ?? $payload['text'] ?? '';
 

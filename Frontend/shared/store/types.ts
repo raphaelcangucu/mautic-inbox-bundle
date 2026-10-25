@@ -18,6 +18,8 @@ export interface PendingMessage {
    * nao importa. Nota nao tem: ver noteId.
    */
   readonly requestId?: string;
+  /** So e-mail: o assunto escolhido na composicao, reusado na retentativa. */
+  readonly subject?: string;
   /** Preenchido quando a resposta do /note volta. Antes disso a nota nao tem chave. */
   noteId?: number;
   /** Dois estados, e so dois. Aceita pelo servidor a pendente DEIXA DE EXISTIR. */

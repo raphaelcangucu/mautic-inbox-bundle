@@ -50,6 +50,7 @@
             instagram: "Instagram",
             facebook: "Facebook",
             webchat: "Web Chat",
+            email: t("mautic.inbox.ui.email_channel"),
           } as Record<string, string>
         )[value] || value;
 </script>
@@ -118,6 +119,7 @@
             >Instagram</option
           ><option value="facebook">Facebook / Messenger</option><option
             value="webchat">Web Chat</option
+          ><option value="email">{t("mautic.inbox.ui.email_channel")}</option
           ></select
         ></label
       >
@@ -165,8 +167,11 @@
             <div class="inbox-list-meta">
               {channelLabel(item.channel, item.asset.type)} · {item.asset.handle
                 ? `@${item.asset.handle}`
-                : item.asset.phone || item.asset.name}
+                : item.asset.phone || item.asset.address || item.asset.name}
             </div>
+            {#if item.channel === "email"}<div class="inbox-list-subject">
+                {item.subject || t("mautic.inbox.ui.email_no_subject")}
+              </div>{/if}
             <div class="inbox-list-preview">
               {item.preview || item.last_message_preview || item.asset.name}
             </div>

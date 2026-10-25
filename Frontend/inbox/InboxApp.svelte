@@ -10,6 +10,10 @@
   import EmailActions from "./EmailActions.svelte";
   import ContactPanel from "./ContactPanel.svelte";
   import Composer from "./Composer.svelte";
+  import EmailThread from "./EmailThread.svelte";
+  import EmailComposer from "./EmailComposer.svelte";
+  import EmailBody from "./EmailBody.svelte";
+  import { threadSubject } from "./emailThread";
   import SettingsView from "./SettingsView.svelte";
   import * as push from "../shared/push";
   import type { PendingMessage } from "../shared/store/types";
@@ -556,6 +560,56 @@
   }
   /** O endereco em que o atendente tocou. null enquanto a folha esta fechada. */
   let emailAberto: string | null = null;
+  /** O "Ver original" aberto: o HTML completo, saneado pelo servidor, no mesmo iframe. */
+  let original: { title: string; html: string } | null = null;
+  let originalLoading = false;
+  /** Os formularios publicados, buscados uma vez por pagina no primeiro "+". */
+  let formsCache: Promise<Array<{ id: number; name: string }>> | null = null;
+  function loadForms(): Promise<Array<{ id: number; name: string }>> {
+    formsCache ??= api<Array<{ id: number; name: string }>>(url("forms")).catch(
+      (error) => {
+        formsCache = null;
+        throw error;
+      },
+    );
+    return formsCache;
+  }
+  async function openOriginal(item: TimelineItem): Promise<void> {
+    if (originalLoading) return;
+    originalLoading = true;
+    try {
+      const data = await api<{ html: string }>(url("original", item.id));
+      original = { title: item.subject || "", html: data.html };
+    } catch (error) {
+      showError((error as Error).message);
+    } finally {
+      originalLoading = false;
+    }
+  }
+  /**
+   * Encaminhar reaproveita o que o atendente ja faz: o texto da ultima mensagem vai para a area
+   * de transferencia, e dali para o rascunho de outra conversa. O texto, nunca o HTML.
+   */
+  async function forwardEmail(): Promise<void> {
+    const last = [...timeline]
+      .reverse()
+      .find((item) => ["message", "outbound", "automatic"].includes(item.kind));
+    if (!last) return;
+    const text = [
+      last.subject
+        ? `${t("mautic.inbox.ui.email_subject")}: ${last.subject}`
+        : "",
+      last.body || "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      showSuccess(t("mautic.inbox.ui.email_forward_copied"));
+    } catch (error) {
+      showError((error as Error).message);
+    }
+  }
   function showError(message: string, source = ""): void {
     feedback = message;
     feedbackError = true;
@@ -635,7 +689,7 @@
    * Nao ha mais trava. Dois envios seguidos criam duas pendentes, e e o `filaDeTake` que
    * impede que eles disputem a mesma versao da conversa no take.
    */
-  async function send(): Promise<void> {
+  async function send(subject?: string): Promise<void> {
     if (!selected || !composerBody.trim()) return;
     const text = composerBody.trim(),
       id = selected.id,
@@ -670,6 +724,8 @@
         const pendingDraft = draftWrites[key];
         if (pendingDraft) await pendingDraft.catch(() => undefined);
       },
+      // Assunto vazio vira "Re: <ultimo assunto>" no servidor; so o e-mail manda um.
+      !isNote && selected.channel === "email" && subject ? subject : undefined,
     );
 
     // A pendente ja esta no estado neste ponto: `sendReply` a insere antes do primeiro await.
@@ -1249,10 +1305,12 @@
                   instagram: "Instagram",
                   facebook: "Facebook",
                   webchat: "Web Chat",
+                  email: t("mautic.inbox.ui.email_channel"),
                 }[selected.channel] || selected.channel} · {selected.asset
                   .handle
                   ? `@${selected.asset.handle}`
                   : selected.asset.phone ||
+                    selected.asset.address ||
                     selected.asset.name}{selected.assignee
                   ? ` · ${selected.assignee.name}`
                   : t("mautic.inbox.ui.unassigned_3986c8")}
@@ -1301,25 +1359,38 @@
             </div>
           </header>
           <div class="inbox-thread-body">
-            <Timeline
-              {selected}
-              items={timeline}
-              {older}
-              locale={config.locale}
-              {t}
-              onOlder={loadOlder}
-              retry={(item) => void retryOutbound(item)}
-              {retryBusy}
-              pendingMessages={pendentes}
-              onRetryPending={(mensagem) => void reenviarPendente(mensagem)}
-              pending={ai?.pending_reply || null}
-              aiCanAssign={Boolean(ai?.can_assign)}
-              aiRetryBusy={aiRetryBusy || aiMutationBusy}
-              onAiSend={() => void sendAiPending()}
-              onAiRegenerate={() => void resetAi()}
-              onEmail={(endereco) => (emailAberto = endereco)}
-              remoteTyping={webchatTyping}
-            /><ContactPanel
+            {#if selected.channel === "email"}<EmailThread
+                {selected}
+                items={timeline}
+                {older}
+                locale={config.locale}
+                {t}
+                onOlder={loadOlder}
+                retry={(item) => void retryOutbound(item)}
+                {retryBusy}
+                pendingMessages={pendentes}
+                onRetryPending={(mensagem) => void reenviarPendente(mensagem)}
+                onEmail={(endereco) => (emailAberto = endereco)}
+                onOriginal={(item) => void openOriginal(item)}
+              />{:else}<Timeline
+                {selected}
+                items={timeline}
+                {older}
+                locale={config.locale}
+                {t}
+                onOlder={loadOlder}
+                retry={(item) => void retryOutbound(item)}
+                {retryBusy}
+                pendingMessages={pendentes}
+                onRetryPending={(mensagem) => void reenviarPendente(mensagem)}
+                pending={ai?.pending_reply || null}
+                aiCanAssign={Boolean(ai?.can_assign)}
+                aiRetryBusy={aiRetryBusy || aiMutationBusy}
+                onAiSend={() => void sendAiPending()}
+                onAiRegenerate={() => void resetAi()}
+                onEmail={(endereco) => (emailAberto = endereco)}
+                remoteTyping={webchatTyping}
+              />{/if}<ContactPanel
               {selected}
               users={config.users}
               {ai}
@@ -1341,26 +1412,41 @@
               onRelated={related}
             />
           </div>
-          <Composer
-            {selected}
-            currentUser={config.currentUser}
-            bind:mode
-            bind:body={composerBody}
-            {feedback}
-            {feedbackError}
-            {draftState}
-            {canned}
-            {templates}
-            {templatesLoading}
-            {templateBlocked}
-            bind:templateError
-            {t}
-            onMode={changeMode}
-            onInput={draftInput}
-            onSend={() => void send()}
-            onLoadTemplates={() => void loadTemplates()}
-            onTemplateSend={sendTemplate}
-          />
+          {#if selected.channel === "email"}<EmailComposer
+              {selected}
+              bind:mode
+              bind:body={composerBody}
+              threadSubject={threadSubject(selected, timeline)}
+              {feedback}
+              {feedbackError}
+              {draftState}
+              {canned}
+              {t}
+              onMode={changeMode}
+              onInput={draftInput}
+              onSend={(subject) => void send(subject)}
+              onForward={() => void forwardEmail()}
+              {loadForms}
+            />{:else}<Composer
+              {selected}
+              currentUser={config.currentUser}
+              bind:mode
+              bind:body={composerBody}
+              {feedback}
+              {feedbackError}
+              {draftState}
+              {canned}
+              {templates}
+              {templatesLoading}
+              {templateBlocked}
+              bind:templateError
+              {t}
+              onMode={changeMode}
+              onInput={draftInput}
+              onSend={() => void send()}
+              onLoadTemplates={() => void loadTemplates()}
+              onTemplateSend={sendTemplate}
+            />{/if}
         </div>{/if}
     </main>
   </div>
@@ -1383,6 +1469,32 @@
     {saveCanned}
     {deleteCanned}
   />{/if}
+
+{#if original}<div
+    class="inbox-email-original-modal"
+    role="dialog"
+    aria-modal="true"
+    aria-label={t("mautic.inbox.ui.email_original_title")}
+  >
+    <div class="inbox-email-original-sheet">
+      <header>
+        <strong>{t("mautic.inbox.ui.email_original_title")}</strong>
+        <span>{original.title}</span>
+        <button
+          id="inbox-email-original-close"
+          type="button"
+          class="inbox-icon-button"
+          aria-label={t("mautic.inbox.ui.email_close")}
+          on:click={() => (original = null)}><Icon name="close" /></button
+        >
+      </header>
+      <EmailBody
+        html={original.html}
+        {t}
+        title={t("mautic.inbox.ui.email_original_title")}
+      />
+    </div>
+  </div>{/if}
 
 <!-- Fora do bloco de abas: a folha cobre a tela, e prende-la ao ramo da conversa a faria
      desmontar no instante em que a acao mudasse a conversa selecionada. -->

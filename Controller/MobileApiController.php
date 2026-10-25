@@ -21,7 +21,7 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 /** Native bearer boundary. Business rules remain in the existing Inbox services. */
 final class MobileApiController extends CommonController
 {
-    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing, \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, \MauticPlugin\MauticInboxBundle\Application\Mobile\AudioStore $audioStore, \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialVisuals $visuals): Response
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing, \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, \MauticPlugin\MauticInboxBundle\Application\Mobile\AudioStore $audioStore, \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialVisuals $visuals, \MauticPlugin\MauticInboxBundle\Application\Email\EmailMessages $emailMessages, \MauticPlugin\MauticInboxBundle\Application\Forms\FormLinks $formLinks): Response
     {
         $previous = $tokens->getToken();
         try {
@@ -123,6 +123,23 @@ final class MobileApiController extends CommonController
                 $controller=$message instanceof \MauticPlugin\MauticMetaBundle\Entity\MetaMessage && $message->getAsset()->getType()->value === 'whatsapp_qr_session' && class_exists($qrController) ? $qrController.'::show' : InboxController::class.'::media';
                 $response=$this->forward($controller,['messageId'=>(int)$media[1]]);$response->headers->set('Cache-Control','no-store, private');return $response;
             }
+            // Canal de e-mail: os varios anexos de uma mensagem, o link assinado do original
+            // (o navegador do sistema nao manda o Bearer) e os formularios do composer.
+            if ($method === 'GET' && preg_match('#^email/([1-9][0-9]*)/attachments/([0-9]{1,4})$#D',$resource,$emailRoute)) {
+                $found=$emailMessages->find((int)$emailRoute[1]);
+                if (null===$found || !$access->canView($found['state'],$user)) { return $this->error('Arquivo indisponível.','not_found',404); }
+                $response=$emailMessages->attachment($found['message'],(int)$emailRoute[2]);$response->headers->set('Cache-Control','no-store, private');return $response;
+            }
+            if (preg_match('#^messages/([1-9][0-9]*)/original-link$#D',$resource,$originalRoute)) {
+                if ($method !== 'POST') { return $this->error('Método não permitido.','method_not_allowed',405); }
+                $found=$emailMessages->find((int)$originalRoute[1]);
+                if (null===$found || !$access->canView($found['state'],$user) || !$emailMessages->hasOriginal($found['message'])) { return $this->error('O original desta mensagem não está disponível.','not_found',404); }
+                return $this->data($emailMessages->originalLink($found['message'],$user));
+            }
+            if ($method === 'GET' && $resource === 'forms') {
+                if (!$permissions->isGranted(['inbox:conversations:create','meta:messages:create'])) { return $this->error('Ação não autorizada para seu usuário.','forbidden',403); }
+                return $this->data($formLinks->published());
+            }
 
             if ($method === 'DELETE' && $resource === 'session') { $sessions->revoke($match[1]); return $this->data(['revoked' => true]); }
             if ($method === 'GET' && $resource === 'me') { return $this->data(['user' => ['id' => (int) $user->getId(), 'name' => $user->getName(), 'email' => $user->getEmail()]]); }
@@ -174,7 +191,7 @@ final class MobileApiController extends CommonController
                 if ($flags['spam'] || $flags['blockedAuthor']) { return $this->error('Restaure o atendimento antes de responder.', 'moderated', 422); }
                 // Reuse the web Inbox's locking, idempotency, assignment and channel checks.
                 $out = $actions->retry($failed, $user, $payload['request_id']);
-                return $this->data(['request_id' => $out->getRequestId(), 'status' => $out->getStatus(), 'item' => $query->outboundItem($out), 'summary' => $decorate($query->summary($retryState))], 202);
+                return $this->data(['request_id' => $out->getRequestId(), 'status' => $out->getStatus(), 'item' => \MauticPlugin\MauticInboxBundle\Application\Mobile\MediaRoutes::items([$query->outboundItem($out)],$request->getSchemeAndHttpHost())[0], 'summary' => $decorate($query->summary($retryState))], 202);
             }
             if ($method === 'GET' && $resource === 'contacts') { return $this->data($directory->search($user,$request->query->all())); }
             if ($method === 'GET' && $resource === 'crm-options') { return $this->data($linking->catalogue($user,$request->query->all())); }
@@ -226,8 +243,9 @@ final class MobileApiController extends CommonController
                     if(!$audioStore->enabled() || !is_string($p['audio_id']) || $state->getConversation()->getAsset()->getType()->value !== 'whatsapp_qr_session')return $this->error('Este canal ainda não envia áudio.','unsupported_media',422);
                     try{$audio=$audioStore->forReply($p['audio_id'],(int)$state->getId(),(int)$user->getId(),(string)($p['request_id']??''));}catch(\DomainException){return $this->error('O áudio não pertence a este envio.','invalid_audio',422);}
                 }
-                $out = $actions->reply($state, $user, (string) ($p['body'] ?? ''), (string) ($p['request_id'] ?? ''), isset($p['template_id']) ? ['id' => (int) $p['template_id'], 'variables' => $p['variables'] ?? []] : null, $replyMode, null, $audio);
-                return $this->data(['request_id' => $out->getRequestId(), 'status' => $out->getStatus(), 'item' => $query->outboundItem($out), 'summary' => $decorate($query->summary($state))], 202);
+                if (isset($p['subject']) && !is_string($p['subject'])) { return $this->error('Assunto inválido.', 'invalid_request', 422); }
+                $out = $actions->reply($state, $user, (string) ($p['body'] ?? ''), (string) ($p['request_id'] ?? ''), isset($p['template_id']) ? ['id' => (int) $p['template_id'], 'variables' => $p['variables'] ?? []] : null, $replyMode, null, $audio, $p['subject'] ?? null);
+                return $this->data(['request_id' => $out->getRequestId(), 'status' => $out->getStatus(), 'item' => \MauticPlugin\MauticInboxBundle\Application\Mobile\MediaRoutes::items([$query->outboundItem($out)],$request->getSchemeAndHttpHost())[0], 'summary' => $decorate($query->summary($state))], 202);
             }
             if ($operation === 'moderation') {
                 if (!str_starts_with($state->getConversation()->getRecipient(),'comment:') && $state->getConversation()->getChannel() !== 'webchat') { return $this->error('Moderação disponível em comentários e no WebChat.','not_comment',422); }

@@ -184,6 +184,9 @@ final class AiWorker
             $operation = match ($conversation->getChannel()) {
                 'whatsapp' => 'whatsapp_text',
                 'facebook' => $comment ? 'facebook_public_reply' : 'facebook_direct_message',
+                // A disponibilidade ja recusa e-mail; esta e a guarda de quem chegasse aqui por
+                // outro caminho, porque o ramo padrao mandaria o texto como DM do Instagram.
+                'email' => throw new \DomainException('AI replies are not available for the email channel.'),
                 default => $comment ? 'instagram_private_reply' : 'instagram_direct_message',
             };
             $job = $this->queue->enqueue($conversation->getAsset(), $operation, ['recipient' => $comment ? substr($conversation->getRecipient(), 8) : $conversation->getRecipient(), 'text' => mb_substr($text, 0, 900), '_origin' => 'inbox_ai', '_inbox_conversation_id' => $conversation->getId(), '_ai_state' => $id, '_ai_nonce' => $assignment['nonce'], '_ai_inbound' => $lastInbound, '_ai_agent_key' => $assignment['agent'], '_ai_agent_name' => $agent['name']], $conversation->getContact(), 1, 'inbox-ai:'.$runKey);

@@ -16,6 +16,7 @@ final class ReplyAvailability
         private EntityManagerInterface $entityManager,
         private \Symfony\Contracts\Translation\TranslatorInterface $translator,
         private ChannelTransportRegistry $channelTransports,
+        private ?\Mautic\LeadBundle\Model\DoNotContact $doNotContact = null,
     ) {}
     public function reason(ConversationState $state, ?string $replyMode = null): ?string
     {
@@ -26,6 +27,9 @@ final class ReplyAvailability
         if (null !== ($transport = $this->channelTransports->for($c))) {
             return $transport->replyBlockedReason($state);
         }
+        // E-mail nao tem janela de sessao. Sem este ramo, a regra das 24 horas logo abaixo
+        // fecharia o canal com o texto do Instagram para toda conversa parada ha um dia.
+        if ('email' === $c->getChannel()) { return $this->emailReason($c); }
         if (UnresolvedRecipient::marks($c->getRecipient())) { return $this->translator->trans('mautic.inbox.ui.reply_recipient_unresolved'); }
         if ($qr && in_array((string) ($c->getAsset()->getSettings()['whatsqr_session_status'] ?? ''), ['logged_out', 'failed', 'ambiguous_credential'], true)) { return $this->translator->trans('mautic.inbox.ui.reply_qr_session_disconnected'); }
         if ('active' !== $c->getAsset()->getStatus() || !$c->getAsset()->isPublished()) { return $this->translator->trans('mautic.inbox.ui.the_channel_is_unavailable_review_the_connection_in_meta_a8f714'); }
@@ -53,6 +57,19 @@ final class ReplyAvailability
         } elseif (!$last || $last->getDateAdded() < new \DateTimeImmutable('-24 hours')) {
             return 'whatsapp' === $c->getChannel() ? $this->translator->trans('mautic.inbox.ui.no_message_was_received_in_the_last_24_hours_use_an_approved_what_bcb7ba') : ('facebook' === $c->getChannel() ? $this->translator->trans('mautic.inbox.ui.no_message_was_received_in_the_last_24_hours_wait_for_a_new_messe_7ed11e') : $this->translator->trans('mautic.inbox.ui.no_message_was_received_in_the_last_24_hours_wait_for_a_new_direc_221a2e'));
         }
+        return null;
+    }
+
+    private function emailReason(\MauticPlugin\MauticMetaBundle\Entity\MetaConversation $c): ?string
+    {
+        if ('active' !== $c->getAsset()->getStatus() || !$c->getAsset()->isPublished()) { return $this->translator->trans('mautic.inbox.ui.email_account_inactive'); }
+        $contact = $c->getContact();
+        // DNC de e-mail vale para toda saida, inclusive a resposta humana: e o pedido do lead.
+        if (null !== $contact && null !== $this->doNotContact && \Mautic\LeadBundle\Entity\DoNotContact::IS_CONTACTABLE !== $this->doNotContact->isContactable($contact, 'email')) {
+            return $this->translator->trans('mautic.inbox.ui.email_contact_unsubscribed');
+        }
+        if (!filter_var($c->getRecipient(), FILTER_VALIDATE_EMAIL)) { return $this->translator->trans('mautic.inbox.ui.email_recipient_invalid'); }
+
         return null;
     }
 
