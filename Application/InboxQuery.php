@@ -485,8 +485,17 @@ final class InboxQuery
                 default => $entity->getFailureReason() && str_starts_with($entity->getFailureReason(), 'mautic.inbox.') ? $this->translator->trans($entity->getFailureReason()) : $entity->getFailureReason(),
             };
             $email = 'email' === $entity->getConversation()->getChannel() ? $this->outboundEmail($entity, $payload) : [];
+            $status = $entity->getStatus();
+            $bounce = [] !== $email ? $this->emailBounce($entity) : null;
+            if (null !== $bounce) {
+                // O envio saiu, mas o servidor do lead devolveu: o cartao mostra a falha, sem
+                // reenvio, porque mandar de novo ao mesmo endereco volta do mesmo jeito.
+                $status = 'failed';
+                $failure = $this->translator->trans('mautic.inbox.ui.email_bounced', ['%diagnostic%' => $bounce]);
+                $diagnostic = ['code' => 'email_bounced', 'seconds' => null];
+            }
 
-            return $email + (!empty($payload['_inbox_audio_id']) && preg_match('/^[a-f0-9]{32}$/D',(string)$payload['_inbox_audio_id']) ? ['attachments'=>[['type'=>'audio','mime'=>'audio/mp4','label'=>'Áudio','available'=>true,'url'=>'/inbox/mobile/api/audio/'.$payload['_inbox_audio_id']]]] : []) + ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $entity->getStatus(), 'retryable' => 'failed' === $entity->getStatus() && null !== $entity->getJob(), 'failure' => $failure, 'failure_code' => $diagnostic['code'], 'cooldown_seconds' => $diagnostic['seconds'], 'retry_of' => is_string($payload['_retry_of'] ?? null) ? $payload['_retry_of'] : null, 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
+            return $email + (!empty($payload['_inbox_audio_id']) && preg_match('/^[a-f0-9]{32}$/D',(string)$payload['_inbox_audio_id']) ? ['attachments'=>[['type'=>'audio','mime'=>'audio/mp4','label'=>'Áudio','available'=>true,'url'=>'/inbox/mobile/api/audio/'.$payload['_inbox_audio_id']]]] : []) + ['kind' => 'outbound', 'id' => $entity->getId(), 'request_id' => $entity->getRequestId(), 'body' => $entity->getBody(), 'author' => $entity->getAuthor()->getName(), 'status' => $status, 'retryable' => 'failed' === $status && null === $bounce && null !== $entity->getJob(), 'failure' => $failure, 'failure_code' => $diagnostic['code'], 'cooldown_seconds' => $diagnostic['seconds'], 'retry_of' => is_string($payload['_retry_of'] ?? null) ? $payload['_retry_of'] : null, 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
         }
         return self::eventDetails($entity) + ['kind' => 'event', 'id' => $entity->getId(), 'event' => $entity->getEventType(), 'author' => $entity->getActor()?->getName(), 'timestamp' => $entity->getDateAdded()->format('Y-m-d\\TH:i:s.uP'), 'sort' => $entity->getId(), 'rank' => $rank];
     }
@@ -552,6 +561,22 @@ final class InboxQuery
             ],
             'attachments' => [],
         ];
+    }
+
+    /**
+     * O diagnostico do bounce de um envio do atendente por e-mail, ou null. O canal marca a
+     * MetaMessage de saida como failed quando chega o DSN, depois de o job ja ter terminado; o
+     * OutboundRequest continua "sent", entao a falha e lida daqui.
+     */
+    private function emailBounce(OutboundRequest $request): ?string
+    {
+        $messageId = $request->getJob()?->getMessageLogId();
+        $message = null !== $messageId ? $this->entityManager->find(MetaMessage::class, $messageId) : null;
+        $bounce = $message instanceof MetaMessage && 'failed' === $message->getStatus() ? ($message->getPayload()['email']['bounce'] ?? null) : null;
+        if (!is_array($bounce)) { return null; }
+        $text = trim((string) ($bounce['status'] ?? '').' '.preg_replace('/^smtp;\s*/i', '', (string) ($bounce['diagnostic'] ?? '')));
+
+        return '' === $text ? '-' : mb_substr($text, 0, 200);
     }
 
     /** @return list<array<string,mixed>> */

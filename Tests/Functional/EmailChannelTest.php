@@ -22,6 +22,7 @@ use MauticPlugin\MauticInboxBundle\Application\Forms\FormLinks;
 use MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
 use MauticPlugin\MauticInboxBundle\Entity\EventLog;
+use MauticPlugin\MauticInboxBundle\Entity\OutboundRequest;
 use MauticPlugin\MauticInboxBundle\EventListener\EmailCampaignSubscriber;
 use MauticPlugin\MauticInboxBundle\Integration\MetaInboxIntegration;
 use MauticPlugin\MauticMetaBundle\Domain\AssetType;
@@ -194,6 +195,55 @@ final class EmailChannelTest extends MauticMysqlTestCase
         $tampered = substr($path, 0, -2).('AA' === substr($path, -2) ? 'BB' : 'AA');
         $this->client->request('GET', $tampered);
         self::assertResponseStatusCodeSame(410);
+    }
+
+    public function testThePublicPagesSpeakTheLanguageOfTheBrowserThatOpensThem(): void
+    {
+        $this->emailConversation();
+        $message = $this->em->getRepository(MetaMessage::class)->findOneBy(['conversation' => $this->state->getConversation(), 'direction' => 'inbound']);
+        $admin = $this->em->getRepository(User::class)->findOneBy(['username' => 'admin']);
+        $path = (string) parse_url(static::getContainer()->get(\MauticPlugin\MauticInboxBundle\Application\Email\EmailMessages::class)->originalLink($message, $admin)['url'], PHP_URL_PATH);
+
+        $this->client->request('GET', $path, [], [], ['HTTP_ACCEPT_LANGUAGE' => 'pt-BR,pt;q=0.9,en;q=0.8']);
+        self::assertStringContainsString('Mensagem original', (string) $this->client->getResponse()->getContent());
+        $this->client->request('GET', $path, [], [], ['HTTP_ACCEPT_LANGUAGE' => 'de-DE,en;q=0.5']);
+        self::assertStringContainsString('Original message', (string) $this->client->getResponse()->getContent(), 'A primeira lingua traduzida da lista vale.');
+        $this->client->request('GET', '/inbox/f/'.str_repeat('A', 43), [], [], ['HTTP_ACCEPT_LANGUAGE' => 'pt-PT']);
+        self::assertStringContainsString('Link expirado', (string) $this->client->getResponse()->getContent(), 'O lead tambem le na lingua dele.');
+    }
+
+    public function testABouncedReplyShowsAsFailedAndOffersNoRetry(): void
+    {
+        $this->emailConversation();
+        $this->take();
+        $this->reply('Oi João, segue o link.', 'email_reply_bounce_0001');
+        // O que o despachante do Multi Mail deixa: a MetaMessage de saida ligada ao job e o envio como "sent".
+        $sent = (new MetaMessage())->setAsset($this->asset)->setConversation($this->state->getConversation())->setChannel('email')->setDirection('outbound')
+            ->setMessageType('email')->setRecipient('joao@example.com')->setExternalId('email:'.hash('sha256', 'functional-bounced'))->setStatus('sent')
+            ->setPayload(['email' => ['from' => ['name' => 'Ana · Macro Markets', 'address' => 'contato@macromarkets.com'], 'to' => [['name' => 'João', 'address' => 'joao@example.com']], 'subject' => 'Re: Por que você ainda não depositou?', 'text' => 'Oi João, segue o link.', 'kind' => 'message', 'attachments' => []]]);
+        $this->em->persist($sent);
+        $this->em->flush();
+        $job = $this->job('email_reply_bounce_0001');
+        $job->setMessageLogId((int) $sent->getId());
+        $request = $this->em->getRepository(OutboundRequest::class)->findOneBy(['requestId' => 'email_reply_bounce_0001']);
+        $request->setStatus('sent');
+        $this->em->persist($job);
+        $this->em->persist($request);
+        $this->em->flush();
+        self::assertSame('sent', $this->outbound('email_reply_bounce_0001')['status']);
+
+        // O DSN chega minutos depois e marca a mensagem de saida, nao o envio.
+        $payload = $sent->getPayload();
+        $payload['email']['bounce'] = ['status' => '5.1.1', 'diagnostic' => 'smtp; 550 5.1.1 User unknown', 'recipient' => 'joao@example.com', 'at' => '2026-10-25T05:00:00+00:00'];
+        $sent->setStatus('failed')->setPayload($payload);
+        $this->em->persist($sent);
+        $this->em->flush();
+
+        $item = $this->outbound('email_reply_bounce_0001');
+        self::assertSame('failed', $item['status']);
+        self::assertSame('email_bounced', $item['failure_code']);
+        self::assertStringContainsString('5.1.1 550 5.1.1 User unknown', (string) $item['failure']);
+        self::assertFalse($item['retryable'], 'Reenviar ao mesmo endereco volta do mesmo jeito.');
     }
 
     public function testEmailDncClosesTheComposerWithTheReason(): void
@@ -409,6 +459,17 @@ final class EmailChannelTest extends MauticMysqlTestCase
         self::assertInstanceOf(MetaOutboundJob::class, $job);
 
         return $job;
+    }
+
+    /** @return array<string,mixed> */
+    private function outbound(string $requestId): array
+    {
+        $this->client->request('GET', '/s/inbox/api/conversations/'.$this->state->getId().'/history');
+        self::assertResponseIsSuccessful();
+        $item = current(array_filter($this->json()['items'], static fn (array $row): bool => 'outbound' === $row['kind'] && $requestId === $row['request_id']));
+        self::assertIsArray($item);
+
+        return $item;
     }
 
     private function form(string $name): Form

@@ -160,8 +160,26 @@ Resultado da última rodada:
 
 ## 8. Pendências conhecidas
 
-- **Teclado:** sobra um espaço de cerca de 120 px sob a barra Responder/Encaminhar depois que o teclado fecha. Parece ser o `KeyboardAvoidingView` com `behavior="height"` no Android; ver no aparelho.
-- **Bounce:** marca a mensagem de saída como `failed` e aparece como evento ("Falha na entrega"), mas o selo do cartão de saída continua "Enviada". Follow-up: o Inbox ler o status da `MetaMessage` para e-mail.
+### Teste real em produção (25/10/2026) e correções
+
+O teste completo rodou num Android físico contra a produção, com reports@macro.markets no papel do lead e support@macro.markets como caixa conversacional: abrir pela ficha do contato, envio com pesquisa, rastreio do formulário, resposta por IMAP com anexo, segunda e terceira respostas na mesma thread, resposta em HTML e "Ver original". Saíram destas versões, já em produção:
+
+| Repositório | Tag | O que corrige |
+|---|---|---|
+| Multi Mail | `v0.5.1` | Resposta duplicada na thread: o Mautic usa change tracking DEFERRED_EXPLICIT, e o `messageLogId` do job só ia ao banco no fim da fila. |
+| Inbox | `v1.9.1` | Parênteses no nome do formulário; e-mail devolvido aparece como falha no cartão, sem reenvio; páginas públicas na língua do navegador. |
+| Meta | `v0.15.1` | Leva para o git os dois patches que a produção já rodava (cadência do QR e identidade sem contato). |
+| App | `v1.1.1` | Cartão fantasma no cache (o histórico mais recente agora limpa o que o servidor não devolve); "Ver original" abria uma aba antiga do navegador (agora abre na tarefa do app); espaço de ~120 px sob a barra depois que o teclado fecha. |
+
+As tags `v0.5.0`, `v1.9.0`, `v0.15.0` e `v1.1.0` continuam onde estavam.
+
+- **"Ver original" mostrava o login do Mautic:** não era o servidor. O `expo-web-browser` abre cada página numa tarefa própria do Android; uma aba deixada aberta (o login pelo navegador abandonado no cadastro) voltava para a frente no lugar do link novo. A 1.1.1 abre o original com `createTask: false`.
+- **Teclado no Android:** no Android 11+ o `keyboardDidHide` do React Native vem em coordenadas da área visível (sem as barras), e o `KeyboardAvoidingView` com `behavior="height"` ficava com uma sobra do tamanho da barra de status. A 1.1.1 tira o `KeyboardAvoidingView` do Android e usa a altura do teclado dos eventos (`src/hooks/keyboard-inset.ts`).
+- **Dados de teste em produção:** o lead #5170 e a conversa #448 ficaram para consulta. Apague pelo Mautic quando não precisar mais.
+- **Testes do Meta que já falhavam:** `MetaSetupServiceTest` (mock de uma classe `final`) e `IdentityManagerTest::testRejectsContactOnMauticDnc` falham igual na v0.14.2; não são deste trabalho.
+
+### Outras
+
 - **Recebimento:** a latência é de até 1 minuto (cron); IMAP IDLE fica para depois. Não há anexo de saída nem IA no canal e-mail (fora de escopo da v1).
 - **Mautic com `/api` na URL:** o Mautic trata como chamada de API qualquer URL que contenha `/api` e exige a API ligada (`api_enabled`). Em produção já está ligada; numa instalação nova, ligue antes de usar o app.
 - **Limite do código mágico:** um pedido por minuto e cinco por hora por e-mail. Em testes repetidos, espere o minuto.

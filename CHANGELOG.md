@@ -7,6 +7,15 @@
 
 # Changelog
 
+## 1.9.1 - 2026-10-25
+
+Correções do teste real em produção com o app no aparelho. Use com o Multi Mail 0.5.1, que corrige a resposta duplicada na thread.
+
+- **E-mail devolvido aparece como falha no cartão.** Quando o DSN chega, o envio do atendente passa a sair no histórico (web e app) com `status: failed`, `failure_code: email_bounced`, o diagnóstico do servidor do lead e sem "tentar de novo", porque reenviar ao mesmo endereço volta do mesmo jeito. Antes o cartão continuava "Enviada" e só a linha de evento mostrava a falha.
+- **Páginas públicas na língua de quem abre.** O original no app, o link de formulário expirado e o descadastro seguem o `Accept-Language` do navegador (pt e en); sem uma delas, o perfil do atendente e depois o idioma padrão do Mautic. O original no celular de um atendente em português saía em inglês.
+- **Parênteses no nome do formulário.** "DEP 04 - Feedback livre (o que faltou)" chegava ao lead como "Feedback livre  o que faltou"; só colchetes e quebras de linha saem do texto do link.
+- Inclui as correções de produção do Facebook (falha de revisão do app Meta explicada na resposta) e do WhatsApp QR (aviso de sincronização separado do conteúdo do cliente).
+
 ## 1.9.0 - 2026-10-24
 
 Canal de e-mail com threads. Exige Meta 0.15.0 (`Channel::Email`, `email_account`, operação de fila `email_message`); o envio, a leitura IMAP e os arquivos do e-mail são do Multi Mail 0.5.0. Sem o Multi Mail o Inbox continua funcionando: o original e os anexos aparecem como indisponíveis e o envio falha na fila com o motivo.
