@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.10.1
+
+- A tabela `inbox_operator_presence` passa a ser criada por uma migration. O Mautic monta o
+  schema de um plugin pelas entidades so na instalacao; numa atualizacao ele roda apenas as
+  migrations do plugin, e a 1.10.0 nao trazia nenhuma, entao a entidade subia mapeada e sem
+  tabela. Nada mais muda.
+
 ## 1.10.0
 
 - Disponibilidade do atendente: `GET` e `POST /inbox/mobile/api/availability` guardam se o
