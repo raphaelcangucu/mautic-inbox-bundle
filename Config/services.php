@@ -27,6 +27,9 @@ return function (ContainerConfigurator $configurator): void {
     $services->set(\MauticPlugin\MauticInboxBundle\EventListener\ChatQueryIndexes::class)->tag('doctrine.event_listener', ['event' => 'loadClassMetadata']);
     // O apelido e explicito porque a interface e o repositorio entram por chamadas de load
     // diferentes, e o apelido automatico do Symfony so vale dentro de uma mesma chamada.
+    // A pasta de midia e a URL publica nao sao autowireaveis: vem do projeto e do site_url.
+    $services->set(\MauticPlugin\MauticInboxBundle\Application\Mobile\ContactPhotoCache::class)
+        ->arg('$projectDir', '%kernel.project_dir%');
     $services->alias(PushSettingStore::class, PushSettingRepository::class);
     $services->alias(PushDeviceStore::class, PushDeviceRepository::class);
     // Security/ esta na lista de exclusoes padrao do Mautic, entao esta classe precisa ser

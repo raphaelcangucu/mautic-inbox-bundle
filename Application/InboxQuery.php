@@ -52,6 +52,7 @@ final class InboxQuery
         private \Mautic\LeadBundle\Twig\Helper\AvatarHelper $avatars,
         private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access,
         private ?ParticipantAvatarRegistry $participantAvatars = null,
+        private ?\MauticPlugin\MauticInboxBundle\Application\Mobile\ContactPhotoCache $photos = null,
     ) {
     }
 
@@ -380,10 +381,13 @@ final class InboxQuery
                 default => $participant,
             };
         }
+        // A identidade nao muda quando a Meta reassina a URL, entao a copia local sobrevive a isso.
+        $photoIdentity = $c->getChannel().':'.($c->getAsset()?->getId() ?? 0).':'.$participant;
+        $cachedPhoto   = $this->photos?->store($photoIdentity, $profilePhoto);
         $summary = [
             'contact_handle' => $handle,
             'profile_url' => \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialProfileLinks::url($c->getChannel(), $identity['contact']['profile']['link'] ?? $identity['from']['link'] ?? null) ?? ('instagram' === $c->getChannel() ? \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialProfileLinks::url('instagram', $handle, true) : null),
-            'avatar_url' => $this->participantAvatars?->url($c) ?? ($profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null)),
+            'avatar_url' => $this->participantAvatars?->url($c) ?? ($cachedPhoto ?: $profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null)),
             'preview' => $preview,
             'id' => (int) $state->getId(), 'conversation_id' => (int) $c->getId(), 'version' => $state->getVersion(),
             // O tipo vai junto porque `channel` nao distingue os dois WhatsApp: o

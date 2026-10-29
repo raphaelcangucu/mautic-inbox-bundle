@@ -86,6 +86,16 @@ final class MobileApiController extends CommonController
                 if(!is_array($payload)){return $this->error('JSON inválido.','invalid_request',400);}
                 return $this->data(match($resource){'assistant/messages'=>$assistant->reply($payload,$user),'assistant/actions/renew'=>$assistant->renewAction($payload,$user),default=>$assistant->confirm($payload,$user)});
             }
+            // A disponibilidade do atendente: ler e trocar. Sem linha na tabela ele esta
+            // disponivel, que e como o Inbox sempre se comportou.
+            if ($resource === 'availability' && in_array($method, ['GET','POST'], true)) {
+                $presences = $em->getRepository(\MauticPlugin\MauticInboxBundle\Entity\OperatorPresence::class);
+                if ($method === 'GET') { return $this->data(['available' => $presences->availableFor($user)]); }
+                if (strlen($request->getContent()) > 1024) { return $this->error('Requisição inválida.','invalid_request',400); }
+                try { $payload = json_decode($request->getContent(), true, 4, JSON_THROW_ON_ERROR); } catch (\JsonException) { return $this->error('JSON inválido.','invalid_request',400); }
+                if (!is_array($payload) || !array_key_exists('available', $payload) || !is_bool($payload['available'])) { return $this->error('Informe `available` como verdadeiro ou falso.','invalid_request',400); }
+                return $this->data(['available' => $presences->setFor($user, $payload['available'])->isAvailable()]);
+            }
             if ($method === 'POST' && $resource === 'canned-responses') {
                 if (!$permissions->isGranted('inbox:templates:edit')) { return $this->error('Ação não autorizada.','forbidden',403); }
                 if (strlen($request->getContent()) > 16384) { return $this->error('Requisição inválida.','invalid_request',400); }

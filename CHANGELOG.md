@@ -1,3 +1,20 @@
+# Changelog
+
+## 1.10.0
+
+- Disponibilidade do atendente: `GET` e `POST /inbox/mobile/api/availability` guardam se o
+  atendente esta aceitando conversas, numa tabela nova `inbox_operator_presence`. Sem linha o
+  atendente esta disponivel, entao atualizar nao muda o comportamento de quem ja usava. O
+  `config` passa a anunciar `capabilities.availability`, e o app so mostra o controle onde ele
+  existe.
+- Fotos de perfil de Instagram e Facebook deixam de sumir. A Meta manda URLs assinadas de vida
+  curta (`platform-lookaside.fbsbx.com`), que respondem 404 depois de poucos dias; agora a
+  imagem e copiada uma vez para `media/images/inbox-avatars`, reduzida a um quadrado de 96 px em
+  WebP, e servida por URL estavel. Vale para o app e para o inbox web, que usam a mesma consulta.
+  No maximo uma copia por requisicao, para a listagem nao virar fila de downloads.
+- O WhatsApp nao entra nisso: a API da Meta nao manda foto de contato de WhatsApp, nem pelo canal
+  homologado nem pela sessao por QR. As iniciais continuam sendo o que existe.
+
 # Acesso limitado de operadores (6/10/2026)
 
 - Login/senha existente do Mautic com papel próprio para avaliação Apple.
