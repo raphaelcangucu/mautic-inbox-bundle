@@ -151,7 +151,24 @@ Não cria usuário nem contato, não toca schema e não altera os outros grants.
 do app mostra os campos só onde `password_login` vem verdadeiro, e a senha nunca é guardada no
 aparelho: o que fica é a sessão. `Tests/Mobile/session-store.php` cobre o limite por
 identificador e por IP, o hash dos contadores, o fim da janela e o vínculo da sessão, em PHP
-puro, sem kernel, banco ou rede. O login real contra a instalação não foi executado aqui.
+puro, sem kernel, banco ou rede. `Tests/Mobile/password-grant.php` exercita a própria action
+`token` com a entidade `User`, a política de permissão e o storage de verdade — só Doctrine e o
+hasher são substituídos, porque dependem de banco —, e confere o formato da resposta, a recusa
+única, as guardas de entrada, o limite, o custo do hash isca e os outros grants intactos. Pede
+um autoloader do Mautic (`MAUTIC_VENDOR_AUTOLOAD` ou o do próprio diretório de instalação) e é
+ignorado sem ele.
+
+Validado na instalação em 30/10/2026, com a conta restrita de revisão: `config` anuncia
+`password_login`; o login devolve a sessão com o operador correto; o bearer resultante responde
+em `api/conversations` e `api/availability`; o `refresh_token` roda; senha errada e usuário
+inexistente devolvem a mesma recusa `invalid_grant`; e `DELETE api/session` encerra a sessão,
+depois da qual o bearer dá 401 e o refresh é recusado. A senha saiu do arquivo privado direto
+para a requisição, sem passar por linha de comando, arquivo ou log. Deploy de 1.11.0 nessa
+release: quatro arquivos (`Config/config.php`, `Controller/MobileAuthController.php`,
+`Application/Mobile/SessionStore.php`, `CHANGELOG.md`), nenhum arquivo removido, backup do
+plugin anterior guardado em `/home/forge/backups` antes de sincronizar, `cache:clear` e
+`mautic:plugins:reload` com o PHP 8.4 do site. Sem migração, sem schema e sem teste de banco em
+produção.
 
 
 ## SMTP temporário do login mobile
