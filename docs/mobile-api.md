@@ -128,6 +128,32 @@ GET /inbox/mobile/config anuncia magic_code_login e magic_code_endpoint. POST /i
 
 28 contratos do app e testes PHP puros passaram. Descoberta e respostas públicas foram verificadas na instância implantada. Usuário ID 8 criado pelo operador e conferido ativo (Raphael Cangucu / raphael.cangucu / me@raphaelcangucu.com / Administrator). O SMTP global recusou inicialmente o envio por quota. Em 05/10/2026, depois de autorização explícita, o app iOS concluiu o login real por código de e-mail com esse usuário e carregou as conversas existentes.
 
+## Login por usuário e senha (1.11.0)
+
+GET /inbox/mobile/config anuncia `password_login`. POST /inbox/mobile/token com
+`grant_type=password`, `username` e `password` entrega a mesma sessão dos outros grants. O
+identificador aceita o usuário ou o e-mail do Mautic e precisa achar exatamente um usuário
+publicado: dois (um usuário cujo nome é o e-mail de outro) recusam. A senha é verificada pelo
+hasher configurado do Mautic, e o acesso pelo mesmo `ConversationAccess::canViewInbox` que vale
+para o navegador, o bearer nativo, o MCP e os workers — quem não atende no inbox não recebe
+sessão. A sessão guarda o `fingerprint` da senha, então trocar a senha no Mautic encerra o que
+já estava aberto.
+
+Uma recusa só: `invalid_grant` para usuário inexistente, ambíguo, despublicado, senha errada ou
+sem permissão, e nenhum dos casos diz quais nomes existem. Sem usuário, a senha ainda é
+verificada contra um hash isca, para que um nome errado custe o mesmo que uma senha errada.
+Limites 10/h por identificador, 30/h por IP e 1000/h global, contados antes de olhar a senha,
+no mesmo storage privado com flock dos outros grants e com identificador e IP só em hash.
+`second_factor_required` existe para instalações que acrescentam um segundo fator ao usuário —
+o Mautic 7 não traz nenhum — e manda essa conta entrar pela página do Mautic.
+
+Não cria usuário nem contato, não toca schema e não altera os outros grants. A tela de conexão
+do app mostra os campos só onde `password_login` vem verdadeiro, e a senha nunca é guardada no
+aparelho: o que fica é a sessão. `Tests/Mobile/session-store.php` cobre o limite por
+identificador e por IP, o hash dos contadores, o fim da janela e o vínculo da sessão, em PHP
+puro, sem kernel, banco ou rede. O login real contra a instalação não foi executado aqui.
+
+
 ## SMTP temporário do login mobile
 
 Por padrão, MagicCodeMailer usa o MailHelper normal. Para os testes autorizados de 05/10/2026, um override exclusivo do login usa support@macro.markets em smtp.dreamhost.com:587, com STARTTLS obrigatório e validação de certificado. As campanhas e o SMTP global não foram alterados.

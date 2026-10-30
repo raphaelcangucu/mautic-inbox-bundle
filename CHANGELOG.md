@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.11.0
+
+- Entrar com usuario e senha do Mautic, para quem nao recebe o codigo por e-mail nem consegue
+  abrir a pagina do Mautic no aparelho. `POST /inbox/mobile/token` aceita
+  `grant_type=password` com `username` (usuario ou e-mail) e `password`, e devolve a mesma
+  sessao dos outros grants: senha conferida pelo hasher do Mautic, acesso pelo mesmo
+  `ConversationAccess::canViewInbox`, e `fingerprint` da senha guardado, entao trocar a senha
+  encerra as sessoes abertas. Uma recusa so para usuario inexistente, ambiguo, despublicado,
+  senha errada ou sem permissao, com hash isca quando nao ha usuario, para que um nome errado
+  custe o mesmo que uma senha errada. Limites de 10/h por identificador, 30/h por IP e 1000/h
+  global, contados antes de olhar a senha. `config` anuncia `capabilities.password_login`, e os
+  grants que ja existiam nao mudam.
+
 ## 1.10.1
 
 - A tabela `inbox_operator_presence` passa a ser criada por uma migration. O Mautic monta o
