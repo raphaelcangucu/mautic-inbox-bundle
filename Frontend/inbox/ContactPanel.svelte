@@ -22,6 +22,7 @@
         instagram: "Instagram",
         facebook: "Facebook",
         webchat: "Web Chat",
+        email: t("mautic.inbox.ui.email_channel"),
       }) as Record<string, string>
     )[value] || value;
   const safeSocial = (value?: string) => {

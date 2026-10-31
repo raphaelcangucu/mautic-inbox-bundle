@@ -39,6 +39,7 @@ final class ConversationActions
         private ImmediateOutboundDispatcher $immediateDispatcher,
         private ChannelTransportRegistry $channelTransports,
         private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access,
+        private ?Forms\FormLinks $forms = null,
     ) {
     }
 
@@ -59,10 +60,14 @@ final class ConversationActions
      *
      * O canal homologado fica de fora: quando ele recusa, recusou por um motivo que
      * repetir nao conserta, e repetir seria mensagem duplicada no cliente.
+     *
+     * O e-mail entra com a sessao por QR: SMTP que recusa com 4xx ou cota estourada pede
+     * espera, nao desistencia, e o Message-ID estavel do payload faz o cliente do lead
+     * descartar a copia se uma tentativa repetida chegar duas vezes.
      */
     public static function sendAttempts(MetaAsset $asset): int
     {
-        return AssetType::WhatsAppQrSession === $asset->getType() ? 9 : 1;
+        return in_array($asset->getType()->value, ['whatsapp_qr_session', 'email_account'], true) ? 9 : 1;
     }
 
     public function take(ConversationState $state, User $user, int $version): ConversationState
@@ -174,9 +179,10 @@ final class ConversationActions
         return $draft;
     }
 
-    public function reply(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null, ?int $expectedVersion = null, ?array $audio = null): OutboundRequest
+    /** @param ?string $subject so vale para e-mail; vazio vira "Re: <assunto da ultima mensagem>" */
+    public function reply(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null, ?int $expectedVersion = null, ?array $audio = null, ?string $subject = null): OutboundRequest
     {
-        $outbound = $this->inboxIntegration->runHumanTransition($state, fn (): OutboundRequest => $this->entityManager->wrapInTransaction(function () use ($state, $author, $body, $requestId, $template, $replyMode, $expectedVersion, $audio): OutboundRequest {
+        $outbound = $this->inboxIntegration->runHumanTransition($state, fn (): OutboundRequest => $this->entityManager->wrapInTransaction(function () use ($state, $author, $body, $requestId, $template, $replyMode, $expectedVersion, $audio, $subject): OutboundRequest {
                 $locked = $this->entityManager->find(ConversationState::class, $state->getId(), LockMode::PESSIMISTIC_WRITE);
                 if (!$locked instanceof ConversationState) {
                     throw new InboxException('mautic.inbox.ui.conversation_not_found_61bc81', 404);
@@ -184,7 +190,7 @@ final class ConversationActions
 
                 $this->entityManager->refresh($locked, LockMode::PESSIMISTIC_WRITE);
                 if ($expectedVersion !== null && $locked->getVersion() !== $expectedVersion) { throw new InboxException('O atendimento mudou desde a revisão. Peça uma nova proposta.', 409); }
-                return $this->replyLocked($locked, $author, $body, $requestId, $template, $replyMode, $audio);
+                return $this->replyLocked($locked, $author, $body, $requestId, $template, $replyMode, $audio, $subject);
             }));
         if ($outbound->getJob()) {
             // The local request and conversation state are committed before any
@@ -306,6 +312,12 @@ final class ConversationActions
                 throw new InboxException('mautic.inbox.ui.retry_target_changed', 409);
             }
             $payload = ['recipient' => $recipient, 'text' => $failedRequest->getBody()];
+            if ('email_message' === $operation) {
+                // O despachante do e-mail grava _email_message_id no job antes do primeiro
+                // envio. Copiar o Message-ID e o que faz o cliente do lead descartar a copia se
+                // a tentativa anterior tiver chegado afinal; assunto e assinatura saem iguais.
+                $payload += array_intersect_key($oldPayload, array_flip(['subject', 'author_name', 'from_name', 'unsubscribe_url', '_email_message_id', '_inbox_source']));
+            }
         }
         // Uma tentativa, inclusive no canal por QR: quem apertou "tentar de novo" pediu
         // uma tentativa e esta olhando para o resultado dela. Uma serie automatica por
@@ -335,10 +347,14 @@ final class ConversationActions
         return [$request, true];
     }
 
-    private function replyLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null, ?array $audio = null): OutboundRequest
+    private function replyLocked(ConversationState $state, User $author, string $body, string $requestId, ?array $template = null, ?string $replyMode = null, ?array $audio = null, ?string $subject = null): OutboundRequest
     {
         $this->access->assertView($state,$author);
         $conversation = $state->getConversation();
+        $email = 'email' === $conversation->getChannel();
+        if ($email && null !== $template) {
+            throw new InboxException('mautic.inbox.ui.email_templates_unavailable', 409);
+        }
         if($audio!==null && ($template!==null || $conversation->getChannel()!=='whatsapp' || $conversation->getAsset()->getType()!==AssetType::WhatsAppQrSession || str_starts_with($conversation->getRecipient(),'comment:')))throw new InboxException('Este canal ainda não envia áudio.',422);
         $replyMode = ReplyMode::resolve($conversation->getChannel(), $conversation->getRecipient(), $replyMode);
         $publicInstagram = ReplyMode::instagramPublic($conversation->getChannel(), $conversation->getRecipient(), $replyMode);
@@ -364,7 +380,11 @@ final class ConversationActions
         }
         $existing = $this->outboundRequests->findOneBy(['requestId' => $requestId]);
         if ($existing instanceof OutboundRequest) {
-            if (($existing->getJob()?->getPayload()['_inbox_audio_id'] ?? null)!==($audio['id']??null) || $existing->getConversation()->getId() !== $state->getConversation()->getId() || $existing->getAuthor()->getId() !== $author->getId() || $existing->getBody() !== $body || ($existing->getJob()?->getPayload()['_template_id'] ?? null) !== ($prepared['payload']['_template_id'] ?? null) || ($existing->getJob()?->getPayload()['components'] ?? []) !== ($prepared['payload']['components'] ?? []) || ($conversation->getChannel() === 'instagram' && str_starts_with($conversation->getRecipient(),'comment:') && ($existing->getJob()?->getOperation() === 'instagram_public_reply') !== $publicInstagram)) {
+            // O corpo guardado e o que saiu, com o link do formulario ja expandido (e esse link
+            // muda a cada expansao). A repeticao do mesmo envio e reconhecida pelo texto que o
+            // atendente escreveu.
+            $sourceBody = $existing->getJob()?->getPayload()['_inbox_source'] ?? $existing->getBody();
+            if (($existing->getJob()?->getPayload()['_inbox_audio_id'] ?? null)!==($audio['id']??null) || $existing->getConversation()->getId() !== $state->getConversation()->getId() || $existing->getAuthor()->getId() !== $author->getId() || $sourceBody !== $body || ($existing->getJob()?->getPayload()['_template_id'] ?? null) !== ($prepared['payload']['_template_id'] ?? null) || ($existing->getJob()?->getPayload()['components'] ?? []) !== ($prepared['payload']['components'] ?? []) || ($conversation->getChannel() === 'instagram' && str_starts_with($conversation->getRecipient(),'comment:') && ($existing->getJob()?->getOperation() === 'instagram_public_reply') !== $publicInstagram)) {
                 throw new InboxException('mautic.inbox.ui.send_identifier_already_used_419540', 409);
             }
             return $existing;
@@ -372,13 +392,27 @@ final class ConversationActions
 
         if (!$prepared && null !== ($reason = $this->replyAvailability->reason($state, $replyMode))) { throw new InboxException($reason, 409); }
         [$operation, $recipient] = $publicInstagram ? ['instagram_public_reply', substr($conversation->getRecipient(),8)] : $this->outboundTarget($conversation);
+        // O marcador [[form:ID]] vira link aqui, no enfileiramento, para qualquer canal. Modelo
+        // aprovado do WhatsApp fica de fora: o texto dele e o da Meta, nao o do atendente.
+        $text = $prepared || null === $this->forms ? $body : $this->forms->expand($body, $conversation, $email);
+        // O link expandido conta no limite do canal: o Graph recusaria o texto inteiro depois.
+        if ('facebook' === $conversation->getChannel() && mb_strlen($text) > 2000) { throw new InboxException('mautic.inbox.ui.facebook_replies_can_contain_at_most_2_000_characters_0cb37d'); }
+        if ('instagram' === $conversation->getChannel() && mb_strlen($text) > 1000) { throw new InboxException('mautic.inbox.ui.instagram_replies_can_contain_at_most_1_000_characters_80898c'); }
+        $channelPayload = $email ? [
+            'subject' => Email\EmailReply::subject($subject, $this->previousSubject($conversation)),
+            'author_name' => Email\EmailReply::authorName($author),
+            'from_name' => null,
+            'unsubscribe_url' => null,
+        ] : [];
+        if ($text !== $body) { $channelPayload['_inbox_source'] = $body; }
         $job = $this->queue->enqueue($asset, $audio ? 'whatsapp_media' : ($prepared ? 'whatsapp_template' : $operation), ($prepared['payload'] ?? []) + ($audio ? ['media_type'=>'audio','media'=>['id'=>'inbox-audio:'.$audio['id']],'_inbox_audio_id'=>$audio['id']] : []) + [
             'recipient' => $recipient,
-            'text' => $body,
+            'text' => $text,
+        ] + $channelPayload + [
             '_origin' => 'inbox_human',
             '_inbox_conversation_id' => $state->getConversation()->getId(),
         ], $state->getConversation()->getContact(), self::sendAttempts($asset), 'inbox:'.$requestId);
-        $request = (new OutboundRequest())->setConversation($state->getConversation())->setAuthor($author)->setRequestId($requestId)->setBody($body)->setJob($job)->setStatus('pending');
+        $request = (new OutboundRequest())->setConversation($state->getConversation())->setAuthor($author)->setRequestId($requestId)->setBody($text)->setJob($job)->setStatus('pending');
         $state->setNeedsResponse(false)->setHumanTakeover(true)->setVersion($state->getVersion() + 1);
         $this->entityManager->persist($request);
         $this->entityManager->persist($state);
@@ -474,9 +508,31 @@ final class ConversationActions
         return $body;
     }
 
+    /**
+     * O assunto da ultima mensagem da conversa, para o "Re:" de quem responde sem escrever um.
+     * Antes de o canal gravar a primeira mensagem, o unico assunto que existe e o do pedido na
+     * fila.
+     */
+    private function previousSubject(MetaConversation $conversation): ?string
+    {
+        $last = $this->messages->findOneBy(['conversation' => $conversation], ['dateAdded' => 'DESC', 'id' => 'DESC']);
+        $subject = $last instanceof MetaMessage ? ($last->getPayload()['email']['subject'] ?? null) : null;
+        if (!is_string($subject) || '' === trim($subject)) {
+            $request = $this->outboundRequests->findOneBy(['conversation' => $conversation], ['id' => 'DESC']);
+            $subject = $request instanceof OutboundRequest ? ($request->getJob()?->getPayload()['subject'] ?? null) : null;
+        }
+
+        return is_string($subject) ? $subject : null;
+    }
+
     /** @return array{string,string} */
     private function outboundTarget(MetaConversation $conversation): array
     {
+        // Antes do Instagram de proposito: o ultimo ramo trata qualquer canal desconhecido
+        // como DM do Instagram, e um e-mail ali sairia para um id que nao existe.
+        if ('email' === $conversation->getChannel()) {
+            return ['email_message', $conversation->getRecipient()];
+        }
         if ('facebook' === $conversation->getChannel()) {
             return str_starts_with($conversation->getRecipient(), 'comment:') ? ['facebook_public_reply', substr($conversation->getRecipient(), 8)] : ['facebook_direct_message', $conversation->getRecipient()];
         }

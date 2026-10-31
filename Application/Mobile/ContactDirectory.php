@@ -18,7 +18,7 @@ use MauticPlugin\MauticMetaBundle\Entity\{MetaAsset,MetaConversation};
 /** Bounded CRM reads; starting a chat creates context, never sends a message. */
 final class ContactDirectory
 {
-    public function __construct(private Connection $db, private EntityManagerInterface $em, private CorePermissions $permissions, private ConversationStateRepository $states, private PhoneNormalizer $phones, private ReplyAvailability $availability, private MetaInboxIntegration $integration, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access) {}
+    public function __construct(private Connection $db, private EntityManagerInterface $em, private CorePermissions $permissions, private ConversationStateRepository $states, private PhoneNormalizer $phones, private ReplyAvailability $availability, private MetaInboxIntegration $integration, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, private ?\Mautic\LeadBundle\Model\DoNotContact $doNotContact = null) {}
 
     private function table(string $name): string { return (defined('MAUTIC_TABLE_PREFIX') ? MAUTIC_TABLE_PREFIX : '').$name; }
     private function allowed(User $user, string $permission): bool { return $user->isAdmin() || $this->permissions->isGranted($permission); }
@@ -79,16 +79,28 @@ final class ContactDirectory
 
     private function options(Lead $contact, User $user): array
     {
-        $items=[];$qrAssets=[];
+        $items=[];$qrAssets=[];$emailAssets=[];
         $qrType=defined(AssetType::class.'::WhatsAppQrSession') ? constant(AssetType::class.'::WhatsAppQrSession') : null;
         $canStart=$this->allowed($user,'inbox:conversations:create') && $this->allowed($user,'meta:messages:create');
         $statesQuery=$this->states->createQueryBuilder('s')->join('s.conversation','c')->where('c.contact = :contact')->andWhere('c.recipient NOT LIKE :comments')->setParameter('contact',$contact)->setParameter('comments','comment:%')->orderBy('c.lastMessageAt','DESC')->setMaxResults(50);
         $this->access->apply($statesQuery,$user);
         foreach ($statesQuery->getQuery()->getResult() as $state) {
             $c=$state->getConversation();$reason=$this->availability->reason($state);
-            $items[]=['key'=>'state:'.$state->getId(),'state_id'=>$state->getId(),'asset_id'=>$c->getAsset()->getId(),'channel'=>$c->getChannel(),'name'=>$c->getAsset()->getName(),'phone'=>$c->getAsset()->getPhoneNumber(),'available'=>$canStart && null===$reason,'reason'=>$reason];
+            $item=['key'=>'state:'.$state->getId(),'state_id'=>$state->getId(),'asset_id'=>$c->getAsset()->getId(),'channel'=>$c->getChannel(),'name'=>$c->getAsset()->getName(),'phone'=>$c->getAsset()->getPhoneNumber(),'available'=>$canStart && null===$reason,'reason'=>$reason];
+            if ('email'===$c->getChannel()) {
+                $address=strtolower(trim((string)($c->getAsset()->getSettings()['email_address']??'')));
+                $item['address']=''!==$address ? $address : null;
+                if (''!==$address) { $item['name']=$c->getAsset()->getName().' · '.$address; }
+                $emailAssets[]=$c->getAsset()->getId();
+            }
+            $items[]=$item;
             if ($qrType && $qrType===$c->getAsset()->getType()) { $qrAssets[]=$c->getAsset()->getId(); }
         }
+        // Uma opcao por conta de e-mail conversacional ativa e publicada. A conversa ja aberta
+        // com o contato naquela conta aparece acima, como state:.
+        $accounts=array_values(array_map(static fn(MetaAsset $asset):array=>['id'=>(int)$asset->getId(),'name'=>$asset->getName(),'address'=>is_string($asset->getSettings()['email_address']??null) ? trim($asset->getSettings()['email_address']) : null,'active'=>'active'===$asset->getStatus()],$this->em->getRepository(MetaAsset::class)->findBy(['type'=>'email_account','status'=>'active','isPublished'=>true],['name'=>'ASC'],50)));
+        $dnc=null!==$this->doNotContact && \Mautic\LeadBundle\Entity\DoNotContact::IS_CONTACTABLE!==$this->doNotContact->isContactable($contact,'email');
+        array_push($items,...EmailStartOptions::build($accounts,$contact->getEmail(),$dnc,$canStart,$emailAssets));
         if (null===$qrType) { return $items; }
         $phone=(string)($contact->getMobile() ?: $contact->getPhone());
         foreach ($this->em->getRepository(MetaAsset::class)->findBy(['type'=>$qrType,'status'=>'active','isPublished'=>true]) as $asset) {
@@ -110,6 +122,7 @@ final class ContactDirectory
         if (!$selected || !$selected['available']) { throw new InboxException($selected['reason']??'Canal indisponível para este contato.',422); }
         if ($selected['state_id']) { return $this->states->find($selected['state_id']); }
         $asset=$this->em->find(MetaAsset::class,$selected['asset_id']);
+        if (str_starts_with($selected['key'],'email:')) { return $this->startEmail($contact,$user,$asset); }
         $phone=$this->phones->normalizeImported((string)($contact->getMobile() ?: $contact->getPhone()),(string)($asset->getSettings()['default_region']??'BR'));
         $context=(new ConversationState())->setConversation((new MetaConversation())->setAsset($asset)->setChannel('whatsapp')->setRecipient($phone));
         return $this->integration->runHumanTransition($context,function()use($asset,$phone,$contact,$user):ConversationState{
@@ -119,8 +132,30 @@ final class ContactDirectory
             if(!$conversation){$conversation=(new MetaConversation())->setAsset($asset)->setChannel('whatsapp')->setRecipient($phone);$this->em->persist($conversation);}
             $state=$conversation->getId() ? $this->states->findOneBy(['conversation'=>$conversation]) : null;
             if ($state) $this->access->assertView($state,$user);
-            $conversation->setContact($contact);
+            $conversation->setContact($contact);$this->em->persist($conversation);
             if(!$state){$state=(new ConversationState())->setConversation($conversation)->setAssignee($user)->setHumanTakeover(true)->setNeedsResponse(false);$this->em->persist($state);$this->em->persist((new EventLog())->setConversation($conversation)->setActor($user)->setEventType('created')->setDetails(['source'=>'mobile_contact']));}
+            $this->em->flush();return $state;
+        });
+    }
+
+    /**
+     * Abre (ou reencontra) a conversa de e-mail do contato naquela conta. Como no QR, nada e
+     * enviado: a conversa nasce atribuida a quem a abriu, e o primeiro e-mail sai pelo composer.
+     * O recipient e o e-mail em minusculas, que e como o Multi Mail grava a conversa ao receber.
+     */
+    private function startEmail(Lead $contact, User $user, MetaAsset $asset): ConversationState
+    {
+        $recipient=EmailStartOptions::recipient($contact->getEmail());
+        if (null===$recipient) { throw new InboxException(EmailStartOptions::NO_EMAIL,422); }
+        $context=(new ConversationState())->setConversation((new MetaConversation())->setAsset($asset)->setChannel('email')->setRecipient($recipient));
+        return $this->integration->runHumanTransition($context,function()use($asset,$recipient,$contact,$user):ConversationState{
+            $conversation=$this->em->getRepository(MetaConversation::class)->findOneBy(['asset'=>$asset,'channel'=>'email','recipient'=>$recipient]);
+            if($conversation && $conversation->getContact() && $conversation->getContact()->getId()!==$contact->getId()){throw new InboxException('Este e-mail já está vinculado a outro contato. Revise o cadastro.',409);}
+            if(!$conversation){$conversation=(new MetaConversation())->setAsset($asset)->setChannel('email')->setRecipient($recipient);$this->em->persist($conversation);}
+            $state=$conversation->getId() ? $this->states->findOneBy(['conversation'=>$conversation]) : null;
+            if ($state) $this->access->assertView($state,$user);
+            $conversation->setContact($contact);$this->em->persist($conversation);
+            if(!$state){$state=(new ConversationState())->setConversation($conversation)->setAssignee($user)->setHumanTakeover(true)->setNeedsResponse(false);$this->em->persist($state);$this->em->persist((new EventLog())->setConversation($conversation)->setActor($user)->setEventType('created')->setDetails(['source'=>'mobile_contact','channel'=>'email']));}
             $this->em->flush();return $state;
         });
     }

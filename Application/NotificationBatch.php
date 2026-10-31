@@ -16,8 +16,10 @@ final class NotificationBatch
         foreach ($scanned as $row) {
             $payload = is_array($row['notification_payload'] ?? null) ? $row['notification_payload'] : [];
             $historical = true === ($payload['whatsqr']['historical'] ?? $payload['message']['historical'] ?? false);
+            // Resposta automatica e devolucao de e-mail entram na conversa sem chamar ninguem.
+            $automatic = is_array($payload['email'] ?? null) && (!empty($payload['email']['auto_reply']) || in_array($payload['email']['kind'] ?? null, ['auto_reply', 'bounce'], true));
             unset($row['notification_payload']);
-            if (!$historical) { $notifications[] = $row; }
+            if (!$historical && !$automatic) { $notifications[] = $row; }
         }
         return ['notifications' => $notifications, 'notification_cursor' => $next, 'notifications_more' => $more];
     }

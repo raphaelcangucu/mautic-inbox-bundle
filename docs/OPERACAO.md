@@ -75,6 +75,28 @@ ddev exec php bin/console lint:twig plugins/MauticInboxBundle/Resources/views
 
 Os testes automatizados usam banco isolado e não enviam mensagens reais. A versão 1.0.0 foi validada com 32 testes e 190 asserções do Inbox, além dos testes JavaScript de formatação e notificações. O conector Meta passou em 79 testes e 218 asserções, com sete avisos de depreciação preexistentes.
 
+## Disponibilidade do atendente
+
+`GET` e `POST /inbox/mobile/api/availability` leem e trocam se o atendente aceita conversas. O
+estado fica em `inbox_operator_presence`, uma linha por usuário, criada pelo
+`mautic:plugins:reload`. **Sem linha o atendente está disponível**, que é como o Inbox sempre se
+comportou: atualizar não muda nada para quem já usava.
+
+## Fotos de perfil guardadas localmente
+
+Instagram e Facebook mandam a foto do contato em URLs assinadas de vida curta, que passam a
+responder 404 depois de alguns dias. A partir da 1.10.0 a imagem é copiada uma vez para
+`media/images/inbox-avatars/<hash>.webp`, num quadrado de 96 px, e servida por URL estável.
+
+**O que isso armazena:** a foto pública de perfil do contato nas redes, nada mais. O nome do
+arquivo vem de um hash da identidade (canal, ativo e participante), não do contato em si.
+
+**Como apagar:** remova `media/images/inbox-avatars/`. As cópias são reconstruídas conforme as
+conversas forem abertas, e apagar a pasta não afeta mensagem nem contato.
+
+**O WhatsApp não tem foto.** A API da Meta não envia foto de contato de WhatsApp, nem pelo canal
+homologado nem pela sessão por QR; o app mostra as iniciais, que é a informação existente.
+
 ## Reversão
 
 Antes de remover o bundle, pare o cron `mautic:inbox:wake`, retire as permissões e faça backup apenas das tabelas `inbox_*`. Remova o diretório do bundle e recarregue os plugins. O reload não apaga dados automaticamente. Se a remoção definitiva dos dados foi aprovada, descarte as sete tabelas `inbox_*` listadas acima em ordem inversa. Não remova tabelas `meta_*`: elas pertencem ao conector e contêm as mensagens e vínculos com contatos.

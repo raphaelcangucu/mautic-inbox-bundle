@@ -28,7 +28,7 @@ Todas as rotas abaixo começam em `/inbox/mobile/api/`. Header: `Authorization: 
 | GET `conversations/{id}` | Contexto real e capacidades do operador |
 | GET `conversations/{id}/history?limit=40&before=…` | Timeline por identidade `kind:id`, recibos reais |
 | GET `updates?since=…&state_id=…` | Poll legado; o chat mobile atualiza o histórico para captar recibos alterados |
-| POST `conversations/{id}/reply` | `body`, `request_id`, template/variáveis ou `reply_mode`; exige responsável/permissão e janela do canal |
+| POST `conversations/{id}/reply` | `body`, `request_id`, template/variáveis ou `reply_mode`; `subject` opcional só no e-mail; exige responsável/permissão e janela do canal |
 | POST `conversations/{id}/take` | `version`; assumir e pausar IA |
 | POST `conversations/{id}/state` | `version`, `action`: read/resolve/reopen/transfer/unassign/snooze; alvo/prazo conforme ação |
 | POST `conversations/{id}/note` | Nota interna; não há retry automático |
@@ -42,12 +42,54 @@ Todas as rotas abaixo começam em `/inbox/mobile/api/`. Header: `Authorization: 
 | GET/POST `canned-responses` | Respostas prontas persistidas; edição exige permissão |
 | GET `notifications?cursor=…` | Eventos reais com state_id e flags de supressão |
 | GET `media/{id}` | Proxy privado existente sob identidade do operador |
+| GET `email/{messageId}/attachments/{index}` | Anexo de e-mail pelo proxy autenticado (ver "Canal de e-mail") |
+| POST `messages/{messageId}/original-link` | Link assinado de 5 minutos para o HTML original saneado |
+| GET `forms` | Formulários publicados `[{id,name}]` para o marcador `[[form:ID]]` |
+| GET `contacts/{id}` / POST `contacts/{id}/start` | Sheet de canais; inclui `email:{assetId}` (ver "Canal de e-mail") |
 | POST `conversations/{id}/moderation` | Spam/restore/block/unblock no atendimento; hide/show no Instagram, versionamento e registro do ator |
 | POST `assistant/messages` | Pi e MCP de leitura sob permissões do operador |
 
 Rejeições mantêm status HTTP de autenticação/permissão/conflito/validação. O app não converte erro de rede em sucesso. `202` indica aceitação; `pending/sent/delivered/read` vêm do histórico. Um `request_id` estável permite reconciliar resultados incertos. Foi corrigido o replay sequencial no transporte externo para não redisparar um outbound já processado. Concorrência simultânea de dois clientes com o mesmo ID ainda exige teste específico.
 
 Comentários conservam o tipo mesmo quando o `recipient` público é o participante. Facebook: público; Instagram: privado, conforme implementação existente. Templates não abrem a janela de texto livre até nova resposta do usuário. Upload é recusado com capacidade explicitamente indisponível.
+
+## Canal de e-mail (Inbox 1.9.0)
+
+Contrato do plano `docs/superpowers/plans/2026-10-24-canal-email-threads.md`, seção 1.6. Os campos abaixo **somam-se** aos atuais; nada existente muda de forma. Exige Meta 0.15.0; envio, leitura IMAP, anexos e original são do Multi Mail 0.5.0. Sem o Multi Mail, `has_original` e `available` saem `false` e nenhuma rota de e-mail falha com 500.
+
+**Capacidades.** `GET /inbox/mobile/config` → `capabilities.channels` inclui `"email"`.
+
+**Sheet de canais.** `GET contacts/{id}` → `channels[]` ganha uma opção por conta `email_account` ativa e publicada que ainda não tem conversa com o contato:
+
+```json
+{"key":"email:31","state_id":null,"asset_id":31,"channel":"email","name":"Macro Markets · contato@macromarkets.com","address":"contato@macromarkets.com","available":true,"reason":null}
+```
+
+Motivos de indisponível: `"Cadastre um e-mail válido no contato."`, `"O contato pediu para não receber e-mails."`, `"Esta conta de e-mail está desativada."`. A conversa de e-mail que já existe aparece como hoje (`key: "state:{id}"`, `channel: "email"`), com `address` somado. `POST contacts/{id}/start` com `{"channel_key":"email:31"}` cria (ou reencontra) a conversa `(conta, e-mail do contato em minúsculas)`, atribuída a quem abriu e com `human_takeover`, **sem enviar nada**, e devolve o resumo; e-mail já ligado a outro contato → 409.
+
+**Resumo da conversa de e-mail:**
+
+```json
+{"channel":"email","asset":{"id":31,"name":"Macro Markets","type":"email_account","address":"contato@macromarkets.com"},"recipient":"joao@example.com","subject":"Re: Por que você ainda não depositou?","email":{"inbound":"ok","inbound_since":null}}
+```
+
+`subject` é o da última mensagem (ou do primeiro envio ainda na fila; `null` numa conversa nova). `email.inbound` vira `"delayed"`, com `inbound_since` ISO-8601, quando a leitura IMAP falha há mais de 30 minutos **ou** a senha IMAP foi recusada; o envio continua disponível. `reply_blocked_reason` do e-mail: conversa resolvida, conta desativada, DNC de e-mail do contato ou destinatário sem e-mail válido. Não há janela de 24 h.
+
+**Item do histórico** (mensagem de e-mail, entrada ou saída, inclusive o envio do atendente ainda na fila):
+
+```json
+{"body":"Oi Ana, ainda estou decidindo. **Qual o depósito mínimo?**","subject":"Re: Por que você ainda não depositou?","email":{"from":{"name":"João Lead","address":"joao@example.com"},"to":[{"name":"Macro Markets","address":"contato@macromarkets.com"}],"cc":[],"quoted":"> Em 23/10, Ana escreveu: ...","has_html":true,"has_original":true,"auto_reply":false,"unverified_sender":false,"kind":"message"},"attachments":[{"type":"document","label":"extrato.pdf","url":"/inbox/mobile/api/email/7/attachments/0","available":true,"size":183422,"mime":"application/pdf"}]}
+```
+
+`body` é o texto novo em markdown; `quoted` é o citado, para o "•••". `kind`: `message` | `auto_reply` | `bounce` | `unreadable`. `content_label` traz "Resposta automática" ou "Devolvido pelo servidor de e-mail" nesses casos. O `to` mostra a conta **sem o +tag**. O app não recebe `email.html` (o web recebe o HTML saneado para o iframe). Anexo indisponível (sem antivírus, recusado, tipo não permitido ou Multi Mail ausente) sai com `available:false` e `url:null`.
+
+**Responder.** `POST conversations/{id}/reply` com `{"body":"…","request_id":"…","subject":"Re: …"}`. `subject` é opcional e ignorado fora do e-mail; vazio vira `Re: <assunto da última mensagem>`; o primeiro e-mail de uma conversa sem assunto anterior exige `subject` (422). Corpo até 4000 caracteres. O item de saída da resposta 202 traz `subject` e `email`. Modelos WhatsApp não valem no e-mail (409).
+
+**Anexos.** `GET email/{messageId}/attachments/{index}` (Bearer) entrega o arquivo com `X-Content-Type-Options: nosniff`, `Content-Security-Policy: sandbox`, `Cache-Control: no-store, private`; imagem `inline`, todo o resto `attachment`; tipo fora da lista vira `application/octet-stream`. Exige acesso à conversa; 404 quando o anexo não existe, não está disponível ou o operador não vê a conversa. No web, o mesmo arquivo sai em `/s/inbox/api/email/{messageId}/attachments/{index}`; o histórico mobile já devolve o caminho mobile.
+
+**Original.** `POST messages/{messageId}/original-link` → `{"url":"https://…/inbox/mobile/original/{token}","expires_at":"…"}`. O token é HMAC (chave derivada do `secret_key` do Mautic), vale 5 minutos e fica amarrado à mensagem e ao usuário da sessão, que precisa continuar vendo a conversa. A página devolve o HTML saneado com `Content-Security-Policy: sandbox …; img-src data:` (imagens remotas só pelo link "Mostrar imagens" da própria página) e `no-store`. 404 quando a mensagem não tem original. No web: `GET /s/inbox/api/messages/{id}/original` → `{"html":"<saneado>"}`.
+
+**Formulários.** `GET forms` → `[{"id":12,"name":"Pesquisa: por que não depositou"}]` (exige permissão de responder). O marcador `[[form:12]]` no corpo vira, no enfileiramento, `[Nome do formulário](https://…/inbox/f/{token})` no e-mail e `Nome do formulário: https://…/inbox/f/{token}` no WhatsApp. O token identifica formulário, contato e conversa por 30 dias. Formulário despublicado, conversa sem contato ou mais de cinco formulários → 422 antes de enfileirar. Abrir o link marca o contato como rastreado, grava o evento `form_opened` e redireciona para `/form/{id}`; o envio grava `form_submitted`. No histórico, esses eventos trazem `form: {id, name}`, e `form_submitted` traz `answers: [{label, value}]`. A ação de campanha grava `campaign_email_started` com `campaign: {id, name}`; o descadastro de um clique grava `email_unsubscribed`.
 
 ## Assistente Pi + MCP
 
@@ -85,6 +127,49 @@ Preserve backup dos arquivos/cache anteriores e use o processo normal de deploy/
 GET /inbox/mobile/config anuncia magic_code_login e magic_code_endpoint. POST /inbox/mobile/magic-code recebe email/code_challenge S256 e retorna request_id secreto, expires_in=300/resend_after=60, nunca o código. MagicCodeMailer envia para um único operador ativo encontrado pelo e-mail, com nome da instância e aviso de sessão 30 dias. POST /inbox/mobile/token com grant_type=email_code, request_id, code, code_verifier troca o código por sessão normal. Verifica operador ativo, fingerprint de senha e e-mail atual. Código é de uso único, 5 tentativas; reenvio no mesmo PKCE invalida o anterior. Não cria contato/usuário. Resposta genérica também para e-mail desconhecido/inativo/ambíguo e falha de mailer. Limites 5/h e-mail, 20/h IP, 1000/h global. Solicitações/limites e hashes protegidos no mesmo storage privado com flock. HMAC do código usa o segredo de solicitação não persistido; PKCE e secreto ficam em memória no app. Sem esquema ou testes no banco de produção.
 
 28 contratos do app e testes PHP puros passaram. Descoberta e respostas públicas foram verificadas na instância implantada. Usuário ID 8 criado pelo operador e conferido ativo (Raphael Cangucu / raphael.cangucu / me@raphaelcangucu.com / Administrator). O SMTP global recusou inicialmente o envio por quota. Em 05/10/2026, depois de autorização explícita, o app iOS concluiu o login real por código de e-mail com esse usuário e carregou as conversas existentes.
+
+## Login por usuário e senha (1.11.0)
+
+GET /inbox/mobile/config anuncia `password_login`. POST /inbox/mobile/token com
+`grant_type=password`, `username` e `password` entrega a mesma sessão dos outros grants. O
+identificador aceita o usuário ou o e-mail do Mautic e precisa achar exatamente um usuário
+publicado: dois (um usuário cujo nome é o e-mail de outro) recusam. A senha é verificada pelo
+hasher configurado do Mautic, e o acesso pelo mesmo `ConversationAccess::canViewInbox` que vale
+para o navegador, o bearer nativo, o MCP e os workers — quem não atende no inbox não recebe
+sessão. A sessão guarda o `fingerprint` da senha, então trocar a senha no Mautic encerra o que
+já estava aberto.
+
+Uma recusa só: `invalid_grant` para usuário inexistente, ambíguo, despublicado, senha errada ou
+sem permissão, e nenhum dos casos diz quais nomes existem. Sem usuário, a senha ainda é
+verificada contra um hash isca, para que um nome errado custe o mesmo que uma senha errada.
+Limites 10/h por identificador, 30/h por IP e 1000/h global, contados antes de olhar a senha,
+no mesmo storage privado com flock dos outros grants e com identificador e IP só em hash.
+`second_factor_required` existe para instalações que acrescentam um segundo fator ao usuário —
+o Mautic 7 não traz nenhum — e manda essa conta entrar pela página do Mautic.
+
+Não cria usuário nem contato, não toca schema e não altera os outros grants. A tela de conexão
+do app mostra os campos só onde `password_login` vem verdadeiro, e a senha nunca é guardada no
+aparelho: o que fica é a sessão. `Tests/Mobile/session-store.php` cobre o limite por
+identificador e por IP, o hash dos contadores, o fim da janela e o vínculo da sessão, em PHP
+puro, sem kernel, banco ou rede. `Tests/Mobile/password-grant.php` exercita a própria action
+`token` com a entidade `User`, a política de permissão e o storage de verdade — só Doctrine e o
+hasher são substituídos, porque dependem de banco —, e confere o formato da resposta, a recusa
+única, as guardas de entrada, o limite, o custo do hash isca e os outros grants intactos. Pede
+um autoloader do Mautic (`MAUTIC_VENDOR_AUTOLOAD` ou o do próprio diretório de instalação) e é
+ignorado sem ele.
+
+Validado na instalação em 30/10/2026, com a conta restrita de revisão: `config` anuncia
+`password_login`; o login devolve a sessão com o operador correto; o bearer resultante responde
+em `api/conversations` e `api/availability`; o `refresh_token` roda; senha errada e usuário
+inexistente devolvem a mesma recusa `invalid_grant`; e `DELETE api/session` encerra a sessão,
+depois da qual o bearer dá 401 e o refresh é recusado. A senha saiu do arquivo privado direto
+para a requisição, sem passar por linha de comando, arquivo ou log. Deploy de 1.11.0 nessa
+release: quatro arquivos (`Config/config.php`, `Controller/MobileAuthController.php`,
+`Application/Mobile/SessionStore.php`, `CHANGELOG.md`), nenhum arquivo removido, backup do
+plugin anterior guardado em `/home/forge/backups` antes de sincronizar, `cache:clear` e
+`mautic:plugins:reload` com o PHP 8.4 do site. Sem migração, sem schema e sem teste de banco em
+produção.
+
 
 ## SMTP temporário do login mobile
 

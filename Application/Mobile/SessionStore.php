@@ -136,6 +136,34 @@ final class SessionStore
         });
     }
 
+    /**
+     * Direct sign-in with a Mautic password, for instances without transactional mail.
+     * Counted before the password is checked, so a wrong guess costs an attempt too.
+     */
+    public function throttlePassword(string $identifier, string $address): void
+    {
+        $this->transaction(function (array &$data) use ($identifier, $address): void {
+            $now = time();
+            $keys = ['id:'.hash('sha256', strtolower($identifier)) => 10, 'ip:'.hash('sha256', $address) => 30, 'global' => 1000];
+            foreach ($keys as $key => $limit) {
+                $rate = $data['password_rates'][$key] ?? ['count' => 0, 'expires' => $now + 3600];
+                if ($rate['expires'] < $now) { $rate = ['count' => 0, 'expires' => $now + 3600]; }
+                if ($rate['count'] >= $limit) { throw new \DomainException('rate_limited'); }
+            }
+            foreach ($keys as $key => $limit) {
+                $rate = $data['password_rates'][$key] ?? ['count' => 0, 'expires' => $now + 3600];
+                if ($rate['expires'] < $now) { $rate = ['count' => 0, 'expires' => $now + 3600]; }
+                $rate['count']++; $data['password_rates'][$key] = $rate;
+            }
+        });
+    }
+
+    /** Only after the caller has verified the password and the inbox permission. */
+    public function exchangePassword(int $user, string $fingerprint): array
+    {
+        return $this->transaction(fn (array &$data): array => $this->issue($data, ['user' => $user, 'fingerprint' => $fingerprint]));
+    }
+
     public function authenticate(string $token): array
     {
         if (!preg_match('/^[a-f0-9]{64}$/D', $token)) { throw new \DomainException('invalid_token'); }
@@ -194,8 +222,8 @@ final class SessionStore
         try {
             $raw = stream_get_contents($handle);
             $data = '' === $raw ? [] : json_decode($raw, true, 32, JSON_THROW_ON_ERROR);
-            $data += ['codes' => [], 'access' => [], 'refresh' => [], 'devices' => [], 'user_codes' => [], 'rates' => [], 'magic' => [], 'magic_rates' => []];
-            foreach (['codes', 'access', 'refresh', 'devices', 'rates', 'magic', 'magic_rates'] as $kind) { foreach ($data[$kind] as $key => $grant) { if ($grant['expires'] < time()) { if ($kind === 'devices') { unset($data['user_codes'][$grant['user_code']]); } unset($data[$kind][$key]); } } }
+            $data += ['codes' => [], 'access' => [], 'refresh' => [], 'devices' => [], 'user_codes' => [], 'rates' => [], 'magic' => [], 'magic_rates' => [], 'password_rates' => []];
+            foreach (['codes', 'access', 'refresh', 'devices', 'rates', 'magic', 'magic_rates', 'password_rates'] as $kind) { foreach ($data[$kind] as $key => $grant) { if ($grant['expires'] < time()) { if ($kind === 'devices') { unset($data['user_codes'][$grant['user_code']]); } unset($data[$kind][$key]); } } }
             $result = $operation($data);
             $json = json_encode($data, JSON_THROW_ON_ERROR);
             rewind($handle); if (!ftruncate($handle, 0) || fwrite($handle, $json) !== strlen($json)) { throw new \RuntimeException('mobile_storage_unavailable'); }

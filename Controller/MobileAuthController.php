@@ -12,12 +12,21 @@ use Mautic\UserBundle\Entity\User;
 use MauticPlugin\MauticInboxBundle\Application\Mobile\MagicCodeMailer;
 use Psr\Log\LoggerInterface;
 use MauticPlugin\MauticInboxBundle\Application\Mobile\SessionStore;
+use MauticPlugin\MauticInboxBundle\Security\ConversationAccess;
 use Symfony\Component\HttpFoundation\{JsonResponse,RedirectResponse,Request,Response};
+use Symfony\Component\PasswordHasher\Hasher\UserPasswordHasherInterface;
 use Symfony\Component\Security\Csrf\CsrfTokenManagerInterface;
 
 final class MobileAuthController extends CommonController
 {
     public const REDIRECT = 'mautic-inbox-demo://oauth/callback';
+
+    /**
+     * Verified when no user matches, so a wrong name costs what a wrong password costs.
+     * Bcrypt at the cost Mautic hashes with, or the decoy would take longer than the
+     * real check and say by itself that the name does not exist.
+     */
+    private const DECOY_HASH = '$2y$12$CfMi7Pmq7Z.ZQi0DPSGrt.RZKKuOdRf2jcrLBYya9VmQWCkeJYPVq';
 
     public function config(Request $request, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\ApnsConfiguration $push): JsonResponse
     {
@@ -26,7 +35,7 @@ final class MobileAuthController extends CommonController
             'version' => 1, 'name' => 'Mautic Inbox', 'origin' => $origin,
             'api_base' => $origin.'/inbox/mobile/api', 'authorization_endpoint' => $request->getSchemeAndHttpHost().$this->generateUrl('mautic_inbox_mobile_authorize'),
             'magic_code_endpoint' => $origin.'/inbox/mobile/magic-code', 'token_endpoint' => $origin.'/inbox/mobile/token', 'redirect_uri' => self::REDIRECT,
-            'capabilities' => ['channels' => ['whatsapp','instagram','facebook','webchat'], 'auth' => 'email_code_pkce', 'magic_code_login' => true, 'operator_session' => true, 'transfer' => true, 'snooze' => true, 'notes' => true, 'templates' => true, 'canned' => true, 'crm' => true, 'agents' => true, 'media_upload' => false, 'moderation' => true, 'push_remote' => $push->configured('production') || $push->configured('development'), 'push_transport' => 'apns'],
+            'capabilities' => ['channels' => ['whatsapp','instagram','facebook','webchat','email'], 'auth' => 'email_code_pkce', 'magic_code_login' => true, 'password_login' => true, 'operator_session' => true, 'availability' => true, 'transfer' => true, 'snooze' => true, 'notes' => true, 'templates' => true, 'canned' => true, 'crm' => true, 'agents' => true, 'media_upload' => false, 'moderation' => true, 'push_remote' => $push->configured('production') || $push->configured('development'), 'push_transport' => 'apns'],
         ]);
     }
 
@@ -52,18 +61,19 @@ final class MobileAuthController extends CommonController
         return new Response('<!doctype html><html lang="pt-BR"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Conectar Mautic Inbox</title><style>body{font:16px system-ui;background:#f5f7fb;color:#222c40;margin:0;padding:24px}main{max-width:420px;margin:10vh auto;background:white;border:1px solid #e2e7f0;border-radius:20px;padding:28px}p{line-height:1.6}button{background:#244184;color:white;font:600 16px system-ui;border:0;border-radius:12px;padding:16px;width:100%}small{color:#66738b}</style><main><small>'.$instance.'</small><h1>Conectar seu aplicativo</h1><p>Usuário: <strong>'.$name.'</strong></p><p>O aplicativo poderá consultar e atender conversas usando as permissões desta conta. O acesso é exclusivo deste aparelho e pode ser encerrado ao sair.</p><form method="post"><input type="hidden" name="_token" value="'.$token.'"><button type="submit">Conectar Mautic Inbox</button></form><p><small>Sua senha permanece no Mautic. A sessão do app fica separada do login no navegador.</small></p></main></html>', 200, ['Cache-Control' => 'no-store','Referrer-Policy' => 'no-referrer','Content-Security-Policy' => "default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ".self::REDIRECT."; frame-ancestors 'none'",'X-Content-Type-Options' => 'nosniff']);
     }
 
-    public function token(Request $request, SessionStore $store, EntityManagerInterface $em): JsonResponse
+    public function token(Request $request, SessionStore $store, EntityManagerInterface $em, UserPasswordHasherInterface $hasher, ConversationAccess $access): JsonResponse
     {
         try {
             if (strlen($request->getContent()) > 4096) { return $this->jsonPrivate(['error' => 'invalid_request'], 400); }
             $p = str_contains($request->headers->get('Content-Type',''), 'application/json') ? json_decode($request->getContent(), true, 16, JSON_THROW_ON_ERROR) : $request->request->all();
             if (!is_array($p) || array_is_list($p)) { throw new \DomainException('invalid_request'); }
-            foreach (['grant_type','request_id','code','code_verifier','redirect_uri','refresh_token','device_code'] as $field) { if (isset($p[$field]) && !is_string($p[$field])) { throw new \DomainException('invalid_request'); } }
+            foreach (['grant_type','request_id','code','code_verifier','redirect_uri','refresh_token','device_code','username','password'] as $field) { if (isset($p[$field]) && !is_string($p[$field])) { throw new \DomainException('invalid_request'); } }
             $tokens = match ($p['grant_type'] ?? '') {
                 'authorization_code' => $store->exchange((string) ($p['code'] ?? ''), (string) ($p['code_verifier'] ?? ''), (string) ($p['redirect_uri'] ?? '')),
                 'email_code' => $store->exchangeMagic((string) ($p['request_id'] ?? ''), (string) ($p['code'] ?? ''), (string) ($p['code_verifier'] ?? '')),
                 'refresh_token' => $store->refresh((string) ($p['refresh_token'] ?? '')),
                 'urn:ietf:params:oauth:grant-type:device_code' => $store->exchangeDevice((string) ($p['device_code'] ?? ''), (string) ($p['code_verifier'] ?? '')),
+                'password' => $this->passwordTokens($p, $request, $store, $em, $hasher, $access),
                 default => throw new \DomainException('unsupported_grant_type'),
             };
             if (isset($tokens['error'])) { return $this->jsonPrivate($tokens, 400); }
@@ -72,7 +82,31 @@ final class MobileAuthController extends CommonController
             unset($tokens['user_id'], $tokens['fingerprint'], $tokens['email_hash']);
             $tokens['user'] = ['id' => (int) $user->getId(), 'name' => $user->getName() ?: $user->getUsername(), 'email' => $user->getEmail()];
             return $this->jsonPrivate($tokens);
-        } catch (\JsonException|\DomainException $e) { return $this->jsonPrivate(['error' => $e instanceof \JsonException ? 'invalid_request' : $e->getMessage()], 400); }
+        } catch (\JsonException|\DomainException $e) { return $this->jsonPrivate(['error' => $e instanceof \JsonException ? 'invalid_request' : $e->getMessage()], 'rate_limited' === $e->getMessage() ? 429 : 400); }
+    }
+
+    /**
+     * Sign-in with the Mautic user name or email and its password, for operators whose
+     * instance sends no transactional mail and who cannot reach the browser page.
+     * One refusal for every reason, so this never tells a caller which names exist.
+     */
+    private function passwordTokens(array $p, Request $request, SessionStore $store, EntityManagerInterface $em, UserPasswordHasherInterface $hasher, ConversationAccess $access): array
+    {
+        $identifier = trim((string) ($p['username'] ?? '')); $secret = (string) ($p['password'] ?? '');
+        if ('' === $identifier || strlen($identifier) > 254 || '' === $secret || strlen($secret) > 1024) { throw new \DomainException('invalid_request'); }
+        $store->throttlePassword($identifier, $request->getClientIp() ?? 'unknown');
+        // Read-only lookup of operators; this never creates a user or a contact.
+        $matches = $em->getRepository(User::class)->createQueryBuilder('u')->where('LOWER(u.username) = :id OR LOWER(u.email) = :id')->andWhere('u.isPublished = true')->setParameter('id', strtolower($identifier))->setMaxResults(2)->getQuery()->getResult();
+        $user = 1 === count($matches) && $matches[0] instanceof User ? $matches[0] : null;
+        if (!$user) { password_verify($secret, self::DECOY_HASH); throw new \DomainException('invalid_grant'); }
+        if (!$hasher->isPasswordValid($user, $secret) || !$access->canViewInbox($user)) { throw new \DomainException('invalid_grant'); }
+        // Mautic 7 keeps no second factor on the user, so this only bites where an
+        // installation adds one: a password alone must not get past it, and those
+        // accounts still have the Mautic page, which asks for the second step.
+        foreach (['getTotpSecret', 'getTotpSecretKey'] as $reader) {
+            if (method_exists($user, $reader) && '' !== trim((string) $user->{$reader}())) { throw new \DomainException('second_factor_required'); }
+        }
+        return $store->exchangePassword((int) $user->getId(), hash('sha256', (string) $user->getPassword()));
     }
 
     public function magicCode(Request $request, SessionStore $store, EntityManagerInterface $em, MagicCodeMailer $mailer, LoggerInterface $logger): JsonResponse

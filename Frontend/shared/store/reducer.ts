@@ -127,6 +127,8 @@ export function startSend(
     requestId?: string;
     localId: string;
     now: string;
+    /** So e-mail. Viaja com a pendente para a retentativa sair com o mesmo assunto. */
+    subject?: string;
   },
 ): InboxState {
   const pendente: PendingMessage = {
@@ -136,6 +138,7 @@ export function startSend(
     body: acao.body,
     createdAt: acao.now,
     requestId: acao.requestId,
+    ...(undefined === acao.subject ? {} : { subject: acao.subject }),
     state: "sending",
   };
   const lista = state.pending.get(acao.conversationId) ?? [];

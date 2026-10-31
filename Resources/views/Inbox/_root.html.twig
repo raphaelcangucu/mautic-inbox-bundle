@@ -67,7 +67,19 @@
     'mautic.inbox.ui.view_contact_in_mautic_199894', 'mautic.inbox.ui.view_original_comment_0d3156', 'mautic.inbox.ui.view_post_on_b9e2d7',
     'mautic.inbox.ui.waiting_to_retry_5ea365', 'mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89', 'mautic.inbox.ui.write_a_private_reply_394bc1',
     'mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01', 'mautic.inbox.ui.your_support_conversations_in_one_place_b05a85',
-    'mautic.inbox.webchat.visitor_typing'
+    'mautic.inbox.webchat.visitor_typing',
+    'mautic.inbox.ui.email_channel', 'mautic.inbox.ui.email_images_blocked', 'mautic.inbox.ui.email_show_images',
+    'mautic.inbox.ui.email_me', 'mautic.inbox.ui.email_to', 'mautic.inbox.ui.email_from', 'mautic.inbox.ui.email_cc',
+    'mautic.inbox.ui.email_subject', 'mautic.inbox.ui.email_no_subject', 'mautic.inbox.ui.email_show_details',
+    'mautic.inbox.ui.email_unverified', 'mautic.inbox.ui.email_show_quoted', 'mautic.inbox.ui.email_hide_quoted',
+    'mautic.inbox.ui.email_attachment_unavailable', 'mautic.inbox.ui.email_view_original', 'mautic.inbox.ui.email_original_title',
+    'mautic.inbox.ui.email_close', 'mautic.inbox.ui.email_inbound_delayed', 'mautic.inbox.ui.email_inbound_delayed_since',
+    'mautic.inbox.ui.email_earlier', 'mautic.inbox.ui.email_auto_reply', 'mautic.inbox.ui.email_reply',
+    'mautic.inbox.ui.email_forward', 'mautic.inbox.ui.email_forward_copied', 'mautic.inbox.ui.email_compose_placeholder',
+    'mautic.inbox.ui.email_form', 'mautic.inbox.ui.email_forms_loading', 'mautic.inbox.ui.email_forms_empty',
+    'mautic.inbox.ui.email_insert', 'mautic.inbox.ui.email_send', 'mautic.inbox.ui.email_discard',
+    'mautic.inbox.ui.form_opened', 'mautic.inbox.ui.form_submitted', 'mautic.inbox.ui.campaign_email_started',
+    'mautic.inbox.ui.email_unsubscribed'
 ] %}
 {% set uiTranslations = {} %}
 {% for key in uiTranslationKeys %}
@@ -101,6 +113,8 @@
      data-note-url="{{ path('mautic_inbox_note', {stateId: 0}) }}"
      data-email-options-url="{{ path('mautic_inbox_email_options', {stateId: 0}) }}"
      data-email-apply-url="{{ path('mautic_inbox_email_apply', {stateId: 0}) }}"
+     data-forms-url="{{ path('mautic_inbox_forms') }}"
+     data-original-url="{{ path('mautic_inbox_message_original', {messageId: 0}) }}"
      data-draft-url="{{ path('mautic_inbox_draft', {stateId: 0}) }}"
      data-push-config-url="{{ path('mautic_inbox_push_config') }}"
      data-push-subscriptions-url="{{ path('mautic_inbox_push_subscribe') }}"

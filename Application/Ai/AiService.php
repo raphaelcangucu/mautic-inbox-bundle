@@ -11,12 +11,15 @@ use MauticPlugin\MauticMetaBundle\Entity\MetaOutboundJob;
 final class AiService {
  public function __construct(private AiStore $store,private EntityManagerInterface $em,private PiClient $pi,private MetaInboxIntegration $integration,private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access){}
  public function assertConversationAccess(ConversationState $state,User $actor): void {$this->access->assertView($state,$actor);}
- public function assets(): array{return array_map(fn($a)=>['id'=>$a->getId(),'name'=>$a->getName(),'channel'=>$a->getType()->channel()->value,'external_id'=>$a->getExternalId()],array_values(array_filter($this->em->getRepository(MetaAsset::class)->findBy(['isPublished'=>true]),fn($a)=>$a->getType()!==\MauticPlugin\MauticMetaBundle\Domain\AssetType::WhatsAppBusinessAccount)));}
+ public function assets(): array{return array_map(fn($a)=>['id'=>$a->getId(),'name'=>$a->getName(),'channel'=>$a->getType()->channel()->value,'external_id'=>$a->getExternalId()],array_values(array_filter($this->em->getRepository(MetaAsset::class)->findBy(['isPublished'=>true]),fn($a)=>$a->getType()!==\MauticPlugin\MauticMetaBundle\Domain\AssetType::WhatsAppBusinessAccount&&'email_account'!==$a->getType()->value)));}
  public function permission(ConversationState $state): string{return $state->getConversation()->getAsset()->getId().':'.(str_starts_with($state->getConversation()->getRecipient(),'comment:')?'comment':'message');}
  /** @return array{allowed:bool,reason:?string} */
  public function availability(ConversationState $state,array $agent): array {
   $config=$this->store->config();$permission=$this->permission($state);$reason=null;
-  if(InternalAgentPolicy::internal($agent))$reason='agent_permission';
+  // E-mail fica fora da IA na v1: o agente escreve para chat (900 caracteres, sem assunto, sem
+  // assinatura), e uma resposta automatica num e-mail sai com o nome da conta para sempre.
+  if('email'===$state->getConversation()->getChannel())$reason='channel_unsupported';
+  elseif(InternalAgentPolicy::internal($agent))$reason='agent_permission';
   elseif(empty($config['enabled']))$reason='global_disabled';
   elseif(empty($agent['enabled']))$reason='agent_disabled';
   elseif(!in_array($permission,$config['permissions'],true))$reason='global_permission';

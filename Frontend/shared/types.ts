@@ -1,5 +1,5 @@
 export type Labels = Record<string, string>;
-export type Channel = "whatsapp" | "instagram" | "facebook" | string;
+export type Channel = "whatsapp" | "instagram" | "facebook" | "email" | string;
 
 export interface Asset {
   id?: number;
@@ -10,6 +10,26 @@ export interface Asset {
   // Opcional porque uma conversa guardada no cache antes desta versao volta sem ele, e a
   // lista precisa continuar desenhando o que ja tinha.
   type?: string;
+  /** So conta de e-mail: o endereco da caixa, sem o +tag. */
+  address?: string | null;
+}
+export interface EmailAddress {
+  name: string;
+  address: string;
+}
+/** O que a mensagem de e-mail soma ao item do historico (plano, secao 1.6). */
+export interface EmailDetails {
+  from: EmailAddress;
+  to: EmailAddress[];
+  cc: EmailAddress[];
+  quoted: string | null;
+  has_html: boolean;
+  has_original: boolean;
+  auto_reply: boolean;
+  unverified_sender: boolean;
+  kind: "message" | "auto_reply" | "bounce" | "unreadable" | string;
+  /** HTML ja saneado pelo servidor, so no web. O app nao o recebe. */
+  html?: string;
 }
 export interface Assignee {
   id: number;
@@ -57,6 +77,10 @@ export interface Conversation {
   reply_hint?: string;
   reply_public?: boolean;
   human_takeover?: boolean;
+  /** So e-mail: o assunto da ultima mensagem. */
+  subject?: string | null;
+  /** So e-mail: a saude da leitura da caixa. "delayed" mostra a faixa de atraso. */
+  email?: { inbound: "ok" | "delayed" | string; inbound_since: string | null };
   realtime?: {
     token: string;
     url: string;
@@ -78,6 +102,8 @@ export interface Attachment {
   label: string;
   url?: string | null;
   available?: boolean;
+  size?: number;
+  mime?: string;
 }
 export interface TimelineItem {
   id: number;
@@ -99,6 +125,13 @@ export interface TimelineItem {
   ai?: { agent?: string; key?: string };
   /** Só em itens de envio. O servidor já manda; era o tipo que não declarava. */
   request_id?: string;
+  /** Só e-mail, entrada ou saída. */
+  subject?: string | null;
+  email?: EmailDetails;
+  /** Eventos do formulário de pesquisa e da ação de campanha. */
+  form?: { id: number; name: string };
+  answers?: Array<{ label: string; value: string }>;
+  campaign?: { id: number; name: string };
 }
 export interface CannedResponse {
   id: number;

@@ -1,6 +1,6 @@
 # Atendimento omnicanal para Mautic
 
-Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, Instagram, Facebook e canais instalados por outros plugins. O `MauticMetaBundle` continua responsável pelos canais Meta; o `MauticInboxBundle` organiza o atendimento humano, respostas imediatas, mídia recebida e agentes de IA executados pelo Pi/Codex.
+Este bundle adiciona ao Mautic uma caixa nativa de atendimento para WhatsApp, Instagram, Facebook, e-mail e canais instalados por outros plugins. O `MauticMetaBundle` continua responsável pelos canais Meta; o `MauticInboxBundle` organiza o atendimento humano, respostas imediatas, mídia recebida e agentes de IA executados pelo Pi/Codex.
 
 ## Recursos principais
 
@@ -37,7 +37,7 @@ Os componentes ficam em `Frontend/`. O entrypoint atende `Mautic.inboxOnLoad` e 
 
 ## Instalação
 
-Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.14.0 ou compatível instalado. Em uma instalação DDEV:
+Pré-requisitos: Mautic 7, PHP compatível com a versão do Mautic instalada e `MauticMetaBundle` 0.15.0 ou compatível instalado. Em uma instalação DDEV:
 
 ```bash
 ddev start
@@ -112,6 +112,10 @@ O pacote opcional [`raphaelcangucu/mautic-webchat-bundle`](https://github.com/ra
 
 O gateway WebSocket e as tabelas de sessão pertencem ao plugin Web Chat. Removê-lo não altera os transportes Meta do Inbox.
 
+## Canal de e-mail (1.9.0)
+
+Com o `MauticMetaBundle` 0.15.0 e o `MauticMultiMailBundle` 0.5.0 (conexão SMTP+IMAP marcada como conversacional), as respostas dos leads aos e-mails da plataforma chegam ao Inbox em threads. O web mostra a conversa estilo Gmail: assunto no topo, cartões empilhados, HTML saneado no servidor (HTMLPurifier) e exibido num iframe sem scripts, imagens remotas só depois de "Mostrar imagens", anexos pelo proxy autenticado e "Ver original". A resposta sai pela fila do Meta (`email_message`) com assunto `Re:` editável; o marcador `[[form:ID]]` vira um link de formulário identificado por contato. A ação de campanha **Iniciar conversa por e-mail** abre a conversa por opt-in, com descadastro de um clique. Sem o Multi Mail, o Inbox continua funcionando e o original e os anexos aparecem como indisponíveis. Contrato do app em [docs/mobile-api.md](docs/mobile-api.md#canal-de-e-mail-inbox-190).
+
 ## Segurança e comportamento
 
 - Toda mutação exige permissão e token CSRF.
@@ -164,7 +168,7 @@ O identificador do link representa o estado persistido da conversa no Inbox. Ele
 
 ## Compatibilidade e versão
 
-A versão `1.5.2` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.14.2`. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
+A versão `1.9.0` requer Mautic 7, PHP 8.2 ou superior e `raphaelcangucu/mautic-meta-bundle ^0.15.0`; o canal de e-mail usa ainda o `MauticMultiMailBundle` 0.5.0. O conector pode operar sem o Inbox; o Inbox depende do conector para comunicação com a Meta e expõe um contrato opcional para novos canais. O projeto usa a licença [GPL-3.0-or-later](LICENSE). Veja o [histórico da versão](CHANGELOG.md).
 
 Para respostas enviadas pelo celular e importação de histórico privado disponível, use o [MauticWhatsQrBundle 0.3.2](https://github.com/raphaelcangucu/mautic-whatsqr-bundle/releases/tag/v0.3.2) ou compatível. O WhatsApp pode limitar o histórico fornecido ao dispositivo conectado; essa versão não garante recuperar todas as conversas antigas. Importações preservam datas e não geram alertas de mensagens novas.
 

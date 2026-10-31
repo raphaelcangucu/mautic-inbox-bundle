@@ -7,7 +7,7 @@ use MauticPlugin\MauticInboxBundle\Controller\InboxController;
 return [
     'name' => 'Mautic Omnichannel Inbox',
     'description' => 'Atendimento humano para canais Meta conectado ao CRM do Mautic.',
-    'version' => '1.5.2',
+    'version' => '1.11.0',
     'author' => 'Mautic',
     'routes' => ['main' => [
         'mautic_inbox_mail_connections' => ['path' => '/inbox/mail-connections', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MailConnectionsController::class.'::index', 'method' => ['GET', 'POST']],
@@ -44,6 +44,11 @@ return [
         'mautic_inbox_canned' => ['path' => '/inbox/api/canned-responses', 'controller' => InboxController::class.'::canned', 'method' => 'POST'],
         'mautic_inbox_canned_update' => ['path' => '/inbox/api/canned-responses/{responseId}', 'controller' => InboxController::class.'::updateCanned', 'method' => 'PUT', 'requirements' => ['responseId' => '\\d+']],
         'mautic_inbox_canned_delete' => ['path' => '/inbox/api/canned-responses/{responseId}', 'controller' => InboxController::class.'::deleteCanned', 'method' => 'DELETE', 'requirements' => ['responseId' => '\\d+']],
+        // Canal de e-mail. O prefixo "email/" e "messages/" nao colide com email-options e
+        // email-actions, que sao do chip de e-mail do CRM dentro da conversa.
+        'mautic_inbox_email_attachment' => ['path' => '/inbox/api/email/{messageId}/attachments/{index}', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\EmailController::class.'::attachment', 'method' => 'GET', 'requirements' => ['messageId' => '\\d+', 'index' => '\\d{1,4}']],
+        'mautic_inbox_message_original' => ['path' => '/inbox/api/messages/{messageId}/original', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\EmailController::class.'::original', 'method' => 'GET', 'requirements' => ['messageId' => '\\d+']],
+        'mautic_inbox_forms' => ['path' => '/inbox/api/forms', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\EmailController::class.'::forms', 'method' => 'GET'],
     ],
     'public' => [
         'mautic_inbox_review_webchat' => ['path'=>'/inbox/review/webchat/{publicKey}','controller'=>\MauticPlugin\MauticInboxBundle\Controller\ReviewWebChatController::class.'::show','method'=>'GET','defaults'=>['_stateless'=>true],'requirements'=>['publicKey'=>'pub_[a-zA-Z0-9_-]+']],
@@ -55,6 +60,11 @@ return [
         'mautic_inbox_service_worker' => ['path' => '/inbox-sw.js', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::serviceWorker', 'method' => 'GET'],
         'mautic_inbox_manifest' => ['path' => '/inbox-manifest.webmanifest', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::manifest', 'method' => 'GET'],
         'mautic_inbox_icon' => ['path' => '/inbox-icon-{name}.png', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PwaAssetController::class.'::icon', 'method' => 'GET', 'requirements' => ['name' => '[0-9a-z-]+']],
+        // Links assinados do canal de e-mail: formulario de pesquisa (30 dias), original no app
+        // (5 minutos, amarrado ao usuario) e descadastro de um clique (RFC 8058).
+        'mautic_inbox_form_link' => ['path' => '/inbox/f/{token}', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PublicEmailController::class.'::form', 'method' => 'GET', 'requirements' => ['token' => '[A-Za-z0-9_-]{8,128}']],
+        'mautic_inbox_mobile_original' => ['path' => '/inbox/mobile/original/{token}', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PublicEmailController::class.'::original', 'method' => 'GET', 'requirements' => ['token' => '[A-Za-z0-9_-]{8,128}']],
+        'mautic_inbox_email_unsubscribe' => ['path' => '/inbox/u/{token}', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\PublicEmailController::class.'::unsubscribe', 'method' => ['GET', 'POST'], 'requirements' => ['token' => '[A-Za-z0-9_-]{8,128}']],
     ]],
     'menu' => ['main' => [
         'mautic.inbox.menu' => ['id' => 'mautic_inbox', 'route' => 'mautic_inbox_index', 'access' => 'inbox:conversations:view', 'iconClass' => 'ri-customer-service-2-line', 'priority' => 21],

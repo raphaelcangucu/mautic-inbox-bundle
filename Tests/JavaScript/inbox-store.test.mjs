@@ -188,6 +188,44 @@ test("tentar de novo reenvia com a mesma chave, e o aceite tira a pendente", asy
   }
 });
 
+test("o assunto do e-mail vai no envio e volta igual na retentativa; nota nunca leva", async () => {
+  const { modulo, limpar } = await compilarStore();
+  try {
+    const corpos = [];
+    let derrubar = true;
+    const store = modulo.criarInboxStore({
+      csrf: "csrf-token",
+      urls: URLS,
+      buscar: async (url, options) => {
+        corpos.push(JSON.parse(options.body));
+        if (derrubar) throw new Error("network down");
+        return {
+          item: { ...item(9, "ola"), request_id: corpos.at(-1).request_id },
+        };
+      },
+    });
+
+    await store.sendReply(7, "reply", "ola", undefined, "Re: Proposta");
+    const falha = store.pending.get(7)[0];
+    assert.equal(falha.subject, "Re: Proposta");
+    derrubar = false;
+    await store.retryPending(falha.localId);
+    assert.deepEqual(
+      corpos.map((corpo) => corpo.subject),
+      ["Re: Proposta", "Re: Proposta"],
+    );
+
+    await store.sendReply(7, "note", "registro", undefined, "ignorado");
+    assert.equal(
+      "subject" in corpos.at(-1),
+      false,
+      "nota interna nao tem assunto",
+    );
+  } finally {
+    await limpar();
+  }
+});
+
 test("take recusado marca a pendente como falha, com o texto dentro dela", async () => {
   const { modulo, limpar } = await compilarStore();
   try {

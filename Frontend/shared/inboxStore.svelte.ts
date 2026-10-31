@@ -91,6 +91,7 @@ export function criarInboxStore(deps: DependenciasDaStore) {
     mode: "reply" | "note";
     body: string;
     requestId?: string;
+    subject?: string;
   }): Promise<void> {
     try {
       const resposta = (await buscar(
@@ -100,6 +101,7 @@ export function criarInboxStore(deps: DependenciasDaStore) {
           body: JSON.stringify({
             body: envio.body,
             request_id: envio.requestId,
+            ...(undefined === envio.subject ? {} : { subject: envio.subject }),
           }),
         },
       )) as RespostaDoEnvio;
@@ -204,11 +206,14 @@ export function criarInboxStore(deps: DependenciasDaStore) {
        * "enviando".
        */
       preparar?: () => Promise<void>,
+      /** So e-mail: o assunto da composicao. Nota nunca leva. */
+      subject?: string,
     ): Promise<void> {
       const localId = requestId();
       // Nota nao recebe chave. O servidor nao guarda request_id de nota e grava uma nova a
       // cada chamada: uma chave aqui fingiria uma idempotencia que a nota nao tem.
       const chave = "note" === mode ? undefined : requestId();
+      const assunto = "note" === mode ? undefined : subject;
 
       gravar(
         startSend(estado, {
@@ -218,6 +223,7 @@ export function criarInboxStore(deps: DependenciasDaStore) {
           requestId: chave,
           localId,
           now: new Date().toISOString(),
+          subject: assunto,
         }),
       );
 
@@ -242,6 +248,7 @@ export function criarInboxStore(deps: DependenciasDaStore) {
         mode,
         body,
         requestId: chave,
+        subject: assunto,
       });
     },
 
@@ -263,6 +270,7 @@ export function criarInboxStore(deps: DependenciasDaStore) {
         mode: pendente.mode,
         body: pendente.body,
         requestId: pendente.requestId,
+        subject: pendente.subject,
       });
     },
 

@@ -6,6 +6,10 @@ namespace MauticPlugin\MauticInboxBundle\Tests\Unit\Application;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\ORM\EntityRepository;
+use Mautic\LeadBundle\Entity\DoNotContact;
+use Mautic\LeadBundle\Entity\Lead;
+use Mautic\LeadBundle\Model\DoNotContact as DoNotContactModel;
+use MauticPlugin\MauticInboxBundle\Application\ChannelTransportRegistry;
 use MauticPlugin\MauticInboxBundle\Application\ReplyAvailability;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
 use MauticPlugin\MauticMetaBundle\Domain\AssetType;
@@ -121,6 +125,67 @@ final class ReplyAvailabilityTest extends TestCase
     {
         yield 'unresolved recipient' => ['mautic.inbox.ui.reply_recipient_unresolved'];
         yield 'qr session down'      => ['mautic.inbox.ui.reply_qr_session_disconnected'];
+        yield 'email account off'    => ['mautic.inbox.ui.email_account_inactive'];
+        yield 'email dnc'            => ['mautic.inbox.ui.email_contact_unsubscribed'];
+        yield 'email recipient'      => ['mautic.inbox.ui.email_recipient_invalid'];
+    }
+
+    public function testAnEmailConversationHasNoTwentyFourHourWindow(): void
+    {
+        self::assertNull(
+            $this->availability($this->inbound('-30 days'))->reason($this->emailState()),
+            'E-mail nao tem janela de sessao. A regra das 24h e do WABA e do Messenger; aplicada aqui, fecharia toda conversa parada ha um dia com o texto do Instagram.',
+        );
+    }
+
+    public function testAnEmailConversationWithNoInboundAtAllCanStillBeAnswered(): void
+    {
+        $repository = $this->createMock(EntityRepository::class);
+        $repository->method('findOneBy')->willReturn(null);
+        $entityManager = $this->createMock(EntityManagerInterface::class);
+        $entityManager->method('getRepository')->willReturn($repository);
+
+        self::assertNull(
+            (new ReplyAvailability($entityManager, $this->translator(), new ChannelTransportRegistry([])))->reason($this->emailState()),
+            'A conversa aberta pelo sheet de canais ainda nao recebeu nada, e e justamente para escrever primeiro que ela existe.',
+        );
+    }
+
+    public function testAnInactiveEmailAccountOffersNoReply(): void
+    {
+        self::assertSame('mautic.inbox.ui.email_account_inactive', $this->availability($this->inbound('-5 minutes'))->reason($this->emailState('inactive')));
+    }
+
+    public function testAContactWithEmailDncOffersNoReply(): void
+    {
+        $dnc = $this->createMock(DoNotContactModel::class);
+        $dnc->method('isContactable')->willReturnCallback(static fn (Lead $lead, string $channel): int => 'email' === $channel ? DoNotContact::UNSUBSCRIBED : DoNotContact::IS_CONTACTABLE);
+        $state = $this->emailState();
+        $state->getConversation()->setContact(new Lead());
+
+        self::assertSame('mautic.inbox.ui.email_contact_unsubscribed', $this->availability($this->inbound('-5 minutes'), $dnc)->reason($state));
+    }
+
+    public function testAContactableContactCanBeAnswered(): void
+    {
+        $dnc = $this->createMock(DoNotContactModel::class);
+        $dnc->method('isContactable')->willReturn(DoNotContact::IS_CONTACTABLE);
+        $state = $this->emailState();
+        $state->getConversation()->setContact(new Lead());
+
+        self::assertNull($this->availability($this->inbound('-5 minutes'), $dnc)->reason($state));
+    }
+
+    public function testAnInvalidRecipientOffersNoReply(): void
+    {
+        self::assertSame('mautic.inbox.ui.email_recipient_invalid', $this->availability($this->inbound('-5 minutes'))->reason($this->emailState('active', 'sem-arroba')));
+    }
+
+    public function testAResolvedEmailConversationStillAsksToReopen(): void
+    {
+        $state = $this->emailState()->setLifecycle('resolved');
+
+        self::assertSame('mautic.inbox.ui.this_conversation_is_resolved_reopen_it_to_reply_fd61b2', $this->availability($this->inbound('-5 minutes'))->reason($state));
     }
 
     /**
@@ -135,12 +200,21 @@ final class ReplyAvailabilityTest extends TestCase
         return (new ConversationState())->setConversation($conversation);
     }
 
+    private function emailState(string $status = 'active', string $recipient = 'joao@example.com'): ConversationState
+    {
+        $asset = (new MetaAsset())->setType(AssetType::EmailAccount)->setStatus($status);
+        $asset->setSettings(['email_address' => 'contato@macromarkets.com']);
+        $conversation = (new MetaConversation())->setAsset($asset)->setChannel('email')->setRecipient($recipient);
+
+        return (new ConversationState())->setConversation($conversation);
+    }
+
     /**
      * A caixa com uma unica mensagem recebida no historico. Sem contato ligado de
      * proposito: e o que mantem a leitura na consulta simples, em vez da que so existe
      * para reencontrar um numero brasileiro renormalizado.
      */
-    private function availability(MetaMessage $lastInbound): ReplyAvailability
+    private function availability(MetaMessage $lastInbound, ?DoNotContactModel $dnc = null): ReplyAvailability
     {
         $repository = $this->createMock(EntityRepository::class);
         $repository->method('findOneBy')->willReturn($lastInbound);
@@ -148,10 +222,15 @@ final class ReplyAvailabilityTest extends TestCase
         $entityManager = $this->createMock(EntityManagerInterface::class);
         $entityManager->method('getRepository')->willReturn($repository);
 
+        return new ReplyAvailability($entityManager, $this->translator(), new ChannelTransportRegistry([]), $dnc);
+    }
+
+    private function translator(): TranslatorInterface
+    {
         $translator = $this->createMock(TranslatorInterface::class);
         $translator->method('trans')->willReturnArgument(0);
 
-        return new ReplyAvailability($entityManager, $translator);
+        return $translator;
     }
 
     private function inbound(string $when): MetaMessage
