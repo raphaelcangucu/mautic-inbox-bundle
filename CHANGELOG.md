@@ -1,5 +1,44 @@
 # Changelog
 
+## 1.14.0
+
+- Sessoes do assistente gravadas no servidor, em `inbox_assistant_sessions`. Antes o app
+  guardava um fio unico por agente no cache da conta: desinstalar, trocar de aparelho ou sair
+  apagava tudo, e nao havia como voltar a um assunto. Agora o operador abre uma sessao, ela
+  registra de onde foi aberta (conversa, contato ou nenhum) e fica listada para ser retomada.
+  Endpoints: `GET assistant/sessions` lista sem os turnos, `POST assistant/sessions` abre,
+  `GET/PUT/DELETE assistant/sessions/{id}` retoma, grava e apaga. Toda consulta leva o dono
+  junto, entao o id de outro operador responde 404, nunca 403. Sao guardados so os turnos
+  legiveis: propostas de acao expiram e sao reemitidas, e uma sessao retomada nao pode
+  oferecer como clicavel uma acao que o servidor ja esqueceu. Teto de 120 turnos e 4000
+  caracteres por turno, e a sessao sem toque ha 90 dias se apaga na primeira listagem. Os testes
+  rodam as consultas contra um banco de verdade (SQLite em memoria montado a partir do
+  mapeamento), o que pegou dois defeitos antes de qualquer deploy: o parametro de data da
+  limpeza precisava de tipo explicito, sem o qual o Doctrine tratava o DateTimeImmutable como
+  entidade e derrubava a propria listagem, e o guarda do corpo recusava `{}` porque
+  array_is_list([]) e verdadeiro. A propria acao do controller tambem e exercitada no
+  teste: Request entra e JsonResponse sai, sobre o SessionStore e o banco reais, cobrindo
+  201 ao abrir, 200 ao gravar e retomar, 404 para id desconhecido e para o id de outro
+  operador, 400 para corpo invalido e 405 para metodo que a rota nao atende.
+
+- O nao perturbe passa a ter uma implementacao so. Desde que as duas frentes foram mescladas, a
+  mesma regra estava escrita em dois lugares: o `Application\Mobile\ContactDirectory` repetia o
+  que o `Application\ContactDoNotContact` ja fazia, gravar o motivo MANUAL com o nome de quem
+  pediu e liberar so o registro manual. Agora o diretorio do app delega, e guarda o que e dele:
+  achar o contato, conferir a permissao, registrar o evento na conversa e dizer em portugues o
+  que foi recusado, porque e essa mensagem que o operador le no aparelho. Para quem usa nao muda
+  nada: as mesmas respostas, os mesmos status e as mesmas mensagens, no app e na web.
+
+## 1.13.0
+
+- Nao perturbe pelo app: `PUT /inbox/mobile/api/contacts/{id}/dnc` com `{"blocked":true|false}`
+  liga e desliga o DoNotContact de e-mail do contato, e `GET contacts/{id}` passa a devolver
+  `do_not_contact: {blocked, reason, editable}`. Ligar grava o motivo MANUAL com o nome de quem
+  pediu; desligar remove so o registro manual, entao um descadastro do proprio contato
+  (`unsubscribed`) ou um retorno permanente do servidor (`bounced`) continuam valendo e o app
+  recebe `editable: false` com o motivo. Exige permissao de edicao do contato, nao so de leitura.
+  O bloqueio vale para o e-mail, que e o canal onde o plugin ja respeitava o DNC: campanha e
+  resposta humana. WhatsApp, Instagram e Facebook nao mudam.
 ## 1.12.0
 
 - A lista de conversas passa a agrupar por quem esta esperando: "Esperando voce" (precisa

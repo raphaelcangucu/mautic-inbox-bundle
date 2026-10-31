@@ -26,6 +26,12 @@ final class ContactDoNotContact
     {
     }
 
+    /** Se esta instalação do Mautic tem o DoNotContact. Sem ele não há o que ler nem gravar. */
+    public function available(): bool
+    {
+        return null !== $this->doNotContact;
+    }
+
     /**
      * @return array{blocked: bool, reason: string|null, editable: bool}
      */

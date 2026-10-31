@@ -21,7 +21,7 @@ use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 /** Native bearer boundary. Business rules remain in the existing Inbox services. */
 final class MobileApiController extends CommonController
 {
-    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing, \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, \MauticPlugin\MauticInboxBundle\Application\Mobile\AudioStore $audioStore, \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialVisuals $visuals, \MauticPlugin\MauticInboxBundle\Application\Email\EmailMessages $emailMessages, \MauticPlugin\MauticInboxBundle\Application\Forms\FormLinks $formLinks): Response
+    public function api(string $resource, Request $request, SessionStore $sessions, EntityManagerInterface $em, TokenStorageInterface $tokens, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states, ConversationActions $actions, WhatsAppTemplates $templates, ContactLinking $linking, AiService $ai, AiStore $aiStore, ConversationManager $metaConversations, CannedResponses $canned, CannedResponseRepository $cannedRepository, ModerationStore $moderation, OperatorAssistant $assistant, ChannelTransportRegistry $transports, \MauticPlugin\MauticInboxBundle\Application\Mobile\Push\NativePushRegistry $push, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, \MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory $directory, \MauticPlugin\MauticInboxBundle\Application\Mobile\QrPairing $pairing, \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, \MauticPlugin\MauticInboxBundle\Application\Mobile\AudioStore $audioStore, \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialVisuals $visuals, \MauticPlugin\MauticInboxBundle\Application\Email\EmailMessages $emailMessages, \MauticPlugin\MauticInboxBundle\Application\Forms\FormLinks $formLinks, \MauticPlugin\MauticInboxBundle\Application\Mobile\AssistantSessions $assistantSessions): Response
     {
         $previous = $tokens->getToken();
         try {
@@ -85,6 +85,26 @@ final class MobileApiController extends CommonController
                 try{$payload=json_decode($request->getContent(),true,16,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
                 if(!is_array($payload)){return $this->error('JSON inválido.','invalid_request',400);}
                 return $this->data(match($resource){'assistant/messages'=>$assistant->reply($payload,$user),'assistant/actions/renew'=>$assistant->renewAction($payload,$user),default=>$assistant->confirm($payload,$user)});
+            }
+            // As sessoes do assistente deixaram de morar no aparelho. A consulta sempre leva o
+            // dono junto: o id de outro operador responde "nao encontrada", nunca "proibida",
+            // que por si so ja contaria que aquela sessao existe.
+            if (str_starts_with($resource, 'assistant/sessions')) {
+                try {
+                    if ($method === 'GET' && $resource === 'assistant/sessions') { return $this->data($assistantSessions->listFor($user)); }
+                    if ($method === 'POST' && $resource === 'assistant/sessions') { return $this->data($assistantSessions->start($this->payload($request), $user), 201); }
+                    if (preg_match('#^assistant/sessions/([1-9][0-9]*)$#D', $resource, $sessionRoute)) {
+                        $sessionId = (int) $sessionRoute[1];
+                        if ($method === 'GET') { return $this->data($assistantSessions->open($sessionId, $user)); }
+                        if ($method === 'PUT') { return $this->data($assistantSessions->record($sessionId, $this->payload($request), $user)); }
+                        if ($method === 'DELETE') { return $this->data($assistantSessions->remove($sessionId, $user)); }
+                    }
+                    return $this->error('Método não permitido.', 'method_not_allowed', 405);
+                } catch (\DomainException $sessionError) {
+                    return 'not_found' === $sessionError->getMessage()
+                        ? $this->error('Sessão não encontrada.', 'not_found', 404)
+                        : $this->error('Requisição inválida.', 'invalid_request', 400);
+                }
             }
             // A disponibilidade do atendente: ler e trocar. Sem linha na tabela ele esta
             // disponivel, que e como o Inbox sempre se comportou.
@@ -206,9 +226,15 @@ final class MobileApiController extends CommonController
             if ($method === 'GET' && $resource === 'contacts') { return $this->data($directory->search($user,$request->query->all())); }
             if ($method === 'GET' && $resource === 'crm-options') { return $this->data($linking->catalogue($user,$request->query->all())); }
             if ($method === 'GET' && $resource === 'contacts/campaigns') { return $this->data(['items'=>$directory->campaigns($user)]); }
-            if (preg_match('#^contacts/([1-9][0-9]*)(?:/(start))?$#D',$resource,$contactRoute)) {
+            if (preg_match('#^contacts/([1-9][0-9]*)(?:/(start|dnc))?$#D',$resource,$contactRoute)) {
                 $contactId=(int)$contactRoute[1];
                 if ($method === 'GET' && empty($contactRoute[2])) { return $this->data($directory->detail($contactId,$user)); }
+                if ($method === 'PUT' && ($contactRoute[2]??'') === 'dnc') {
+                    if(strlen($request->getContent())>256){return $this->error('Requisição inválida.','invalid_request',400);}
+                    try{$payload=json_decode($request->getContent(),true,4,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
+                    if(!is_array($payload)||!is_bool($payload['blocked']??null)){return $this->error('Requisição inválida.','invalid_request',400);}
+                    return $this->data($directory->setDoNotContact($contactId,$user,$payload['blocked']));
+                }
                 if ($method === 'POST' && ($contactRoute[2]??'') === 'start') {
                     if(strlen($request->getContent())>4096){return $this->error('Requisição inválida.','invalid_request',400);}
                     try{$payload=json_decode($request->getContent(),true,8,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
@@ -312,6 +338,18 @@ final class MobileApiController extends CommonController
             return $this->data($decorate($query->summary($state)));
         } catch (InboxException $e) { return $this->error($this->translator->trans($e->getMessage()), $e->httpStatus === 409 ? 'version_conflict' : 'inbox_error', $e->httpStatus); }
         finally { $tokens->setToken($previous); }
+    }
+
+    /** Corpo JSON de objeto, com teto de tamanho. Qualquer desvio e `invalid_request`. */
+    private function payload(Request $request, int $max = 65536): array
+    {
+        if (strlen($request->getContent()) > $max) { throw new \DomainException('invalid_request'); }
+        try { $body = json_decode($request->getContent() ?: '{}', true, 32, JSON_THROW_ON_ERROR); } catch (\JsonException) { throw new \DomainException('invalid_request'); }
+        // `{}` decodifica para array vazio, e array_is_list([]) e verdadeiro: sem a primeira
+        // metade da condicao, um corpo vazio legitimo seria recusado como se fosse uma lista.
+        if (!is_array($body) || ([] !== $body && array_is_list($body))) { throw new \DomainException('invalid_request'); }
+
+        return $body;
     }
 
     private function data(array $value, int $status = 200): JsonResponse { return new JsonResponse($value, $status, ['Cache-Control' => 'no-store','X-Content-Type-Options' => 'nosniff']); }
