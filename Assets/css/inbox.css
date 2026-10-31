@@ -232,7 +232,9 @@
 .inbox-workspace { flex: 1 1 auto; height: auto; min-height: 0; }
 .inbox-thread #inbox-selected {
   position: relative;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Quatro faixas: cabecalho, sessao do agente, historico, editor. A do agente e `auto` e
+     some sozinha quando nao ha agente na conversa. */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 .inbox-messages-wrap, .inbox-list-scroll { overscroll-behavior: contain; }
 .inbox-settings, .inbox-automation {
@@ -273,7 +275,7 @@
     display: block;
     position: absolute;
     grid-column: 1;
-    grid-row: 2 / 4;
+    grid-row: 2 / 5;
     inset: 0 0 0 auto;
     width: min(320px, 100%);
     z-index: 5;
@@ -363,7 +365,7 @@
    uses the browser top layer so the workspace's scrolling never clips it. */
 .inbox-app .inbox-composer {
   grid-column: 1;
-  grid-row: 3;
+  grid-row: 4;
   display: block;
   min-width: 0;
   margin: 0 16px 14px;
@@ -626,3 +628,15 @@
 .inbox-moderation .btn.marked{background:var(--ib-soft);border-color:#c9cfe6;color:var(--ib-accent);font-weight:600}
 .inbox-pill.moderated{background:#f3f4f6;border:1px solid #e0e3ea;color:#4a5160}
 @media(max-width:760px){.inbox-moderation{flex-wrap:wrap;margin-right:0}}
+/* A grade do #inbox-selected coloca as partes por linha explicita (.inbox-messages-wrap estava
+   presa na 2). Como a sessao do agente entrou entre o cabecalho e o historico, as tres descem
+   uma linha — e precisam dizer qual, senao o auto-placement joga o editor para a coluna do
+   contato, que foi o que aconteceu na primeira tentativa. */
+.inbox-ai-session{grid-column:1;grid-row:2}
+.inbox-messages-wrap{grid-row:3}
+/* O template precisa ser reafirmado aqui no fim: alguma regra posterior do arquivo o derrubava
+   e a grade caia para faixas implicitas, com a linha do agente vazia e o editor empilhado em
+   cima do historico. Com as quatro faixas declaradas por ultimo, a colocacao acima vale. */
+#inbox-selected{grid-template-rows:76px auto minmax(80px,1fr) auto}
+@media(max-width:1199px){#inbox-selected{grid-template-rows:100px auto minmax(100px,1fr) auto}}
+@media(max-width:760px){#inbox-selected{grid-template-rows:auto auto minmax(100px,1fr) auto}}
