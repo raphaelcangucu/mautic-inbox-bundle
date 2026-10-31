@@ -61,6 +61,10 @@ export interface Conversation {
   contact_handle?: string;
   /** Perfil publico do participante, quando o canal tem um. So instagram e facebook. */
   profile_url?: string | null;
+  /** So comentarios e webchat. Ausente numa instalacao anterior a este campo. */
+  moderation?: { spam: boolean; hidden: boolean; blockedAuthor: boolean };
+  /** Ver que esta marcado e leitura; mudar e edicao. Sao permissoes diferentes. */
+  moderation_available?: boolean;
   avatar_url?: string;
   asset: Asset;
   last_message_at: string;

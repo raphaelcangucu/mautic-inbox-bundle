@@ -14,6 +14,7 @@ use MauticPlugin\MauticInboxBundle\Application\ContactLinking;
 use MauticPlugin\MauticInboxBundle\Application\ConversationActions;
 use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Application\InboxQuery;
+use MauticPlugin\MauticInboxBundle\Application\Mobile\ModerationStore;
 use MauticPlugin\MauticInboxBundle\Entity\CannedResponse;
 use MauticPlugin\MauticInboxBundle\Entity\CannedResponseRepository;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
@@ -83,16 +84,78 @@ final class InboxController extends CommonController
         }, 200, ['Content-Type' => 'text/event-stream', 'Cache-Control' => 'private, no-cache, no-store', 'X-Accel-Buffering' => 'no']);
     }
 
-    public function conversations(Request $request, CorePermissions $permissions, UserHelper $users, InboxQuery $query): JsonResponse
+    public function conversations(Request $request, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ModerationStore $moderation): JsonResponse
     {
         $this->grant($permissions, 'view');
-        return $this->respond(fn (): array => $query->conversations($this->user($users), $request->query->all()));
+
+        return $this->respond(function () use ($request, $permissions, $users, $query, $moderation): array {
+            $data = $query->conversations($this->user($users), $request->query->all());
+            // A lista precisa do estado tanto quanto a conversa aberta: e nela que o operador ve
+            // de uma vez o que ja foi marcado, sem abrir um por um.
+            $data['items'] = array_map(fn (array $row): array => $this->withModeration($row, $moderation, $permissions), $data['items'] ?? []);
+
+            return $data;
+        });
     }
 
-    public function detail(int $stateId, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ConversationStateRepository $states): JsonResponse
+    public function detail(int $stateId, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ConversationStateRepository $states, ModerationStore $moderation): JsonResponse
     {
         $this->grant($permissions, 'view');
-        return $this->respond(fn (): array => $query->detail($this->requireState($states, $stateId), $this->user($users)));
+        return $this->respond(fn (): array => $this->withModeration($query->detail($this->requireState($states, $stateId), $this->user($users)), $moderation, $permissions));
+    }
+
+    /**
+     * O estado de moderação de um comentário, do jeito que o aplicativo já o recebe.
+     *
+     * A marcação mora fora do Mautic (ModerationStore), então ela não vem de InboxQuery junto
+     * com o resto: quem monta a resposta é que a acrescenta. O aplicativo faz isto desde que
+     * ganhou moderação; o web nunca tinha pedido, e por isso a tela não tinha como mostrar que
+     * um comentário está oculto nem oferecer o contrário.
+     *
+     * `moderation_available` é separado de `moderation` de propósito: ver que um comentário foi
+     * marcado como spam é leitura, mudar isso é edição, e são permissões diferentes.
+     */
+    private function withModeration(array $row, ModerationStore $moderation, CorePermissions $permissions): array
+    {
+        $moderatable = str_starts_with((string) ($row['recipient'] ?? ''), 'comment:') || 'webchat' === ($row['channel'] ?? '');
+        $row['moderation_available'] = $moderatable && (bool) $permissions->isGranted(['inbox:conversations:edit', 'meta:messages:edit']);
+        $row['moderation'] = $moderatable ? $moderation->flags($row) : ['spam' => false, 'hidden' => false, 'blockedAuthor' => false];
+
+        return $row;
+    }
+
+    /**
+     * Marcar spam, ocultar, bloquear o autor e desfazer — a mesma operação que o aplicativo faz.
+     *
+     * Ocultar é o único caso que sai daqui para a Meta: `hideInstagram` fala com a API e o
+     * servidor só grava a marcação se a Meta confirmar. Por isso ele vem antes do `apply`, e não
+     * depois: gravar primeiro deixaria a tela dizendo "oculto" sobre um comentário que continua
+     * visível para todo mundo no post.
+     */
+    public function moderation(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, InboxQuery $query, ModerationStore $moderation, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, EntityManagerInterface $entityManager): JsonResponse
+    {
+        $this->grantMutation($request, $permissions, 'edit');
+
+        return $this->respond(function () use ($stateId, $request, $users, $states, $query, $moderation, $publications, $entityManager, $permissions): array {
+            $payload = $this->payload($request);
+            $user = $this->user($users);
+            $state = $this->requireState($states, $stateId);
+            if (!str_starts_with($state->getConversation()->getRecipient(), 'comment:') && 'webchat' !== $state->getConversation()->getChannel()) {
+                throw new InboxException('mautic.inbox.ui.moderation_not_comment');
+            }
+            $entityManager->refresh($state);
+            if ($state->getVersion() !== (int) ($payload['version'] ?? 0)) {
+                throw new InboxException('mautic.inbox.ui.conversation_changed_refresh');
+            }
+            $action = (string) ($payload['action'] ?? '');
+            if (in_array($action, ['hide', 'show'], true)) {
+                $detail = $query->detail($state, $user);
+                $publications->hideInstagram($state, $detail['origins'] ?? [], 'hide' === $action);
+            }
+            $moderation->apply($query->summary($state), $action, (int) $user->getId());
+
+            return $this->withModeration($query->detail($state, $user), $moderation, $permissions);
+        });
     }
 
     public function timeline(int $stateId, Request $request, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states): JsonResponse

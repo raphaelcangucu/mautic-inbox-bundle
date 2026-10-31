@@ -283,3 +283,55 @@ test("the row offers only the actions the server will accept", async () => {
     window.close();
   }
 });
+
+test("the list shows what moderation already did to a comment", async () => {
+  // Antes isto so existia no aplicativo: o web mostrava o comentario sem dizer que ele ja
+  // estava oculto, e o operador ocultava de novo.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 8, name: "@loja.macro", handle: "loja.macro" };
+  const { window, host, rows } = render([
+    {
+      ...row(1, asset),
+      channel: "instagram",
+      recipient: "comment:17841400000011",
+      moderation: { spam: true, hidden: true, blockedAuthor: true },
+      moderation_available: true,
+    },
+  ]);
+  const app = mount(ConversationList, { target: host, props: props(rows) });
+
+  assert.deepEqual(
+    [...host.querySelectorAll(".inbox-pill.moderated")].map((n) =>
+      n.textContent.trim(),
+    ),
+    [
+      "mautic.inbox.ui.moderation_spam_mark",
+      "mautic.inbox.ui.moderation_hidden_mark",
+      "mautic.inbox.ui.moderation_blocked_mark",
+    ],
+  );
+
+  unmount(app);
+  window.close();
+});
+
+test("the web payload carries the moderation the list reads", async () => {
+  // As duas pontas moram em linguagens diferentes e esta suite nao sobe o PHP. Sem o campo no
+  // controlador do web, a tela acima desenharia sempre vazio — e passaria neste arquivo.
+  const controller = await read("Controller/InboxController.php");
+  assert.match(
+    controller,
+    /\$row\['moderation_available'\]/,
+    "a resposta do web precisa dizer se este operador pode moderar",
+  );
+  assert.match(
+    controller,
+    /\$row\['moderation'\] =/,
+    "e precisa dizer o que ja foi marcado",
+  );
+  assert.match(
+    controller,
+    /public function moderation\(/,
+    "sem rota de moderacao no web, os botoes nao teriam para onde escrever",
+  );
+});

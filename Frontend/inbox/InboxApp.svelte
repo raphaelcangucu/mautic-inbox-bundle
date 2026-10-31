@@ -486,6 +486,37 @@
       rowBusy = left;
     }
   }
+  /**
+   * Moderar o comentario aberto: spam, ocultar, bloquear o autor, e o contrario de cada um.
+   *
+   * Ocultar e o unico que sai daqui para a Meta, e o servidor so grava a marcacao se a Meta
+   * confirmar — por isso a tela nao antecipa o novo estado: ela espera a resposta e desenha o
+   * que voltou. Dizer "oculto" antes da confirmacao e mentir sobre um comentario que continua
+   * no post para todo mundo.
+   */
+  let moderacaoBusy = false;
+  async function moderate(action: string): Promise<void> {
+    if (!selected || moderacaoBusy) return;
+    const id = selected.id;
+    const revision = selectionRevision;
+    moderacaoBusy = true;
+    try {
+      const detail = await api<Conversation>(url("moderation", id), {
+        method: "POST",
+        body: JSON.stringify({ action, version: selected.version }),
+      });
+      loja.guardarConversa(detail);
+      if (revision === selectionRevision && selected?.id === id) {
+        detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
+        selected = detail;
+      }
+      await loadList(false, true);
+    } catch (error) {
+      showError((error as Error).message);
+    } finally {
+      moderacaoBusy = false;
+    }
+  }
   async function mutate(
     action: string,
     extra: Record<string, unknown> = {},
@@ -1381,6 +1412,58 @@
                 >
               </div>{/if}
             <div class="inbox-actions">
+              <!-- Moderacao: ja existia no servidor e no aplicativo, e nunca no web — a tela
+                   mostrava o comentario e nao tinha como fazer nada a respeito dele.
+                   Ocultar so aparece no Instagram porque e o unico canal em que a Meta aceita
+                   a operacao; nos outros o botao existiria so para responder erro. O bloqueio do
+                   autor nao tem volta pela API, entao ele vira estado, nao um botao que mente. -->
+              {#if selected.moderation_available}<div
+                  class="inbox-moderation"
+                  role="group"
+                  aria-label={t("mautic.inbox.ui.moderation")}
+                >
+                  <button
+                    type="button"
+                    class="btn btn-default btn-sm"
+                    class:marked={selected.moderation?.spam}
+                    disabled={moderacaoBusy}
+                    on:click={() =>
+                      void moderate(
+                        selected?.moderation?.spam ? "restore" : "spam",
+                      )}
+                    >{t(
+                      selected.moderation?.spam
+                        ? "mautic.inbox.ui.moderation_restore"
+                        : "mautic.inbox.ui.moderation_spam",
+                    )}</button
+                  >{#if selected.channel === "instagram"}<button
+                      type="button"
+                      class="btn btn-default btn-sm"
+                      class:marked={selected.moderation?.hidden}
+                      disabled={moderacaoBusy}
+                      on:click={() =>
+                        void moderate(
+                          selected?.moderation?.hidden ? "show" : "hide",
+                        )}
+                      >{t(
+                        selected.moderation?.hidden
+                          ? "mautic.inbox.ui.moderation_show"
+                          : "mautic.inbox.ui.moderation_hide",
+                      )}</button
+                    >{/if}<button
+                    type="button"
+                    class="btn btn-default btn-sm"
+                    class:marked={selected.moderation?.blockedAuthor}
+                    disabled={moderacaoBusy ||
+                      selected.moderation?.blockedAuthor}
+                    on:click={() => void moderate("block")}
+                    >{t(
+                      selected.moderation?.blockedAuthor
+                        ? "mautic.inbox.ui.moderation_blocked"
+                        : "mautic.inbox.ui.moderation_block",
+                    )}</button
+                  >
+                </div>{/if}
               {#if !selected.assignee}<button
                   id="inbox-take"
                   class="btn btn-primary btn-sm"
@@ -1407,6 +1490,55 @@
               >
             </div>
           </header>
+          <!-- A sessao do agente, onde a decisao de assumir e tomada.
+               O estado dele ja existia, espremido num selo de 200 px no canto do cabecalho: cabia
+               o nome e uma palavra de status, e nao o que decide a coisa — quantas respostas ele
+               ja deu do limite, o que ele esta fazendo e por que parou. Quem precisava disso tinha
+               de abrir o painel do contato, do outro lado da tela, longe da conversa que esta
+               lendo. Aqui fica junto do texto, com a unica acao que importa no momento. -->
+          {#if ai?.assignment}<section
+              id="inbox-ai-session"
+              class="inbox-ai-session"
+              class:paused={ai.assignment.status === "paused"}
+              aria-label={t("mautic.inbox.ui.ai_session")}
+            >
+              <span class="inbox-ai-session-mark" data-icon="agent"
+                ><Icon name="agent" /></span
+              >
+              <div class="inbox-ai-session-copy">
+                <strong
+                  >{ai.assignment.name} · {ai.assignment.status_label}</strong
+                >
+                <small>
+                  {#if typeof ai.assignment.limit === "number"}<b
+                      >{ai.assignment.count}/{ai.assignment.limit}</b
+                    >
+                    {t(
+                      "mautic.inbox.ui.ai_replies_used",
+                    )}{/if}{#if ai.assignment.activity}
+                    · {ai.assignment.activity}{/if}
+                </small>
+                {#if ai.assignment.reason_label}<span
+                    class="inbox-ai-session-reason"
+                    >{ai.assignment.reason_label}</span
+                  >{/if}
+              </div>
+              <div class="inbox-ai-session-actions">
+                {#if !selected.assignee || selected.assignee.id !== config.currentUser}<button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    disabled={aiMutationBusy}
+                    on:click={() => void takeDeuCerto()}
+                    >{t("mautic.inbox.ui.ai_take_over")}</button
+                  >{/if}{#if ai.assignment.status !== "paused"}<button
+                    type="button"
+                    class="btn btn-default btn-sm"
+                    disabled={aiMutationBusy}
+                    on:click={() => void resetAi()}
+                    >{t("mautic.inbox.ui.ai_pause_agent")}</button
+                  >{/if}
+              </div>
+            </section>{/if}
           <div class="inbox-thread-body">
             {#if selected.channel === "email"}<EmailThread
                 {selected}

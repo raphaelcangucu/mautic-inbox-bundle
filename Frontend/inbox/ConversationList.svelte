@@ -252,6 +252,15 @@
                     >{/if}{#if item.lifecycle === "snoozed" && group.key !== "snoozed"}<span
                       class="inbox-pill"
                       >{t("mautic.inbox.ui.snoozed_435da9")}</span
+                    >{/if}{#if item.moderation?.spam}<span
+                      class="inbox-pill moderated"
+                      >{t("mautic.inbox.ui.moderation_spam_mark")}</span
+                    >{/if}{#if item.moderation?.hidden}<span
+                      class="inbox-pill moderated"
+                      >{t("mautic.inbox.ui.moderation_hidden_mark")}</span
+                    >{/if}{#if item.moderation?.blockedAuthor}<span
+                      class="inbox-pill moderated"
+                      >{t("mautic.inbox.ui.moderation_blocked_mark")}</span
                     >{/if}
                 </div>
               </div>

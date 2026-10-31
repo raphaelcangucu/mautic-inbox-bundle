@@ -20,6 +20,21 @@
   vinha no payload da conversa (`profile_url`), montado e validado por `SocialProfileLinks`, e
   so o aplicativo o oferecia. A validacao se repete no navegador porque a tela tambem le
   conversa guardada em cache, de uma versao anterior do servidor.
+- A sessao do agente ganha um bloco proprio entre o cabecalho e a conversa: nome, situacao, o
+  que ele esta fazendo, quantas respostas deu do limite, o motivo de ter parado, e as duas
+  acoes que importam ali — assumir a conversa e pausar o agente. Esse estado existia espremido
+  num selo de 200 px no canto do cabecalho, onde cabia o nome e uma palavra; o resto so no
+  painel do contato, do outro lado da tela. A linha da grade e `auto`, entao sem agente ela
+  some sozinha.
+- Moderar comentario passa a existir no web. O servidor e o aplicativo ja faziam isto; a tela
+  do navegador mostrava o comentario e nao tinha o que fazer com ele. `GET` de lista e de
+  conversa passam a trazer `moderation` e `moderation_available`, e
+  `POST /inbox/api/conversations/{id}/moderation` aplica spam, ocultar, bloquear o autor e o
+  contrario de cada um. Ocultar so aparece no Instagram, porque e o unico canal em que a Meta
+  aceita a operacao, e a tela nao antecipa o novo estado: espera a confirmacao da Meta, senao
+  diria "oculto" sobre um comentario que continua no post. O bloqueio do autor nao tem volta
+  pela API e por isso vira estado, nao um botao que mente. Ver o que foi marcado e leitura;
+  mudar e edicao, e sao permissoes separadas.
 - A linha da lista oferece as acoes sem abrir a conversa, como o arrastar faz no aplicativo:
   assumir quando nao tem dono, adiar uma hora e resolver quando e minha, reabrir quando esta
   resolvida. A coluna desenha so o que o servidor vai aceitar — `ConversationActions` exige ser

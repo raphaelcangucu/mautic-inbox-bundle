@@ -30,6 +30,7 @@ export function inboxBootstrap(root: HTMLElement): InboxBootstrap {
       poll: data.pollUrl || "",
       take: data.takeUrl || "",
       state: data.stateUrl || "",
+      moderation: data.moderationUrl || "",
       templates: data.templatesUrl || "",
       reply: data.replyUrl || "",
       retry: data.retryUrl || "",

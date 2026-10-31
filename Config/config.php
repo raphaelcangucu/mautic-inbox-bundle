@@ -29,6 +29,7 @@ return [
         'mautic_inbox_poll' => ['path' => '/inbox/api/updates', 'controller' => InboxController::class.'::poll', 'method' => 'GET'],
         'mautic_inbox_take' => ['path' => '/inbox/api/conversations/{stateId}/take', 'controller' => InboxController::class.'::take', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_state' => ['path' => '/inbox/api/conversations/{stateId}/state', 'controller' => InboxController::class.'::state', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
+        'mautic_inbox_moderation' => ['path' => '/inbox/api/conversations/{stateId}/moderation', 'controller' => InboxController::class.'::moderation', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_templates' => ['path' => '/inbox/api/conversations/{stateId}/templates', 'controller' => InboxController::class.'::templates', 'method' => 'GET', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_reply' => ['path' => '/inbox/api/conversations/{stateId}/reply', 'controller' => InboxController::class.'::reply', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_retry' => ['path' => '/inbox/api/outbound/{outboundId}/retry', 'controller' => InboxController::class.'::retry', 'method' => 'POST', 'requirements' => ['outboundId' => '\\d+']],

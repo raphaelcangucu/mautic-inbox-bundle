@@ -36,7 +36,7 @@
     'mautic.inbox.ui.internal_note_only_your_team_will_see_this_text_6f8a19', 'mautic.inbox.ui.load_earlier_messages_3d0b6c', 'mautic.inbox.ui.load_more_eb48bb',
     'mautic.inbox.ui.loading_conversations_cb1a50', 'mautic.inbox.ui.loading_more_cfca50', 'mautic.inbox.ui.media_01fec9',
     'mautic.inbox.ui.live_c81a1f', 'mautic.inbox.ui.media_retry', 'mautic.inbox.ui.message_received_0d110d', 'mautic.inbox.ui.meta_asset_d48602', 'mautic.inbox.ui.mine_1380c1',
-    'mautic.inbox.ui.name_13030d', 'mautic.inbox.ui.network_id_f461ad', 'mautic.inbox.ui.open_profile', 'mautic.inbox.ui.row_take', 'mautic.inbox.ui.row_snooze_hour', 'mautic.inbox.ui.row_resolve', 'mautic.inbox.ui.row_reopen', 'mautic.inbox.ui.next_action_dd848a',
+    'mautic.inbox.ui.name_13030d', 'mautic.inbox.ui.network_id_f461ad', 'mautic.inbox.ui.open_profile', 'mautic.inbox.ui.row_take', 'mautic.inbox.ui.row_snooze_hour', 'mautic.inbox.ui.row_resolve', 'mautic.inbox.ui.row_reopen', 'mautic.inbox.ui.ai_session', 'mautic.inbox.ui.ai_replies_used', 'mautic.inbox.ui.ai_take_over', 'mautic.inbox.ui.ai_pause_agent', 'mautic.inbox.ui.moderation', 'mautic.inbox.ui.moderation_spam', 'mautic.inbox.ui.moderation_restore', 'mautic.inbox.ui.moderation_hide', 'mautic.inbox.ui.moderation_show', 'mautic.inbox.ui.moderation_block', 'mautic.inbox.ui.moderation_blocked', 'mautic.inbox.ui.moderation_spam_mark', 'mautic.inbox.ui.moderation_hidden_mark', 'mautic.inbox.ui.moderation_blocked_mark', 'mautic.inbox.ui.next_action_dd848a',
     'mautic.inbox.ui.no_comment_rules_configured_afcbbb', 'mautic.inbox.ui.no_conversations_found_12522a', 'mautic.inbox.ui.not_sent_3f0e80',
     'mautic.inbox.ui.pending_network_failure', 'mautic.inbox.ui.pending_channel_refused',
     'mautic.inbox.ui.message_placeholder_short', 'mautic.inbox.ui.note_placeholder_short',
@@ -107,6 +107,7 @@
      data-poll-url="{{ path('mautic_inbox_poll') }}"
      data-take-url="{{ path('mautic_inbox_take', {stateId: 0}) }}"
      data-state-url="{{ path('mautic_inbox_state', {stateId: 0}) }}"
+     data-moderation-url="{{ path('mautic_inbox_moderation', {stateId: 0}) }}"
      data-templates-url="{{ path('mautic_inbox_templates', {stateId:0}) }}"
      data-reply-url="{{ path('mautic_inbox_reply', {stateId: 0}) }}"
      data-retry-url="{{ path('mautic_inbox_retry', {outboundId: 0}) }}"
