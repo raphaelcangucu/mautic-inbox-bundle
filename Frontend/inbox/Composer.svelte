@@ -8,8 +8,126 @@
   } from "../shared/types";
   export let selected: Conversation;
   export let currentUser: number;
+  export let locale = "pt-BR";
+  export let audioAvailable = false;
+  export let audioBusy = false;
+  export let onAudio: (data: string) => void = () => {};
+  /**
+   * Gravar um audio no navegador.
+   *
+   * So aparece onde o canal aceita (sessao de WhatsApp por QR) E o navegador sabe gravar em
+   * MPEG-4 — o servidor so aceita esse formato, e um botao que grava WebM produziria um envio
+   * recusado depois da pessoa ter falado. Preferir mostrar botao nenhum a mostrar um que falha.
+   */
+  const audioFormato = "audio/mp4";
+  const podeGravar =
+    typeof window !== "undefined" &&
+    typeof MediaRecorder !== "undefined" &&
+    Boolean(navigator.mediaDevices?.getUserMedia) &&
+    MediaRecorder.isTypeSupported(audioFormato);
+  let gravando = false;
+  let gravador: MediaRecorder | null = null;
+  async function alternarGravacao(): Promise<void> {
+    if (gravando) {
+      gravador?.stop();
+      return;
+    }
+    let trilha: MediaStream;
+    try {
+      trilha = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return; // permissao negada: o navegador ja avisou a pessoa
+    }
+    const pedacos: Blob[] = [];
+    const sessao = new MediaRecorder(trilha, { mimeType: audioFormato });
+    sessao.ondataavailable = (evento) => {
+      if (evento.data.size) pedacos.push(evento.data);
+    };
+    sessao.onstop = () => {
+      gravando = false;
+      gravador = null;
+      trilha.getTracks().forEach((t) => t.stop());
+      if (!pedacos.length) return;
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        // O servidor quer os bytes em base64, sem o prefixo do dataURL.
+        const texto = String(leitor.result || "");
+        const corte = texto.indexOf(",");
+        if (corte > 0) onAudio(texto.slice(corte + 1));
+      };
+      leitor.readAsDataURL(new Blob(pedacos, { type: audioFormato }));
+    };
+    gravador = sessao;
+    gravando = true;
+    sessao.start();
+  }
   export let mode = "reply";
   export let body = "";
+  /**
+   * Ditar a resposta, que no aplicativo e um dos dois caminhos do VoiceComposer.
+   *
+   * O outro — gravar e enviar um audio — nao vem junto: o servidor so aceita audio em sessao
+   * de WhatsApp por QR (AudioStore), e o editor do navegador nao tem caminho de upload. Fazer
+   * so o botao seria desenhar algo que nao envia. O ditado nao precisa de servidor nenhum:
+   * acontece no navegador e cai no mesmo campo de texto, entao ele vem agora.
+   */
+  let ditando = false;
+  let ditado: { stop: () => void } | null = null;
+  const ditadoDisponivel =
+    typeof window !== "undefined" &&
+    Boolean(
+      (window as unknown as Record<string, unknown>).SpeechRecognition ||
+        (window as unknown as Record<string, unknown>).webkitSpeechRecognition,
+    );
+  function alternarDitado(): void {
+    if (ditando) {
+      ditado?.stop();
+      return;
+    }
+    const Reconhecimento = ((window as unknown as Record<string, unknown>)
+      .SpeechRecognition ||
+      (window as unknown as Record<string, unknown>)
+        .webkitSpeechRecognition) as
+      | (new () => {
+          lang: string;
+          interimResults: boolean;
+          continuous: boolean;
+          start: () => void;
+          stop: () => void;
+          onresult:
+            | ((event: {
+                results: ArrayLike<ArrayLike<{ transcript: string }>>;
+              }) => void)
+            | null;
+          onend: (() => void) | null;
+          onerror: (() => void) | null;
+        })
+      | undefined;
+    if (!Reconhecimento) return;
+    const sessao = new Reconhecimento();
+    sessao.lang = locale;
+    sessao.interimResults = false;
+    sessao.continuous = true;
+    // O ditado ACRESCENTA ao que ja esta escrito; trocar o campo inteiro apagaria o que a
+    // pessoa digitou antes de resolver falar o resto.
+    sessao.onresult = (event) => {
+      let texto = "";
+      for (let i = 0; i < event.results.length; i++)
+        texto += event.results[i][0].transcript;
+      body = (body ? body.trimEnd() + " " : "") + texto.trim();
+    };
+    sessao.onend = () => {
+      ditando = false;
+      ditado = null;
+    };
+    sessao.onerror = () => {
+      ditando = false;
+      ditado = null;
+    };
+    ditado = sessao;
+    ditando = true;
+    sessao.start();
+  }
   export let feedback = "";
   export let feedbackError = false;
   export let draftState = "";
@@ -361,22 +479,63 @@
     {/if}
   </div>
   <div class="inbox-editor-row">
-    <button
-      id="inbox-composer-options"
-      class="inbox-icon-button inbox-composer-plus"
-      type="button"
-      bind:this={toolsButton}
-      aria-label={t("mautic.inbox.ui.composer_options")}
-      title={t("mautic.inbox.ui.composer_options")}
-      aria-expanded={toolsOpen}
-      aria-controls="inbox-composer-menu"
-      aria-haspopup="dialog"
-      popovertarget="inbox-composer-menu"
-      on:click={(event) => {
-        event.preventDefault();
-        void toggleTools();
-      }}><Icon name="plus" /></button
-    >
+    <!-- A grade do editor tem tres faixas: ferramentas, texto, enviar. Os botoes da esquerda
+         ficam dentro de um so filho para continuarem cabendo na primeira. -->
+    <div class="inbox-editor-tools">
+      <button
+        id="inbox-composer-options"
+        class="inbox-icon-button inbox-composer-plus"
+        type="button"
+        bind:this={toolsButton}
+        aria-label={t("mautic.inbox.ui.composer_options")}
+        title={t("mautic.inbox.ui.composer_options")}
+        aria-expanded={toolsOpen}
+        aria-controls="inbox-composer-menu"
+        aria-haspopup="dialog"
+        popovertarget="inbox-composer-menu"
+        on:click={(event) => {
+          event.preventDefault();
+          void toggleTools();
+        }}><Icon name="plus" /></button
+      >{#if audioAvailable && podeGravar}<button
+          id="inbox-composer-audio"
+          class="inbox-icon-button inbox-composer-audio"
+          class:recording={gravando}
+          type="button"
+          aria-pressed={gravando}
+          disabled={audioBusy}
+          aria-label={t(
+            gravando
+              ? "mautic.inbox.ui.audio_stop"
+              : "mautic.inbox.ui.audio_record",
+          )}
+          title={t(
+            gravando
+              ? "mautic.inbox.ui.audio_stop"
+              : "mautic.inbox.ui.audio_record",
+          )}
+          on:click={() => void alternarGravacao()}
+          ><svg viewBox="0 0 24 24" aria-hidden="true"
+            >{#if gravando}<rect x="7" y="7" width="10" height="10" rx="2"
+              ></rect>{:else}<rect x="9" y="3" width="6" height="11" rx="3"
+              ></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path>{/if}</svg
+          ></button
+        >{/if}{#if ditadoDisponivel}<button
+          id="inbox-composer-dictate"
+          class="inbox-icon-button inbox-composer-dictate"
+          class:dictating={ditando}
+          type="button"
+          aria-pressed={ditando}
+          aria-label={t("mautic.inbox.ui.dictate")}
+          title={t("mautic.inbox.ui.dictate")}
+          on:click={alternarDitado}
+          ><svg viewBox="0 0 24 24" aria-hidden="true"
+            ><rect x="9" y="3" width="6" height="11" rx="3"></rect><path
+              d="M5 11a7 7 0 0 0 14 0M12 18v3"
+            ></path></svg
+          ></button
+        >{/if}
+    </div>
     <textarea
       id="inbox-composer-text"
       bind:this={campo}

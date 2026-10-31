@@ -11,12 +11,12 @@ use Mautic\IntegrationsBundle\Migration\AbstractMigration;
  * Cria a tabela das sessoes do assistente.
  *
  * Numa instalacao nova o Mautic monta o schema do plugin a partir das entidades; numa
- * atualizacao ele so roda as migrations deste diretorio. Sem esta, a 1.13.0 subiria com a
+ * atualizacao ele so roda as migrations deste diretorio. Sem esta, a 1.14.0 subiria com a
  * entidade mapeada e sem tabela, e a aba de sessoes responderia erro 500 no primeiro toque.
  * O SQL e o que o Doctrine gera para `AssistantSession`, nomes de indice e de chave
  * estrangeira inclusive, para o `doctrine:schema:update --dump-sql` nao pedir nada depois.
  */
-final class Version_1_13_0 extends AbstractMigration
+final class Version_1_14_0 extends AbstractMigration
 {
     private const TABLE = 'inbox_assistant_sessions';
 
