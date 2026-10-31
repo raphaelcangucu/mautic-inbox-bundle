@@ -18,6 +18,21 @@
       hour: "2-digit",
       minute: "2-digit",
     }).format(new Date(iso));
+  /** So a hora: no celular o dia ja esta no separador acima, como no app. */
+  const clock = (iso: string) =>
+    new Intl.DateTimeFormat(locale, {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(new Date(iso));
+  /** A mesma regra dos tiques do app (ChatMessage.tsx): relogio, atencao, um ou dois tiques. */
+  const tick = (status?: string) =>
+    ["pending", "queued", "processing", "waiting"].includes(status || "")
+      ? "clock"
+      : status === "failed" || status === "uncertain"
+        ? "attention"
+        : status === "read" || status === "delivered"
+          ? "checks"
+          : "check";
   const outbound = (status?: string) =>
     (
       ({
@@ -86,12 +101,27 @@
           ? outbound(item.status)
           : t("mautic.inbox.ui.message_received_0d110d");
   $: author = item.ai ? `${item.ai.agent || "AI"} · AI` : item.author;
+  /**
+   * No celular favoritar e copiar saem de cima de cada balao, como no app, e voltam com um
+   * toque no proprio balao. No desktop eles ja aparecem ao passar o mouse e o toque nao muda
+   * nada. Tocar num link ou botao dentro do balao continua fazendo so o que ele faz.
+   */
+  let actionsOpen = false;
+  function revealActions(event: MouseEvent): void {
+    if (!matchMedia("(max-width:760px)").matches) return;
+    if ((event.target as HTMLElement).closest("a, button, input, audio, video"))
+      return;
+    actionsOpen = !actionsOpen;
+  }
 </script>
 
+<!-- svelte-ignore a11y-click-events-have-key-events a11y-no-noninteractive-element-interactions -->
 <article
   class="inbox-message {item.kind}"
   class:outbound={isOutbound}
   class:ai-authored={Boolean(item.ai)}
+  class:actions-open={actionsOpen}
+  on:click={revealActions}
 >
   {#if item.kind === "event"}{named(item) ?? event(item.event)} · {time(
       item.timestamp,
@@ -118,12 +148,22 @@
         {attachment}
         {t}
       />{/each}
+    <!-- O desktop le a linha inteira; o celular mostra so a hora e, na enviada, os tiques —
+         o resto continua no DOM para o leitor de tela e volta a aparecer se a entrega falhar. -->
     <small class:inbox-status-failed={item.status === "failed"}
-      >{item.kind === "automatic" && !item.ai
-        ? t("mautic.inbox.ui.channel_message_f3ffdf")
-        : ""}{label}{author ? ` · ${author}` : ""} · {time(
-        item.timestamp,
-      )}</small
+      ><span class="inbox-message-detail"
+        >{item.kind === "automatic" && !item.ai
+          ? t("mautic.inbox.ui.channel_message_f3ffdf")
+          : ""}{label}{author ? ` · ${author}` : ""} · {time(
+          item.timestamp,
+        )}</span
+      ><time class="inbox-message-clock" datetime={item.timestamp}
+        >{clock(item.timestamp)}</time
+      >{#if isOutbound && item.kind !== "note" && item.kind !== "comment"}<span
+          class="inbox-message-tick"
+          data-tick={tick(item.status)}
+          aria-hidden="true"
+        ></span>{/if}</small
     >
     <!-- As duas acoes que o aplicativo tem por mensagem e o web nao tinha. Favoritar e do
          navegador, como la e do aparelho: nao existe campo disso no servidor. -->

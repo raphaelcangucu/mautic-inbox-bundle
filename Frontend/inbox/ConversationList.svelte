@@ -19,6 +19,7 @@
   export let channel = "";
   export let needsResponse = false;
   export let search = "";
+  export let searchOpen = false;
   export let view = "inbox";
   export let locale: string;
   export let t: (key: string) => string;
@@ -36,6 +37,49 @@
   export let onToggleSelect: (id: number) => void = () => {};
   export let onBulk: (action: string) => void = () => {};
   export let onClearSelection: () => void = () => {};
+  /** Quem abre a busca pelo icone quer digitar: o campo ja chega com o cursor. */
+  let searchInput: HTMLInputElement | undefined;
+  let searchWasOpen = false;
+  $: {
+    if (searchOpen && !searchWasOpen)
+      queueMicrotask(() => searchInput?.focus());
+    searchWasOpen = searchOpen;
+  }
+  /** Quantos filtros fogem do padrao, para o chip de filtro mostrar o numero como no app. */
+  $: activeFilters =
+    Number(lifecycle !== "active") +
+    Number(channel !== "") +
+    Number(needsResponse);
+
+  /**
+   * No celular a caixa de selecao so aparece depois que a selecao comeca, e ela comeca pelo
+   * toque longo — o gesto de lista do iOS e do Android. Um toque curto continua abrindo a
+   * conversa. O toque longo que vira selecao engole o clique que viria em seguida, senao a
+   * mesma conversa seria marcada e aberta de uma vez.
+   */
+  let pressTimer = 0;
+  let pressSelected = false;
+  const touchList = () => matchMedia("(max-width:760px)").matches;
+  function pressStart(id: number): void {
+    pressSelected = false;
+    clearTimeout(pressTimer);
+    if (!touchList()) return;
+    pressTimer = window.setTimeout(() => {
+      pressSelected = true;
+      onToggleSelect(id);
+      navigator.vibrate?.(10);
+    }, 450);
+  }
+  function pressEnd(): void {
+    clearTimeout(pressTimer);
+  }
+  function rowClick(id: number): void {
+    if (pressSelected) {
+      pressSelected = false;
+      return;
+    }
+    onSelect(id);
+  }
   const shortTime = (iso: string) => {
     const date = new Date(iso),
       now = new Date();
@@ -117,6 +161,7 @@
 
 <section
   class="inbox-list-column"
+  class:selecting={selection.size > 0}
   aria-label={t("mautic.inbox.ui.conversation_list")}
 >
   <div class="inbox-list-heading">
@@ -134,19 +179,34 @@
       on:click={onFilters}><Icon name="filter" /></button
     >
   </div>
-  <div class="inbox-search-wrap">
+  <div class="inbox-search-wrap" class:open={searchOpen || search !== ""}>
     <Icon name="search" /><input
       id="inbox-search"
       type="search"
       bind:value={search}
+      bind:this={searchInput}
       placeholder={t("mautic.inbox.ui.search_conversations_519789")}
       aria-label={t("mautic.inbox.ui.search_conversations_519789")}
       on:input={onSearch}
     />
   </div>
   <nav class="inbox-queues" aria-label={t("mautic.inbox.ui.queues_8e5d55")}>
+    <!-- No celular o filtro vira o primeiro chip da fileira, como no app; no desktop ele segue
+         no cabecalho da coluna e este some. -->
+    <button
+      type="button"
+      class="inbox-queue-filter"
+      class:active={filtersOpen || activeFilters > 0}
+      aria-label={t("mautic.inbox.ui.filter_conversations_9d8aa3")}
+      aria-expanded={filtersOpen}
+      on:click={onFilters}
+      ><Icon name="filter" />{#if activeFilters}<b
+          title={t("mautic.inbox.ui.filters_active")}>{activeFilters}</b
+        >{/if}</button
+    >
     {#each [["mine", "mautic.inbox.ui.mine_1380c1"], ["unassigned", "mautic.inbox.ui.unassigned_a121ae"], ["all", "mautic.inbox.ui.all_8a3c34"]] as item}<button
         class:active={queue === item[0]}
+        data-queue={item[0]}
         on:click={() => onQueue(item[0])}
         ><span>{t(item[1])}</span><b>{counts[item[0]] || 0}</b></button
       >{/each}
@@ -228,8 +288,15 @@
               type="button"
               class="inbox-list-item"
               data-group={group.key}
+              data-channel={item.channel}
               class:active={selected?.id === item.id}
-              on:click={() => onSelect(item.id)}
+              class:unread={(item.unread ?? 0) > 0}
+              on:pointerdown={() => pressStart(item.id)}
+              on:pointerup={pressEnd}
+              on:pointercancel={pressEnd}
+              on:pointerleave={pressEnd}
+              on:contextmenu={(event) => touchList() && event.preventDefault()}
+              on:click={() => rowClick(item.id)}
             >
               <Avatar
                 name={item.contact_name}

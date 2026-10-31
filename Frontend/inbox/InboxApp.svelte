@@ -56,7 +56,9 @@
     channel = "",
     needsResponse = false,
     search = "",
-    filtersOpen = false;
+    filtersOpen = false,
+    // No celular a busca mora atras de um icone, como no app; no desktop o campo segue aberto.
+    searchOpen = false;
   let rows: Conversation[] = [];
   let counts: Record<string, number> = { mine: 0, unassigned: 0, all: 0 };
   let next: string | null = null;
@@ -1463,16 +1465,36 @@
          de que caixa se trata e se a atualizacao esta viva. -->
     <div>
       <strong>{t("mautic.inbox.ui.shared_inbox_822665")}</strong><span
-        ><span id="inbox-live-status">{t(liveStatusKey)}</span></span
+        ><span
+          id="inbox-live-status"
+          data-live={liveStatusKey === "mautic.inbox.ui.live_c81a1f"
+            ? "live"
+            : liveStatusKey === "mautic.inbox.ui.automatic_updates_8a484f"
+              ? "polling"
+              : "connecting"}>{t(liveStatusKey)}</span
+        ></span
       >
     </div>
   </div>
+  {#if view === "inbox" || view === "comments"}<button
+      type="button"
+      class="inbox-icon-button inbox-search-toggle"
+      aria-label={t("mautic.inbox.ui.search_conversations_519789")}
+      aria-expanded={searchOpen || search !== ""}
+      on:click={() => (searchOpen = !searchOpen)}><Icon name="search" /></button
+    >{/if}
   <nav
     class="inbox-tabs"
     aria-label={t("mautic.inbox.ui.support_workspace_d55134")}
   >
+    <!-- No celular Comentarios e Agentes ativos sobem para as abas de cima, como no app, e a
+         barra de baixo fica com quatro destinos. Conversas continua acesa enquanto se esta em
+         qualquer uma das tres, porque e a mesma caixa vista de outro jeito. -->
     {#each [["inbox", "chat", "mautic.inbox.ui.conversations_86d0e6"], ["comments", "comment", "mautic.inbox.ui.comments_6fe305"], ["automation", "bolt", "mautic.inbox.ui.automations_3714d9"]] as tab}<button
         class:active={view === tab[0]}
+        class:inbox-nav-home={tab[0] === "inbox" &&
+          (view === "comments" || view === "sessions")}
+        class:inbox-nav-section={tab[0] === "comments"}
         on:click={() => setView(tab[0])}
         ><Icon name={tab[1]} />{t(tab[2])}</button
       >{/each}<!-- A aba das sessoes carrega o contador de quem parou pedindo gente: e por ele
@@ -1503,6 +1525,20 @@
       >{/if}
   </nav>
 </div>
+{#if view === "inbox" || view === "comments" || view === "sessions"}<nav
+    class="inbox-section-tabs"
+    aria-label={t("mautic.inbox.ui.inbox_sections")}
+  >
+    {#each [["inbox", "mautic.inbox.ui.conversations_86d0e6"], ["comments", "mautic.inbox.ui.comments_6fe305"], ["sessions", "mautic.inbox.ui.ai_sessions"]] as tab}<button
+        type="button"
+        class:active={view === tab[0]}
+        aria-current={view === tab[0] ? "page" : undefined}
+        on:click={() => setView(tab[0])}
+        >{t(tab[1])}{#if tab[0] === "sessions" && sessionsWaiting}<span
+            class="inbox-tab-badge">{sessionsWaiting}</span
+          >{/if}</button
+      >{/each}
+  </nav>{/if}
 {#each config.channelNotices as notice}<div
     class="inbox-channel-notice"
     role="status"
@@ -1519,6 +1555,7 @@
       bind:channel
       bind:needsResponse
       bind:search
+      {searchOpen}
       {rows}
       {selected}
       {counts}
@@ -1580,6 +1617,7 @@
               elementId="inbox-header-avatar"
               name={selected.contact_name}
               id={selected.id}
+              channel={selected.channel}
               photo={selected.avatar_url || null}
               photoLabel={t("mautic.inbox.ui.photo_of_5bece3")}
             />

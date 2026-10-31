@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.15.0
+
+- O Macro Zap (o app instalavel em `/inbox/app`) no celular passa a ter a cara do app iOS. Os dois
+  pareciam produtos diferentes: o PWA herdava a paleta do Mautic (`#4e5e9e`, Inter, balao enviado
+  verde-claro, avatar quadrado, barra de baixo com seis itens que nao cabiam), e o app segue o
+  layout aprovado em 28/10/2026. Abaixo de 760px o PWA usa agora os mesmos tokens do
+  `src/theme.ts` do app: azul `#1F3C88`, Manrope (embarcada em woff2, licenca OFL), cabecalho com
+  selo azul e ponto de "ao vivo", busca atras de um icone, abas Conversas / Comentarios /
+  Agentes ativos no topo, filas em chips com o filtro na frente e o numero de filtros ligados,
+  linhas sem cartao com avatar redondo na cor do canal e selo, o "esperando voce" como o ponto
+  laranja do app, barra de baixo com quatro destinos e indicador em pilula, e na conversa o fundo
+  do chat, pilula de data, balao recebido branco e enviado azul com cauda, so a hora com os
+  tiques do app, e o compositor com "+" em circulo, campo em pilula e enviar em circulo.
+- Nada some, so muda de lugar: Comentarios e Agentes ativos sobem para as abas de cima, a barra de
+  baixo fica com Conversas, Automacoes, Configuracoes e Agentes, a selecao em massa comeca por
+  toque longo (as caixas aparecem quando ela comeca), e favoritar e copiar aparecem ao tocar no
+  balao. A linha de status da mensagem continua no DOM para o leitor de tela e volta a aparecer
+  quando a entrega falha.
+- O desktop nao muda: comparado pixel a pixel com a 1.14.1 em 761, 1024, 1280 e 1600 de largura,
+  na lista e na conversa, zero pixels diferentes.
+
 ## 1.14.1
 
 - A resposta do envio volta a trazer a moderacao. `reply` devolve um resumo que o aplicativo

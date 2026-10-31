@@ -37,6 +37,7 @@
   class:large
   class="inbox-avatar"
   data-tone={Number(id || 0) % 5}
+  data-channel={channel || undefined}
 >
   {initials}
   {#if safePhoto}<img
