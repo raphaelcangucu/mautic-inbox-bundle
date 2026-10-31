@@ -21,6 +21,14 @@
   201 ao abrir, 200 ao gravar e retomar, 404 para id desconhecido e para o id de outro
   operador, 400 para corpo invalido e 405 para metodo que a rota nao atende.
 
+- O nao perturbe passa a ter uma implementacao so. Desde que as duas frentes foram mescladas, a
+  mesma regra estava escrita em dois lugares: o `Application\Mobile\ContactDirectory` repetia o
+  que o `Application\ContactDoNotContact` ja fazia, gravar o motivo MANUAL com o nome de quem
+  pediu e liberar so o registro manual. Agora o diretorio do app delega, e guarda o que e dele:
+  achar o contato, conferir a permissao, registrar o evento na conversa e dizer em portugues o
+  que foi recusado, porque e essa mensagem que o operador le no aparelho. Para quem usa nao muda
+  nada: as mesmas respostas, os mesmos status e as mesmas mensagens, no app e na web.
+
 ## 1.13.0
 
 - Nao perturbe pelo app: `PUT /inbox/mobile/api/contacts/{id}/dnc` com `{"blocked":true|false}`

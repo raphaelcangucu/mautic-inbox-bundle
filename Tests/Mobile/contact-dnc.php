@@ -16,6 +16,7 @@ use Mautic\LeadBundle\Entity\DoNotContact as Entry;
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\LeadBundle\Model\DoNotContact as DncModel;
 use Mautic\UserBundle\Entity\User;
+use MauticPlugin\MauticInboxBundle\Application\ContactDoNotContact;
 use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Application\Mobile\ContactDirectory;
 
@@ -61,7 +62,7 @@ function directoryFor(Lead $contact, ?DncModel $dnc, array $granted = [], bool $
     $directory = bare(ContactDirectory::class);
     put($directory, 'em', new StubEntityManager($contact));
     put($directory, 'permissions', new StubPermissions($granted));
-    put($directory, 'doNotContact', $dnc);
+    put($directory, 'dnc', new ContactDoNotContact($dnc));
     return $directory;
 }
 function operator(bool $admin): User { $user = bare(User::class); put($user, 'id', 7); put($user, 'firstName', 'Ana'); put($user, 'lastName', 'Rocha'); if ($admin) { $role = bare(Mautic\UserBundle\Entity\Role::class); put($role, 'isAdmin', true); put($user, 'role', $role); } return $user; }

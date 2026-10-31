@@ -8,7 +8,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Mautic\CoreBundle\Security\Permissions\CorePermissions;
 use Mautic\LeadBundle\Entity\Lead;
 use Mautic\UserBundle\Entity\User;
-use MauticPlugin\MauticInboxBundle\Application\{InboxException,ReplyAvailability};
+use MauticPlugin\MauticInboxBundle\Application\{ContactDoNotContact,InboxException,ReplyAvailability};
 use MauticPlugin\MauticInboxBundle\Entity\{ConversationState,ConversationStateRepository,EventLog};
 use MauticPlugin\MauticInboxBundle\Integration\MetaInboxIntegration;
 use MauticPlugin\MauticMetaBundle\Application\WhatsApp\PhoneNormalizer;
@@ -18,7 +18,7 @@ use MauticPlugin\MauticMetaBundle\Entity\{MetaAsset,MetaConversation};
 /** Bounded CRM reads; starting a chat creates context, never sends a message. */
 final class ContactDirectory
 {
-    public function __construct(private Connection $db, private EntityManagerInterface $em, private CorePermissions $permissions, private ConversationStateRepository $states, private PhoneNormalizer $phones, private ReplyAvailability $availability, private MetaInboxIntegration $integration, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, private ?\Mautic\LeadBundle\Model\DoNotContact $doNotContact = null) {}
+    public function __construct(private Connection $db, private EntityManagerInterface $em, private CorePermissions $permissions, private ConversationStateRepository $states, private PhoneNormalizer $phones, private ReplyAvailability $availability, private MetaInboxIntegration $integration, private \MauticPlugin\MauticInboxBundle\Security\ConversationAccess $access, private ContactDoNotContact $dnc) {}
 
     private function table(string $name): string { return (defined('MAUTIC_TABLE_PREFIX') ? MAUTIC_TABLE_PREFIX : '').$name; }
     private function allowed(User $user, string $permission): bool { return $user->isAdmin() || $this->permissions->isGranted($permission); }
@@ -99,8 +99,8 @@ final class ContactDirectory
         // Uma opcao por conta de e-mail conversacional ativa e publicada. A conversa ja aberta
         // com o contato naquela conta aparece acima, como state:.
         $accounts=array_values(array_map(static fn(MetaAsset $asset):array=>['id'=>(int)$asset->getId(),'name'=>$asset->getName(),'address'=>is_string($asset->getSettings()['email_address']??null) ? trim($asset->getSettings()['email_address']) : null,'active'=>'active'===$asset->getStatus()],$this->em->getRepository(MetaAsset::class)->findBy(['type'=>'email_account','status'=>'active','isPublished'=>true],['name'=>'ASC'],50)));
-        $dnc=null!==$this->doNotContact && \Mautic\LeadBundle\Entity\DoNotContact::IS_CONTACTABLE!==$this->doNotContact->isContactable($contact,'email');
-        array_push($items,...EmailStartOptions::build($accounts,$contact->getEmail(),$dnc,$canStart,$emailAssets));
+        $bloqueado=$this->dnc->state($contact)['blocked'];
+        array_push($items,...EmailStartOptions::build($accounts,$contact->getEmail(),$bloqueado,$canStart,$emailAssets));
         if (null===$qrType) { return $items; }
         $phone=(string)($contact->getMobile() ?: $contact->getPhone());
         foreach ($this->em->getRepository(MetaAsset::class)->findBy(['type'=>$qrType,'status'=>'active','isPublished'=>true]) as $asset) {
@@ -114,28 +114,22 @@ final class ContactDirectory
     }
 
     /**
-     * Estado do DNC de e-mail do contato. `editable` e falso quando o bloqueio veio do
-     * proprio contato (descadastro) ou de um retorno do servidor (bounce): o atendente
-     * nao desfaz o pedido de quem recebeu nem libera um endereco que quicou.
+     * Estado do DNC de e-mail do contato, como `ContactDoNotContact` o define: `editable` e
+     * falso quando o bloqueio veio do proprio contato (descadastro) ou de um retorno do
+     * servidor (bounce). A regra e uma so, e o web le pela mesma classe.
      *
      * @return array{blocked:bool,reason:?string,editable:bool}
      */
     public function doNotContactState(Lead $contact): array
     {
-        if (null === $this->doNotContact) { return ['blocked'=>false,'reason'=>null,'editable'=>false]; }
-        $reasons=[];
-        foreach ($contact->getDoNotContact() as $entry) { if ('email'===$entry->getChannel()) { $reasons[]=(int)$entry->getReason(); } }
-        $blocked=\Mautic\LeadBundle\Entity\DoNotContact::IS_CONTACTABLE!==$this->doNotContact->isContactable($contact,'email');
-        $theirs=in_array(\Mautic\LeadBundle\Entity\DoNotContact::UNSUBSCRIBED,$reasons,true);
-        $bounced=in_array(\Mautic\LeadBundle\Entity\DoNotContact::BOUNCED,$reasons,true);
-        $reason=$theirs?'unsubscribed':($bounced?'bounced':($blocked?'manual':null));
-
-        return ['blocked'=>$blocked,'reason'=>$reason,'editable'=>!$theirs && !$bounced];
+        return $this->dnc->state($contact);
     }
 
     /**
-     * Liga e desliga o DNC de e-mail pelo app. Ligar grava o motivo MANUAL, com o nome de
-     * quem pediu; desligar remove so o registro manual, para nao apagar um descadastro.
+     * Liga e desliga o DNC de e-mail pelo app. Quem grava e `ContactDoNotContact`; aqui fica o
+     * que e do app: achar o contato, conferir a permissao, registrar o evento na conversa e
+     * dizer em portugues o que foi recusado, porque e esta mensagem que o operador le no
+     * aparelho. O web recusa a mesma coisa com chave de traducao.
      */
     public function setDoNotContact(int $id, User $user, bool $blocked): array
     {
@@ -143,22 +137,18 @@ final class ContactDirectory
         $permissionUser=$contact->getPermissionUser();
         $permissionUserId=$permissionUser instanceof User ? $permissionUser->getId() : $permissionUser;
         if (!$this->allowed($user,'lead:leads:editother') && !($this->allowed($user,'lead:leads:editown') && (int)$permissionUserId===$user->getId())) { throw new InboxException('Sem permissão para alterar este contato.',403); }
-        if (null === $this->doNotContact) { throw new InboxException('Esta instalação não oferece o controle de contato.',422); }
-        $state=$this->doNotContactState($contact);
+        if (!$this->dnc->available()) { throw new InboxException('Esta instalação não oferece o controle de contato.',422); }
+        $state=$this->dnc->state($contact);
         // 409 nao serve: o controlador o traduz para 'version_conflict', e nada aqui esta desatualizado.
         if (!$state['editable']) { throw new InboxException('bounced'===$state['reason'] ? 'O endereço deste contato devolveu erro permanente.' : 'O contato pediu para não receber e-mails.',422); }
-        if ($blocked) {
-            $this->doNotContact->addDncForContact($contact,'email',\Mautic\LeadBundle\Entity\DoNotContact::MANUAL,'Inbox: '.$user->getName());
-        } else {
-            $this->doNotContact->removeDncForContact($contact,'email',true,\Mautic\LeadBundle\Entity\DoNotContact::MANUAL);
-        }
+        $resultado=$this->dnc->set($contact,$blocked,$user);
         $conversation=$this->em->getRepository(MetaConversation::class)->findOneBy(['channel'=>'email','contact'=>$contact]);
         if ($conversation instanceof MetaConversation) {
             $this->em->persist((new EventLog())->setConversation($conversation)->setEventType($blocked?'email_dnc_set':'email_dnc_cleared')->setDetails(['source'=>'mobile','user'=>$user->getId()]));
             $this->em->flush();
         }
 
-        return ['id'=>$id,'do_not_contact'=>$this->doNotContactState($contact)];
+        return ['id'=>$id,'do_not_contact'=>$resultado];
     }
 
     public function start(int $id, User $user, array $payload): ConversationState
