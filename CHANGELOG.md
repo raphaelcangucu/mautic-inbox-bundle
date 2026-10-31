@@ -11,7 +11,12 @@
   junto, entao o id de outro operador responde 404, nunca 403. Sao guardados so os turnos
   legiveis: propostas de acao expiram e sao reemitidas, e uma sessao retomada nao pode
   oferecer como clicavel uma acao que o servidor ja esqueceu. Teto de 120 turnos e 4000
-  caracteres por turno, e a sessao sem toque ha 90 dias se apaga na primeira listagem.
+  caracteres por turno, e a sessao sem toque ha 90 dias se apaga na primeira listagem. Os testes
+  rodam as consultas contra um banco de verdade (SQLite em memoria montado a partir do
+  mapeamento), o que pegou dois defeitos antes de qualquer deploy: o parametro de data da
+  limpeza precisava de tipo explicito, sem o qual o Doctrine tratava o DateTimeImmutable como
+  entidade e derrubava a propria listagem, e o guarda do corpo recusava `{}` porque
+  array_is_list([]) e verdadeiro.
 
 ## 1.12.0
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace MauticPlugin\MauticInboxBundle\Entity;
 
+use Doctrine\DBAL\Types\Types;
 use Mautic\CoreBundle\Entity\CommonRepository;
 use Mautic\UserBundle\Entity\User;
 
@@ -62,13 +63,19 @@ final class AssistantSessionRepository extends CommonRepository
         $this->getEntityManager()->flush();
     }
 
-    /** Limpeza oportunista na listagem: nao depende de cron para a retencao valer. */
+    /**
+     * Limpeza oportunista na listagem: nao depende de cron para a retencao valer.
+     *
+     * O tipo do parametro e obrigatorio. Sem ele o Doctrine olha para o DateTimeImmutable,
+     * conclui que e uma entidade e vai procurar o metadata dela, o que derruba a consulta --
+     * e esta consulta roda dentro da listagem, ou seja, na primeira vez que alguem abre a aba.
+     */
     public function purgeExpired(?\DateTimeImmutable $now = null): int
     {
         $cutoff = ($now ?? new \DateTimeImmutable())->modify('-'.self::RETENTION_DAYS.' days');
 
         return (int) $this->createQueryBuilder('ias')->delete()
-            ->where('ias.dateModified < :cutoff')->setParameter('cutoff', $cutoff)
+            ->where('ias.dateModified < :cutoff')->setParameter('cutoff', $cutoff, Types::DATETIME_IMMUTABLE)
             ->getQuery()->execute();
     }
 }

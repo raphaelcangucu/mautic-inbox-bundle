@@ -58,4 +58,27 @@ check('Resumo do dia' === $listed['title'] && 'suporte' === $listed['agent_key']
 check($kept === AssistantSessions::describe($session, true)['history'], 'opening carries the thread');
 check(90 === AssistantSessionRepository::RETENTION_DAYS, 'retention is ninety days');
 
-echo "PASS: turn shaping, proposal stripping, turn and text caps, titles, context guards and the listed shape\n";
+// O bloco do controller: o guarda do corpo e a rota com id, exercitados de verdade.
+// O resto da acao pede trinta servicos; estes dois pedacos sao os que esta versao escreveu.
+$controller = (new ReflectionClass(\MauticPlugin\MauticInboxBundle\Controller\MobileApiController::class))->newInstanceWithoutConstructor();
+$payload = new ReflectionMethod($controller, 'payload');
+$body = static fn (string $raw): \Symfony\Component\HttpFoundation\Request => \Symfony\Component\HttpFoundation\Request::create('/inbox/mobile/api/assistant/sessions', 'POST', [], [], [], ['CONTENT_TYPE' => 'application/json'], $raw);
+check(['turns' => []] === $payload->invoke($controller, $body('{"turns":[]}')), 'an object body is accepted');
+check([] === $payload->invoke($controller, $body('')), 'an empty body reads as an empty object');
+foreach (['[1,2]' => 'a list is not a payload', '{' => 'broken JSON is refused', 'null' => 'null is refused'] as $raw => $what) {
+    $refused = false;
+    try { $payload->invoke($controller, $body((string) $raw)); } catch (DomainException $error) { $refused = 'invalid_request' === $error->getMessage(); }
+    check($refused, $what);
+}
+$tooBig = false;
+try { $payload->invoke($controller, $body('{"turns":"'.str_repeat('a', 70000).'"}')); } catch (DomainException) { $tooBig = true; }
+check($tooBig, 'a body over the ceiling is refused before it is parsed');
+
+$route = '#^assistant/sessions/([1-9][0-9]*)$#D';
+check(1 === preg_match($route, 'assistant/sessions/12', $hit) && '12' === $hit[1], 'the id route matches');
+foreach (['assistant/sessions', 'assistant/sessions/0', 'assistant/sessions/01', 'assistant/sessions/x', 'assistant/sessions/12/turns', "assistant/sessions/12\n"] as $resource) {
+    check(0 === preg_match($route, $resource), 'refused as an id route: '.trim($resource));
+}
+check(str_starts_with('assistant/sessions/12', 'assistant/sessions'), 'the id route still enters the sessions block');
+
+echo "PASS: turn shaping, proposal stripping, turn and text caps, titles, context guards, the listed shape, the body guard and the id route\n";

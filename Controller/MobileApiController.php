@@ -345,7 +345,9 @@ final class MobileApiController extends CommonController
     {
         if (strlen($request->getContent()) > $max) { throw new \DomainException('invalid_request'); }
         try { $body = json_decode($request->getContent() ?: '{}', true, 32, JSON_THROW_ON_ERROR); } catch (\JsonException) { throw new \DomainException('invalid_request'); }
-        if (!is_array($body) || array_is_list($body)) { throw new \DomainException('invalid_request'); }
+        // `{}` decodifica para array vazio, e array_is_list([]) e verdadeiro: sem a primeira
+        // metade da condicao, um corpo vazio legitimo seria recusado como se fosse uma lista.
+        if (!is_array($body) || ([] !== $body && array_is_list($body))) { throw new \DomainException('invalid_request'); }
 
         return $body;
     }
