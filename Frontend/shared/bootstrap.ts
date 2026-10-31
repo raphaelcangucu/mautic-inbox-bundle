@@ -32,6 +32,7 @@ export function inboxBootstrap(root: HTMLElement): InboxBootstrap {
       state: data.stateUrl || "",
       moderation: data.moderationUrl || "",
       dnc: data.dncUrl || "",
+      audio: data.audioUrl || "",
       aiSessions: data.aiSessionsUrl || "",
       templates: data.templatesUrl || "",
       reply: data.replyUrl || "",

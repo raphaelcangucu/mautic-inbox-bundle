@@ -479,59 +479,63 @@
     {/if}
   </div>
   <div class="inbox-editor-row">
-    <button
-      id="inbox-composer-options"
-      class="inbox-icon-button inbox-composer-plus"
-      type="button"
-      bind:this={toolsButton}
-      aria-label={t("mautic.inbox.ui.composer_options")}
-      title={t("mautic.inbox.ui.composer_options")}
-      aria-expanded={toolsOpen}
-      aria-controls="inbox-composer-menu"
-      aria-haspopup="dialog"
-      popovertarget="inbox-composer-menu"
-      on:click={(event) => {
-        event.preventDefault();
-        void toggleTools();
-      }}><Icon name="plus" /></button
-    >{#if audioAvailable && podeGravar}<button
-        id="inbox-composer-audio"
-        class="inbox-icon-button inbox-composer-audio"
-        class:recording={gravando}
+    <!-- A grade do editor tem tres faixas: ferramentas, texto, enviar. Os botoes da esquerda
+         ficam dentro de um so filho para continuarem cabendo na primeira. -->
+    <div class="inbox-editor-tools">
+      <button
+        id="inbox-composer-options"
+        class="inbox-icon-button inbox-composer-plus"
         type="button"
-        aria-pressed={gravando}
-        disabled={audioBusy}
-        aria-label={t(
-          gravando
-            ? "mautic.inbox.ui.audio_stop"
-            : "mautic.inbox.ui.audio_record",
-        )}
-        title={t(
-          gravando
-            ? "mautic.inbox.ui.audio_stop"
-            : "mautic.inbox.ui.audio_record",
-        )}
-        on:click={() => void alternarGravacao()}
-        ><svg viewBox="0 0 24 24" aria-hidden="true"
-          >{#if gravando}<rect x="7" y="7" width="10" height="10" rx="2"
-            ></rect>{:else}<rect x="9" y="3" width="6" height="11" rx="3"
-            ></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path>{/if}</svg
-        ></button
-      >{/if}{#if ditadoDisponivel}<button
-        id="inbox-composer-dictate"
-        class="inbox-icon-button inbox-composer-dictate"
-        class:dictating={ditando}
-        type="button"
-        aria-pressed={ditando}
-        aria-label={t("mautic.inbox.ui.dictate")}
-        title={t("mautic.inbox.ui.dictate")}
-        on:click={alternarDitado}
-        ><svg viewBox="0 0 24 24" aria-hidden="true"
-          ><rect x="9" y="3" width="6" height="11" rx="3"></rect><path
-            d="M5 11a7 7 0 0 0 14 0M12 18v3"
-          ></path></svg
-        ></button
-      >{/if}
+        bind:this={toolsButton}
+        aria-label={t("mautic.inbox.ui.composer_options")}
+        title={t("mautic.inbox.ui.composer_options")}
+        aria-expanded={toolsOpen}
+        aria-controls="inbox-composer-menu"
+        aria-haspopup="dialog"
+        popovertarget="inbox-composer-menu"
+        on:click={(event) => {
+          event.preventDefault();
+          void toggleTools();
+        }}><Icon name="plus" /></button
+      >{#if audioAvailable && podeGravar}<button
+          id="inbox-composer-audio"
+          class="inbox-icon-button inbox-composer-audio"
+          class:recording={gravando}
+          type="button"
+          aria-pressed={gravando}
+          disabled={audioBusy}
+          aria-label={t(
+            gravando
+              ? "mautic.inbox.ui.audio_stop"
+              : "mautic.inbox.ui.audio_record",
+          )}
+          title={t(
+            gravando
+              ? "mautic.inbox.ui.audio_stop"
+              : "mautic.inbox.ui.audio_record",
+          )}
+          on:click={() => void alternarGravacao()}
+          ><svg viewBox="0 0 24 24" aria-hidden="true"
+            >{#if gravando}<rect x="7" y="7" width="10" height="10" rx="2"
+              ></rect>{:else}<rect x="9" y="3" width="6" height="11" rx="3"
+              ></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path>{/if}</svg
+          ></button
+        >{/if}{#if ditadoDisponivel}<button
+          id="inbox-composer-dictate"
+          class="inbox-icon-button inbox-composer-dictate"
+          class:dictating={ditando}
+          type="button"
+          aria-pressed={ditando}
+          aria-label={t("mautic.inbox.ui.dictate")}
+          title={t("mautic.inbox.ui.dictate")}
+          on:click={alternarDitado}
+          ><svg viewBox="0 0 24 24" aria-hidden="true"
+            ><rect x="9" y="3" width="6" height="11" rx="3"></rect><path
+              d="M5 11a7 7 0 0 0 14 0M12 18v3"
+            ></path></svg
+          ></button
+        >{/if}
+    </div>
     <textarea
       id="inbox-composer-text"
       bind:this={campo}

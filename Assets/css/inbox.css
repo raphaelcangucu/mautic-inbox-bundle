@@ -689,3 +689,12 @@
 .inbox-composer-dictate svg{width:17px;height:17px}
 .inbox-composer-audio.recording{color:#a4453c;background:#fdeeec}
 .inbox-composer-audio svg{width:17px;height:17px}
+/* O editor tem tres faixas (ferramentas, texto, enviar). Gravar e ditar entraram na primeira,
+   dentro de um grupo, senao a grade dava uma faixa para cada botao e o texto virava uma coluna
+   de uma letra. A faixa passa a ser `auto` para caber um ou tres botoes. */
+.inbox-app .inbox-editor-row{grid-template-columns:auto minmax(0,1fr) 44px}
+.inbox-editor-tools{display:flex;align-items:center;gap:3px}
+/* A linha da lista e grade: caixa e conversa na primeira linha, acoes rapidas na segunda.
+   Com flex, as acoes iam para o lado da conversa e espremiam o nome. */
+.inbox-list-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;column-gap:7px}
+.inbox-list-row>.inbox-list-actions{grid-column:2}

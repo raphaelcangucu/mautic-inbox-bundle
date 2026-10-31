@@ -420,3 +420,28 @@ test("the web serves the agent session queue and the contact's e-mail switch", a
   assert.match(config, /mautic_inbox_ai_sessions/);
   assert.match(config, /mautic_inbox_dnc/);
 });
+
+test("every url the app asks for is wired in the bootstrap and in the Twig", async () => {
+  // O `url("audio")` existiu antes de a URL ser registrada, e nada quebrou nos testes porque
+  // so quebra no navegador, na hora de gravar. Este teste fecha esse buraco para todas.
+  const [app, bootstrap, twig] = await Promise.all([
+    read("Frontend/inbox/InboxApp.svelte"),
+    read("Frontend/shared/bootstrap.ts"),
+    read("Resources/views/Inbox/_root.html.twig"),
+  ]);
+  const nomes = [...app.matchAll(/\burl\("([a-zA-Z]+)"/g)].map((m) => m[1]);
+  assert.ok(nomes.length > 5, "o app pede varias urls");
+  const kebab = (nome) => nome.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+  for (const nome of new Set(nomes)) {
+    assert.match(
+      bootstrap,
+      new RegExp(`\\b${nome}:\\s*data\\.`),
+      `bootstrap nao monta a url "${nome}"`,
+    );
+    assert.match(
+      twig,
+      new RegExp(`data-${kebab(nome)}-url=`),
+      `o Twig nao expoe data-${kebab(nome)}-url`,
+    );
+  }
+});
