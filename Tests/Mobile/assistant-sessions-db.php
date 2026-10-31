@@ -100,4 +100,74 @@ check([$second['id']] === array_column($sessions->listFor($operator)['items'], '
 check(['removed' => true] === $sessions->remove($second['id'], $operator), 'the owner deletes');
 check(0 === (int) $connection->fetchOne('SELECT COUNT(*) FROM inbox_assistant_sessions'), 'the table is empty again');
 
-echo "PASS: mapping, JSON column, owner-scoped list and open, newest first, ninety-day purge and delete, against a real database\n";
+// A acao do controller, de verdade: Request entra, JsonResponse sai, com o SessionStore e o
+// banco reais por tras. E o mais perto de uma requisicao HTTP que da para chegar sem subir um
+// Mautic; o que fica de fora e o roteador, cuja exigencia `[a-z0-9/-]+` ja aceita o id.
+$projectDir = sys_get_temp_dir().'/inbox_sessions_'.bin2hex(random_bytes(6));
+mkdir($projectDir, 0700, true);
+$store = new \MauticPlugin\MauticInboxBundle\Application\Mobile\SessionStore($projectDir);
+$bearerFor = static function (User $user) use ($store): string {
+    $grant = $store->exchangePassword((int) $user->getId(), hash('sha256', (string) $user->getPassword()));
+
+    return (string) $grant['access_token'];
+};
+$permissions = new class extends \Mautic\CoreBundle\Security\Permissions\CorePermissions {
+    public function __construct() {}
+    public function isGranted($permissions, $mode = 'MATCH_ALL', $userEntity = null, $allowUnknown = false): bool { return true; }
+};
+$roles = new class extends \Mautic\UserBundle\Entity\PermissionRepository {
+    public function __construct() {}
+    public function getPermissionsByRole(Role $role, $forForm = false): array { return []; }
+};
+$known = ['request' => null, 'resource' => null, 'sessions' => $store, 'em' => $em, 'tokens' => new \Symfony\Component\Security\Core\Authentication\Token\Storage\TokenStorage(),
+    'permissions' => $permissions, 'access' => new \MauticPlugin\MauticInboxBundle\Security\ConversationAccess($permissions, $roles, (new ReflectionClass(\Mautic\CoreBundle\Helper\UserHelper::class))->newInstanceWithoutConstructor()), 'assistantSessions' => $sessions];
+$api = new ReflectionMethod(\MauticPlugin\MauticInboxBundle\Controller\MobileApiController::class, 'api');
+$apiController = (new ReflectionClass(\MauticPlugin\MauticInboxBundle\Controller\MobileApiController::class))->newInstanceWithoutConstructor();
+$call = static function (string $method, string $resource, ?array $body, User $user) use ($api, $apiController, $known, $bearerFor): array {
+    $request = \Symfony\Component\HttpFoundation\Request::create('/inbox/mobile/api/'.$resource, $method, [], [], [], ['CONTENT_TYPE' => 'application/json', 'HTTP_AUTHORIZATION' => 'Bearer '.$bearerFor($user)], null === $body ? '' : json_encode($body, JSON_THROW_ON_ERROR));
+    $arguments = [];
+    foreach ($api->getParameters() as $parameter) {
+        $name = $parameter->getName();
+        if ('resource' === $name) { $arguments[] = $resource; continue; }
+        if ('request' === $name) { $arguments[] = $request; continue; }
+        if (isset($known[$name])) { $arguments[] = $known[$name]; continue; }
+        $type = $parameter->getType()?->getName();
+        $arguments[] = (new ReflectionClass($type))->newInstanceWithoutConstructor();
+    }
+    $response = $api->invokeArgs($apiController, $arguments);
+
+    return [$response->getStatusCode(), json_decode((string) $response->getContent(), true), $response];
+};
+
+[$status, $listed] = $call('GET', 'assistant/sessions', null, $operator);
+check(200 === $status && [] === $listed['items'], 'the controller lists an empty shelf: '.$status);
+[$status, $created, $response] = $call('POST', 'assistant/sessions', ['agent_key' => 'suporte', 'title' => 'Quem está esperando?', 'context' => ['kind' => 'conversation', 'id' => 12]], $operator);
+check(201 === $status, 'creating answers 201, got '.$status);
+check($created['id'] > 0 && 'conversation' === $created['context_kind'], 'the created session carries its context');
+check(str_contains((string) $response->headers->get('Cache-Control'), 'no-store'), 'the answer is not cached');
+$new = (int) $created['id'];
+
+[$status, $saved] = $call('PUT', 'assistant/sessions/'.$new, ['turns' => [['id' => 'a', 'role' => 'user', 'text' => 'quem?'], ['id' => 'b', 'role' => 'assistant', 'text' => 'três']]], $operator);
+check(200 === $status && 2 === $saved['turns'], 'the thread is recorded through the route: '.$status);
+[$status, $reopened] = $call('GET', 'assistant/sessions/'.$new, null, $operator);
+check(200 === $status && 2 === count($reopened['history']), 'the thread comes back through the route');
+[$status, $listed] = $call('GET', 'assistant/sessions', null, $operator);
+check(1 === count($listed['items']) && !isset($listed['items'][0]['history']), 'the listed row still leaves the thread behind');
+
+// As recusas, com o codigo que o app vai ler.
+[$status, $missing] = $call('GET', 'assistant/sessions/999999', null, $operator);
+check(404 === $status && 'not_found' === $missing['code'], 'an unknown id answers 404: '.$status);
+[$status, $stranger] = $call('GET', 'assistant/sessions/'.$new, null, $other);
+check(404 === $status && 'not_found' === $stranger['code'], 'another operator gets 404, never 403: '.$status);
+[$status, $bad] = $call('POST', 'assistant/sessions', [1, 2], $operator);
+check(400 === $status && 'invalid_request' === $bad['code'], 'a list body answers 400: '.$status);
+[$status, $wrongMethod] = $call('PATCH', 'assistant/sessions', null, $operator);
+check(405 === $status && 'method_not_allowed' === $wrongMethod['code'], 'an unsupported method answers 405: '.$status);
+
+[$status, $removed] = $call('DELETE', 'assistant/sessions/'.$new, null, $operator);
+check(200 === $status && true === $removed['removed'], 'deleting through the route: '.$status);
+[$status] = $call('GET', 'assistant/sessions/'.$new, null, $operator);
+check(404 === $status, 'the deleted session is gone');
+array_map('unlink', glob($projectDir.'/var/inbox-mobile/*') ?: []);
+
+echo "PASS: mapping, JSON column, owner-scoped list and open, newest first, ninety-day purge and delete, and the controller action itself answering 200/201/400/404/405 over a real store and database\n";

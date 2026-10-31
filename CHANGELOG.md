@@ -16,7 +16,10 @@
   mapeamento), o que pegou dois defeitos antes de qualquer deploy: o parametro de data da
   limpeza precisava de tipo explicito, sem o qual o Doctrine tratava o DateTimeImmutable como
   entidade e derrubava a propria listagem, e o guarda do corpo recusava `{}` porque
-  array_is_list([]) e verdadeiro.
+  array_is_list([]) e verdadeiro. A propria acao do controller tambem e exercitada no
+  teste: Request entra e JsonResponse sai, sobre o SessionStore e o banco reais, cobrindo
+  201 ao abrir, 200 ao gravar e retomar, 404 para id desconhecido e para o id de outro
+  operador, 400 para corpo invalido e 405 para metodo que a rota nao atende.
 
 ## 1.12.0
 
