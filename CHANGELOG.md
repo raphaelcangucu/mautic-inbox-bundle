@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.13.0
+
+- Sessoes do assistente gravadas no servidor, em `inbox_assistant_sessions`. Antes o app
+  guardava um fio unico por agente no cache da conta: desinstalar, trocar de aparelho ou sair
+  apagava tudo, e nao havia como voltar a um assunto. Agora o operador abre uma sessao, ela
+  registra de onde foi aberta (conversa, contato ou nenhum) e fica listada para ser retomada.
+  Endpoints: `GET assistant/sessions` lista sem os turnos, `POST assistant/sessions` abre,
+  `GET/PUT/DELETE assistant/sessions/{id}` retoma, grava e apaga. Toda consulta leva o dono
+  junto, entao o id de outro operador responde 404, nunca 403. Sao guardados so os turnos
+  legiveis: propostas de acao expiram e sao reemitidas, e uma sessao retomada nao pode
+  oferecer como clicavel uma acao que o servidor ja esqueceu. Teto de 120 turnos e 4000
+  caracteres por turno, e a sessao sem toque ha 90 dias se apaga na primeira listagem.
+
 ## 1.12.0
 
 - Nao perturbe pelo app: `PUT /inbox/mobile/api/contacts/{id}/dnc` com `{"blocked":true|false}`
