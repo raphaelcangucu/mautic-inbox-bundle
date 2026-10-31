@@ -72,6 +72,7 @@ test("Inbox Twig exposes every API contract to the shared Svelte bundle", async 
         "EmailThread",
         "MediaAttachment",
         "MessageBubble",
+        "SessionsView",
         "SettingsView",
         "Timeline",
       ].map((name) => read(`Frontend/inbox/${name}.svelte`)),

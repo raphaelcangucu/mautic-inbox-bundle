@@ -20,6 +20,34 @@
   vinha no payload da conversa (`profile_url`), montado e validado por `SocialProfileLinks`, e
   so o aplicativo o oferecia. A validacao se repete no navegador porque a tela tambem le
   conversa guardada em cache, de uma versao anterior do servidor.
+- A fila das sessoes do assistente vira uma aba. Ate aqui o estado do agente so existia
+  conversa a conversa: para saber que um agente parou esperando uma pessoa era preciso abrir a
+  conversa onde isso aconteceu, ou seja, saber antes o que so se descobre depois.
+  `GET /inbox/api/ai/sessions` devolve as atribuicoes vivas com agente, contagem, limite e
+  motivo, e a tela separa em duas secoes — quem pede gente e quem esta respondendo —, porque
+  misturar os dois numa lista ordenada faria reler tudo para achar o que importa. O contador da
+  aba vem junto e carrega na montagem, entao o aviso existe sem abrir nada. Sessao de conversa
+  apagada, ou que o operador nao pode ver, nao entra: a checagem e a mesma da conversa.
+- O painel do contato ganha o "nao enviar e-mails", o mesmo DoNotContact de e-mail que o
+  aplicativo ja grava, agora por `POST /inbox/api/conversations/{id}/dnc`. Exige edicao do
+  contato, nao so do atendimento: ver uma conversa nunca foi permissao para silenciar quem esta
+  do outro lado. Liberar remove so o registro MANUAL, entao um descadastro do proprio contato e
+  um retorno permanente sobrevivem e voltam como nao editaveis, com o motivo no lugar do
+  controle. A regra mora em `Application/ContactDoNotContact.php` para nao virar uma segunda
+  copia da que o lado do aplicativo tem.
+- Favoritar e copiar por mensagem, as duas acoes que o aplicativo tem e o web nao tinha. O
+  favorito e do navegador porque no servidor ele nao existe — no aplicativo tambem e do
+  aparelho —, e a chave leva o usuario para duas pessoas no mesmo navegador nao herdarem a
+  marcacao uma da outra.
+- Selecao em massa na lista, com adiar e resolver nas conversas e spam e bloquear autor nos
+  comentarios. As acoes vao uma de cada vez: cada conversa tem a sua `version`, e disparar tudo
+  em paralelo faz as respostas voltarem fora de ordem e produzirem 409 sobre conversa que ja
+  mudou. O que falha falha sozinho e as outras seguem, com a conta dos que nao deram certo.
+- Ditar a resposta no editor, pelo reconhecimento de fala do navegador. O botao so aparece onde
+  o navegador oferece a API, e o ditado acrescenta ao que ja esta escrito em vez de trocar o
+  campo. Gravar e enviar um audio NAO vem junto: o servidor so aceita audio em sessao de
+  WhatsApp por QR e o editor do navegador nao tem caminho de upload, entao o botao existiria
+  sem nada atras dele.
 - A sessao do agente ganha um bloco proprio entre o cabecalho e a conversa: nome, situacao, o
   que ele esta fazendo, quantas respostas deu do limite, o motivo de ter parado, e as duas
   acoes que importam ali — assumir a conversa e pausar o agente. Esse estado existia espremido

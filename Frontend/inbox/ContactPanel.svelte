@@ -11,6 +11,8 @@
   export let t: (key: string) => string;
   export let aiUrl = "";
   export let onTransfer: (value: string) => void;
+  export let dncBusy = false;
+  export let onDnc: (blocked: boolean) => void = () => {};
   export let onAiAssign: (value: string) => void;
   export let onAiReset: () => void;
   export let onSnooze: () => void;
@@ -104,6 +106,34 @@
         )}{/if}
     </div>
   </div>
+  <!-- O nao perturbe: o mesmo DoNotContact de e-mail que o aplicativo ja grava. Uma instalacao
+       anterior a este campo nao manda nada e a secao some, em vez de mentir um estado. O rotulo
+       diz "e-mail" de proposito: o DNC do Mautic e por canal, e WhatsApp, Instagram e Facebook
+       continuam valendo. -->
+  {#if selected.do_not_contact}<section class="inbox-detail-section">
+      <h4>{t("mautic.inbox.ui.dnc_title")}</h4>
+      <label class="inbox-dnc">
+        <input
+          id="inbox-dnc"
+          type="checkbox"
+          checked={selected.do_not_contact.blocked}
+          disabled={!selected.do_not_contact.editable || dncBusy}
+          on:change={(event) => onDnc(event.currentTarget.checked)}
+        />
+        <span>
+          <b>{t("mautic.inbox.ui.dnc_label")}</b>
+          <small
+            >{t(
+              selected.do_not_contact.editable
+                ? "mautic.inbox.ui.dnc_hint"
+                : selected.do_not_contact.reason === "bounced"
+                  ? "mautic.inbox.ui.dnc_bounced"
+                  : "mautic.inbox.ui.dnc_unsubscribed",
+            )}</small
+          >
+        </span>
+      </label>
+    </section>{/if}
   <section class="inbox-detail-section">
     <h4>{t("mautic.inbox.ui.conversation_b70a33")}</h4>
     <div class="inbox-detail-row">

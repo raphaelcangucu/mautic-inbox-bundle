@@ -98,10 +98,48 @@ final class InboxController extends CommonController
         });
     }
 
-    public function detail(int $stateId, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ConversationStateRepository $states, ModerationStore $moderation): JsonResponse
+    public function detail(int $stateId, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ConversationStateRepository $states, ModerationStore $moderation, \MauticPlugin\MauticInboxBundle\Application\ContactDoNotContact $dnc): JsonResponse
     {
         $this->grant($permissions, 'view');
-        return $this->respond(fn (): array => $this->withModeration($query->detail($this->requireState($states, $stateId), $this->user($users)), $moderation, $permissions));
+
+        return $this->respond(function () use ($stateId, $permissions, $users, $query, $states, $moderation, $dnc): array {
+            $state = $this->requireState($states, $stateId);
+            $row = $this->withModeration($query->detail($state, $this->user($users)), $moderation, $permissions);
+            // Só na conversa aberta: o estado sai do contato ligado, e a lista não tem contato
+            // em todas as linhas. Instalação sem o serviço devolve `editable: false` e a tela
+            // esconde o controle, em vez de oferecer um que não grava.
+            $row['do_not_contact'] = $dnc->state($state->getConversation()->getContact());
+
+            return $row;
+        });
+    }
+
+    /**
+     * Liga e desliga o "não enviar e-mails" do contato desta conversa.
+     *
+     * Exige edição do contato, não só do atendimento: ver uma conversa nunca foi permissão para
+     * silenciar quem está do outro lado.
+     */
+    public function doNotContact(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, InboxQuery $query, ModerationStore $moderation, \MauticPlugin\MauticInboxBundle\Application\ContactDoNotContact $dnc): JsonResponse
+    {
+        $this->grantMutation($request, $permissions, 'edit');
+
+        return $this->respond(function () use ($stateId, $request, $permissions, $users, $states, $query, $moderation, $dnc): array {
+            if (!$permissions->isGranted('lead:leads:editother') && !$permissions->isGranted('lead:leads:editown')) {
+                throw new InboxException('mautic.inbox.ui.dnc_forbidden', 403);
+            }
+            $payload = $this->payload($request);
+            if (!is_bool($payload['blocked'] ?? null)) { throw new InboxException('mautic.inbox.ui.dnc_invalid'); }
+            $state = $this->requireState($states, $stateId);
+            $contact = $state->getConversation()->getContact();
+            if (null === $contact) { throw new InboxException('mautic.inbox.ui.contact_not_linked_yet_e9a529'); }
+            $user = $this->user($users);
+            $dnc->set($contact, $payload['blocked'], $user);
+            $row = $this->withModeration($query->detail($state, $user), $moderation, $permissions);
+            $row['do_not_contact'] = $dnc->state($contact);
+
+            return $row;
+        });
     }
 
     /**
@@ -485,6 +523,58 @@ final class InboxController extends CommonController
         return $state;
     }
     /** @param callable():array<string,mixed> $callback */
+    /**
+     * As sessões de IA vivas, de todas as conversas de uma vez.
+     *
+     * Até aqui o estado do agente só existia conversa a conversa: para saber que um agente
+     * parou e está esperando uma pessoa, era preciso abrir a conversa onde isso aconteceu — ou
+     * seja, saber antes o que só se descobre depois. Esta é a fila que faltava.
+     *
+     * A ordem não é por relógio: quem parou pedindo gente vem primeiro, porque é o único grupo
+     * em que alguém está esperando. Uma sessão cuja conversa sumiu, ou que este operador não
+     * pode ver, simplesmente não entra — a verificação de acesso é a mesma da conversa.
+     */
+    public function aiSessions(CorePermissions $permissions, UserHelper $users, \MauticPlugin\MauticInboxBundle\Application\Ai\AiStore $store, ConversationStateRepository $states, InboxQuery $query, \MauticPlugin\MauticInboxBundle\Application\Ai\AiService $ai): JsonResponse
+    {
+        $this->grant($permissions, 'view');
+
+        return $this->respond(function () use ($users, $store, $states, $query, $ai): array {
+            $user = $this->user($users);
+            $items = [];
+            foreach ($store->all('assignment') as $record) {
+                $state = $states->find((int) ($record['key'] ?? 0));
+                if (!$state instanceof ConversationState) { continue; }
+                try { $ai->assertConversationAccess($state, $user); } catch (\Throwable) { continue; }
+                $summary = $query->summary($state);
+                $reason = (string) ($record['reason'] ?? '');
+                $items[] = [
+                    'id' => (int) $state->getId(),
+                    'contact_name' => $summary['contact_name'] ?? '',
+                    'channel' => $summary['channel'] ?? '',
+                    'asset' => $summary['asset'] ?? null,
+                    'avatar_url' => $summary['avatar_url'] ?? null,
+                    'agent' => (string) ($record['name'] ?? $record['agent'] ?? ''),
+                    'status' => (string) ($record['status'] ?? ''),
+                    'count' => (int) ($record['count'] ?? 0),
+                    'limit' => (int) ($record['limit'] ?? 0),
+                    'reason' => $reason,
+                    // O rótulo do motivo é o mesmo que a conversa aberta mostra, para a fila e a
+                    // conversa não chamarem a mesma coisa por dois nomes.
+                    'reason_label' => in_array($reason, ['delivery_failed', 'execution_failed', 'limit', 'human', 'offtopic', 'close'], true)
+                        ? $this->translator->trans('mautic.inbox.ai.state.'.$reason) : $reason,
+                    'status_label' => $this->translator->trans('mautic.inbox.ai.state.'.($record['status'] ?? 'paused')),
+                    'needs_human' => '' !== $reason,
+                    'assigned_at' => (string) ($record['assigned_at'] ?? ''),
+                    'last_message_at' => $summary['last_message_at'] ?? null,
+                ];
+            }
+            // Quem pede gente primeiro; dentro de cada grupo, a mais recente antes.
+            usort($items, static fn (array $a, array $b): int => [$b['needs_human'], $b['last_message_at'] ?? ''] <=> [$a['needs_human'], $a['last_message_at'] ?? '']);
+
+            return ['items' => $items, 'waiting' => count(array_filter($items, static fn (array $row): bool => $row['needs_human']))];
+        });
+    }
+
     private function respond(callable $callback, int $status = 200): JsonResponse
     {
         try { return new JsonResponse($callback(), $status); } catch (InboxException $e) { return new JsonResponse(['error' => $this->translator->trans($e->getMessage())], $e->httpStatus); }

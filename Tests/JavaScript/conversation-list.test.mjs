@@ -335,3 +335,88 @@ test("the web payload carries the moderation the list reads", async () => {
     "sem rota de moderacao no web, os botoes nao teriam para onde escrever",
   );
 });
+
+test("selecting rows raises the bulk bar, and clearing it takes the bar away", async () => {
+  // A barra so existe quando ha selecao: barra vazia e altura perdida na coluna.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const { window, host, rows } = render([row(1, asset), row(2, asset)]);
+  const app = mount(ConversationList, {
+    target: host,
+    props: { ...props(rows), selection: new Set() },
+  });
+  assert.equal(
+    host.querySelector(".inbox-bulk"),
+    null,
+    "sem selecao, sem barra",
+  );
+  unmount(app);
+
+  const comSelecao = mount(ConversationList, {
+    target: host,
+    props: { ...props(rows), selection: new Set([1, 2]) },
+  });
+  const barra = host.querySelector(".inbox-bulk");
+  assert.ok(barra, "com selecao, a barra aparece");
+  assert.equal(barra.querySelector("strong").textContent.trim(), "2");
+  assert.equal(
+    host.querySelectorAll(".inbox-list-check:checked").length,
+    2,
+    "as linhas selecionadas aparecem marcadas",
+  );
+  unmount(comSelecao);
+  window.close();
+});
+
+test("the bulk bar offers moderation on comments and lifecycle on conversations", async () => {
+  // Marcar spam em lote so faz sentido onde moderar existe. Na aba de conversas a barra traz
+  // adiar e resolver, que e o que o servidor aceita para varias de uma vez.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const { window, host, rows } = render([row(1, asset)]);
+  const rotulos = (node) =>
+    [...node.querySelectorAll(".inbox-bulk .btn")].map((n) =>
+      n.textContent.trim(),
+    );
+
+  const conversas = mount(ConversationList, {
+    target: host,
+    props: { ...props(rows), selection: new Set([1]), view: "inbox" },
+  });
+  assert.deepEqual(rotulos(host), [
+    "mautic.inbox.ui.row_snooze_hour",
+    "mautic.inbox.ui.row_resolve",
+    "mautic.inbox.ui.bulk_clear",
+  ]);
+  unmount(conversas);
+
+  const comentarios = mount(ConversationList, {
+    target: host,
+    props: { ...props(rows), selection: new Set([1]), view: "comments" },
+  });
+  assert.deepEqual(rotulos(host), [
+    "mautic.inbox.ui.moderation_spam",
+    "mautic.inbox.ui.moderation_block",
+    "mautic.inbox.ui.bulk_clear",
+  ]);
+  unmount(comentarios);
+  window.close();
+});
+
+test("the web serves the agent session queue and the contact's e-mail switch", async () => {
+  // A aba de sessoes e o nao perturbe dependem de endpoints que esta suite nao sobe. Sem o
+  // contrato aqui, a tela existiria apontando para rota nenhuma.
+  const [controller, config] = await Promise.all([
+    read("Controller/InboxController.php"),
+    read("Config/config.php"),
+  ]);
+  assert.match(controller, /public function aiSessions\(/);
+  assert.match(controller, /public function doNotContact\(/);
+  assert.match(
+    controller,
+    /'needs_human' => '' !== \$reason/,
+    "a fila precisa dizer quais sessoes pararam esperando uma pessoa",
+  );
+  assert.match(config, /mautic_inbox_ai_sessions/);
+  assert.match(config, /mautic_inbox_dnc/);
+});

@@ -8,6 +8,9 @@
   export let t: (key: string) => string;
   export let retry: (item: TimelineItem) => void;
   export let retryBusy = false;
+  export let favorite = false;
+  export let onFavorite: (item: TimelineItem) => void = () => {};
+  export let onCopy: (item: TimelineItem) => void = () => {};
   const time = (iso: string) =>
     new Intl.DateTimeFormat(locale, {
       day: "2-digit",
@@ -122,6 +125,39 @@
         item.timestamp,
       )}</small
     >
+    <!-- As duas acoes que o aplicativo tem por mensagem e o web nao tinha. Favoritar e do
+         navegador, como la e do aparelho: nao existe campo disso no servidor. -->
+    <div class="inbox-message-actions">
+      <button
+        type="button"
+        class:marked={favorite}
+        aria-pressed={favorite}
+        aria-label={t("mautic.inbox.ui.message_favorite")}
+        title={t("mautic.inbox.ui.message_favorite")}
+        on:click={() => onFavorite(item)}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          style="fill:{favorite ? 'currentColor' : 'none'}"
+          ><path
+            d="m12 3.6 2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z"
+          ></path></svg
+        >
+      </button>
+      <button
+        type="button"
+        aria-label={t("mautic.inbox.ui.message_copy")}
+        title={t("mautic.inbox.ui.message_copy")}
+        on:click={() => onCopy(item)}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true"
+          ><rect x="9" y="9" width="11" height="11" rx="2"></rect><path
+            d="M5 15V5a2 2 0 0 1 2-2h8"
+          ></path></svg
+        >
+      </button>
+    </div>
     {#if item.kind === "comment" && item.context}<div class="inbox-list-meta">
         {t("mautic.inbox.ui.post_linked_to_the_original_comment_405f5e")}
       </div>{/if}

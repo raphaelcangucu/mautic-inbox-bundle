@@ -8,8 +8,74 @@
   } from "../shared/types";
   export let selected: Conversation;
   export let currentUser: number;
+  export let locale = "pt-BR";
   export let mode = "reply";
   export let body = "";
+  /**
+   * Ditar a resposta, que no aplicativo e um dos dois caminhos do VoiceComposer.
+   *
+   * O outro — gravar e enviar um audio — nao vem junto: o servidor so aceita audio em sessao
+   * de WhatsApp por QR (AudioStore), e o editor do navegador nao tem caminho de upload. Fazer
+   * so o botao seria desenhar algo que nao envia. O ditado nao precisa de servidor nenhum:
+   * acontece no navegador e cai no mesmo campo de texto, entao ele vem agora.
+   */
+  let ditando = false;
+  let ditado: { stop: () => void } | null = null;
+  const ditadoDisponivel =
+    typeof window !== "undefined" &&
+    Boolean(
+      (window as unknown as Record<string, unknown>).SpeechRecognition ||
+        (window as unknown as Record<string, unknown>).webkitSpeechRecognition,
+    );
+  function alternarDitado(): void {
+    if (ditando) {
+      ditado?.stop();
+      return;
+    }
+    const Reconhecimento = ((window as unknown as Record<string, unknown>)
+      .SpeechRecognition ||
+      (window as unknown as Record<string, unknown>)
+        .webkitSpeechRecognition) as
+      | (new () => {
+          lang: string;
+          interimResults: boolean;
+          continuous: boolean;
+          start: () => void;
+          stop: () => void;
+          onresult:
+            | ((event: {
+                results: ArrayLike<ArrayLike<{ transcript: string }>>;
+              }) => void)
+            | null;
+          onend: (() => void) | null;
+          onerror: (() => void) | null;
+        })
+      | undefined;
+    if (!Reconhecimento) return;
+    const sessao = new Reconhecimento();
+    sessao.lang = locale;
+    sessao.interimResults = false;
+    sessao.continuous = true;
+    // O ditado ACRESCENTA ao que ja esta escrito; trocar o campo inteiro apagaria o que a
+    // pessoa digitou antes de resolver falar o resto.
+    sessao.onresult = (event) => {
+      let texto = "";
+      for (let i = 0; i < event.results.length; i++)
+        texto += event.results[i][0].transcript;
+      body = (body ? body.trimEnd() + " " : "") + texto.trim();
+    };
+    sessao.onend = () => {
+      ditando = false;
+      ditado = null;
+    };
+    sessao.onerror = () => {
+      ditando = false;
+      ditado = null;
+    };
+    ditado = sessao;
+    ditando = true;
+    sessao.start();
+  }
   export let feedback = "";
   export let feedbackError = false;
   export let draftState = "";
@@ -376,7 +442,21 @@
         event.preventDefault();
         void toggleTools();
       }}><Icon name="plus" /></button
-    >
+    >{#if ditadoDisponivel}<button
+        id="inbox-composer-dictate"
+        class="inbox-icon-button inbox-composer-dictate"
+        class:dictating={ditando}
+        type="button"
+        aria-pressed={ditando}
+        aria-label={t("mautic.inbox.ui.dictate")}
+        title={t("mautic.inbox.ui.dictate")}
+        on:click={alternarDitado}
+        ><svg viewBox="0 0 24 24" aria-hidden="true"
+          ><rect x="9" y="3" width="6" height="11" rx="3"></rect><path
+            d="M5 11a7 7 0 0 0 14 0M12 18v3"
+          ></path></svg
+        ></button
+      >{/if}
     <textarea
       id="inbox-composer-text"
       bind:this={campo}

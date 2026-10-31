@@ -31,6 +31,11 @@
   export let currentUser = 0;
   export let busy: Set<number> = new Set();
   export let onAction: (item: Conversation, action: string) => void = () => {};
+  export let selection: Set<number> = new Set();
+  export let bulkBusy = false;
+  export let onToggleSelect: (id: number) => void = () => {};
+  export let onBulk: (action: string) => void = () => {};
+  export let onClearSelection: () => void = () => {};
   const shortTime = (iso: string) => {
     const date = new Date(iso),
       now = new Date();
@@ -208,7 +213,17 @@
             >{group.items.length}</b
           >
         </h3>
-        {#each group.items as item (item.id)}<div class="inbox-list-row">
+        {#each group.items as item (item.id)}<div
+            class="inbox-list-row"
+            class:selected={selection.has(item.id)}
+          >
+            <input
+              class="inbox-list-check"
+              type="checkbox"
+              checked={selection.has(item.id)}
+              aria-label={item.contact_name}
+              on:change={() => onToggleSelect(item.id)}
+            />
             <button
               type="button"
               class="inbox-list-item"
@@ -286,4 +301,46 @@
           : t("mautic.inbox.ui.load_more_eb48bb")}</button
       >{/if}
   </div>
+
+  {#if selection.size}<div
+      class="inbox-bulk"
+      role="group"
+      aria-label={t("mautic.inbox.ui.bulk_selected")}
+    >
+      <strong>{selection.size}</strong>
+      <span>{t("mautic.inbox.ui.bulk_selected")}</span>
+      <!-- A barra so oferece o que vale para varias conversas de uma vez e nao precisa de
+       formulario: transferir pede escolher uma pessoa, e isso e decisao de uma por vez. -->
+      {#if view === "comments"}<button
+          type="button"
+          class="btn btn-default btn-sm"
+          disabled={bulkBusy}
+          on:click={() => onBulk("spam")}
+          >{t("mautic.inbox.ui.moderation_spam")}</button
+        ><button
+          type="button"
+          class="btn btn-default btn-sm"
+          disabled={bulkBusy}
+          on:click={() => onBulk("block")}
+          >{t("mautic.inbox.ui.moderation_block")}</button
+        >{:else}<button
+          type="button"
+          class="btn btn-default btn-sm"
+          disabled={bulkBusy}
+          on:click={() => onBulk("snooze")}
+          >{t("mautic.inbox.ui.row_snooze_hour")}</button
+        ><button
+          type="button"
+          class="btn btn-default btn-sm"
+          disabled={bulkBusy}
+          on:click={() => onBulk("resolve")}
+          >{t("mautic.inbox.ui.row_resolve")}</button
+        >{/if}
+      <button
+        type="button"
+        class="btn btn-link btn-sm"
+        disabled={bulkBusy}
+        on:click={onClearSelection}>{t("mautic.inbox.ui.bulk_clear")}</button
+      >
+    </div>{/if}
 </section>
