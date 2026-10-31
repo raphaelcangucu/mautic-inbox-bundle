@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.14.0
+## 1.12.0
 
 - A lista de conversas passa a agrupar por quem esta esperando: "Esperando voce" (precisa
   resposta), "Adiadas" e "Esperando o contato". Antes a coluna era uma pilha por relogio, e
