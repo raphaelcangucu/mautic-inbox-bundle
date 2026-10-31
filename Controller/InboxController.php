@@ -300,10 +300,10 @@ final class InboxController extends CommonController
         });
     }
 
-    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query, AudioStore $audioStore): JsonResponse
+    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query, AudioStore $audioStore, ModerationStore $moderation): JsonResponse
     {
         $this->grantMutation($request, $permissions, 'create');
-        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query, $audioStore): array {
+        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query, $audioStore, $moderation, $permissions): array {
             $payload = $this->payload($request);
             $state = $this->requireState($states, $stateId);
             $user = $this->user($users);
@@ -320,7 +320,11 @@ final class InboxController extends CommonController
             // O envio devolve o que acabou de criar porque senao ele custa mais duas idas ao
             // servidor: uma para o historico mostrar a mensagem e outra para a lista nao ficar
             // velha. `request_id` e `status` continuam saindo iguais para quem ja os lia.
-            return ['request_id' => $outbound->getRequestId(), 'status' => $outbound->getStatus(), 'item' => $query->outboundItem($outbound), 'summary' => $query->summary($state)];
+            //
+            // O resumo passa pela moderacao como a listagem passa: o aplicativo grava este
+            // resumo por cima da conversa que tinha, entao um resumo sem `moderation_available`
+            // apaga os controles de moderacao de uma conversa de webchat ate alguem recarregar.
+            return ['request_id' => $outbound->getRequestId(), 'status' => $outbound->getStatus(), 'item' => $query->outboundItem($outbound), 'summary' => $this->withModeration($query->summary($state), $moderation, $permissions)];
         }, Response::HTTP_ACCEPTED);
     }
 

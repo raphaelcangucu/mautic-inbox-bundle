@@ -35,8 +35,12 @@ final class McpToolsTest extends MauticMysqlTestCase
         $taken=$tool('take',$s->getId(),['version'=>$version],true);
         self::assertSame(200,$taken['httpStatus']);
         $stale=$tool('resolve',$s->getId(),['version'=>$version],true);self::assertSame(409,$stale['httpStatus']);
-        $note=$tool('note',$s->getId(),['body'=>'MCP test note'],true,'test-note-once');
-        $again=$tool('note',$s->getId(),['body'=>'MCP test note'],true,'test-note-once');
+        // The key has to be stable inside the run and new between runs: the executor keeps the
+        // key outside this transaction, so a fixed one meets the next run carrying another
+        // conversation id and is refused as the same key with a different payload.
+        $key='test-note-'.bin2hex(random_bytes(8));
+        $note=$tool('note',$s->getId(),['body'=>'MCP test note'],true,$key);
+        $again=$tool('note',$s->getId(),['body'=>'MCP test note'],true,$key);
         self::assertSame($note['id'],$again['id']);self::assertCount(1,$this->em->getRepository(Note::class)->findAll());
     }
     public function testDocumentsUseDraftPublicationAndDoNotExposeCredentials():void

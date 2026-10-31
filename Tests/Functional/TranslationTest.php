@@ -33,10 +33,11 @@ final class TranslationTest extends MauticMysqlTestCase
         self::assertResponseIsSuccessful();
         $app = $crawler->filter('#inbox-app');
         self::assertSame($locale, $app->attr('data-locale'));
-        self::assertStringContainsString($conversations, $app->text());
+        // The mount point is empty until Svelte draws it, so the locale shows in the catalogue
+        // the server hands over, not in the text of the page.
         $catalog = json_decode($app->attr('data-translations'), true, 512, JSON_THROW_ON_ERROR);
         self::assertContains($conversations, $catalog);
-        self::assertStringNotContainsString('mautic.inbox.ui.', $app->text());
+        self::assertSame([], array_filter($catalog, static fn (string $value): bool => str_starts_with($value, 'mautic.inbox.ui.')), 'Every key must arrive translated.');
         $crawler = $this->client->request('GET', '/s/meta/connections');
         self::assertResponseIsSuccessful();
         self::assertStringContainsString($connections, $crawler->filter('.meta-ui')->text());
