@@ -162,7 +162,7 @@ Resultado da última rodada:
 
 ### Teste real em produção (25/10/2026) e correções
 
-O teste completo rodou num Android físico contra a produção, com reports@macro.markets no papel do lead e support@macro.markets como caixa conversacional: abrir pela ficha do contato, envio com pesquisa, rastreio do formulário, resposta por IMAP com anexo, segunda e terceira respostas na mesma thread, resposta em HTML e "Ver original". Saíram destas versões, já em produção:
+O teste completo rodou num Android físico contra a produção, com reports@macro.markets no papel do lead e support@macro.markets como caixa conversacional: abrir pela ficha do contato, envio com pesquisa, rastreio do formulário, resposta por IMAP com anexo, segunda e terceira respostas na mesma thread, resposta em HTML e "Ver original". Saíram destas versões:
 
 | Repositório | Tag | O que corrige |
 |---|---|---|
