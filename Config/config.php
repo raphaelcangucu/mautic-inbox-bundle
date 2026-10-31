@@ -7,7 +7,7 @@ use MauticPlugin\MauticInboxBundle\Controller\InboxController;
 return [
     'name' => 'Mautic Omnichannel Inbox',
     'description' => 'Atendimento humano para canais Meta conectado ao CRM do Mautic.',
-    'version' => '1.11.0',
+    'version' => '1.12.0',
     'author' => 'Mautic',
     'routes' => ['main' => [
         'mautic_inbox_mail_connections' => ['path' => '/inbox/mail-connections', 'controller' => \MauticPlugin\MauticInboxBundle\Controller\MailConnectionsController::class.'::index', 'method' => ['GET', 'POST']],
@@ -29,6 +29,10 @@ return [
         'mautic_inbox_poll' => ['path' => '/inbox/api/updates', 'controller' => InboxController::class.'::poll', 'method' => 'GET'],
         'mautic_inbox_take' => ['path' => '/inbox/api/conversations/{stateId}/take', 'controller' => InboxController::class.'::take', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_state' => ['path' => '/inbox/api/conversations/{stateId}/state', 'controller' => InboxController::class.'::state', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
+        'mautic_inbox_audio' => ['path' => '/inbox/api/conversations/{stateId}/audio', 'controller' => InboxController::class.'::audio', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
+        'mautic_inbox_dnc' => ['path' => '/inbox/api/conversations/{stateId}/dnc', 'controller' => InboxController::class.'::doNotContact', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
+        'mautic_inbox_ai_sessions' => ['path' => '/inbox/api/ai/sessions', 'controller' => InboxController::class.'::aiSessions', 'method' => 'GET'],
+        'mautic_inbox_moderation' => ['path' => '/inbox/api/conversations/{stateId}/moderation', 'controller' => InboxController::class.'::moderation', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_templates' => ['path' => '/inbox/api/conversations/{stateId}/templates', 'controller' => InboxController::class.'::templates', 'method' => 'GET', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_reply' => ['path' => '/inbox/api/conversations/{stateId}/reply', 'controller' => InboxController::class.'::reply', 'method' => 'POST', 'requirements' => ['stateId' => '\\d+']],
         'mautic_inbox_retry' => ['path' => '/inbox/api/outbound/{outboundId}/retry', 'controller' => InboxController::class.'::retry', 'method' => 'POST', 'requirements' => ['outboundId' => '\\d+']],

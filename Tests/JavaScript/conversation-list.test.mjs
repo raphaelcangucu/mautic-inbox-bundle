@@ -178,3 +178,270 @@ test("the conversation payload carries the asset type the badge reads", async ()
     "sem o tipo do asset no payload a lista nao tem como distinguir QR de numero homologado",
   );
 });
+
+const groupHeadings = (host) =>
+  [...host.querySelectorAll(".inbox-list-group")].map((node) =>
+    node.getAttribute("data-group"),
+  );
+const rowGroups = (host) =>
+  [...host.querySelectorAll(".inbox-list-item")].map((node) =>
+    node.getAttribute("data-group"),
+  );
+const actionLabels = (host) =>
+  [...host.querySelectorAll(".inbox-list-actions button")].map((node) =>
+    node.textContent.trim(),
+  );
+
+test("the column groups by what each conversation is waiting for, and skips empty groups", async () => {
+  // Ordenada por relogio, a coluna nao dizia onde a fila travava. O agrupamento sai de
+  // `needs_response` e `lifecycle`, que o payload ja trazia.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const { window, host, rows } = render([
+    { ...row(1, asset), needs_response: false },
+    { ...row(2, asset), needs_response: true },
+    { ...row(3, asset), lifecycle: "snoozed", needs_response: true },
+  ]);
+  const app = mount(ConversationList, { target: host, props: props(rows) });
+
+  assert.deepEqual(
+    groupHeadings(host),
+    ["waiting_you", "snoozed", "waiting_contact"],
+    "quem espera uma pessoa vem primeiro; o que espera o contato, por ultimo",
+  );
+  assert.deepEqual(rowGroups(host), [
+    "waiting_you",
+    "snoozed",
+    "waiting_contact",
+  ]);
+  assert.equal(
+    [...host.querySelectorAll(".inbox-list-item")].length,
+    3,
+    "agrupar nao pode esconder conversa nenhuma",
+  );
+
+  unmount(app);
+  window.close();
+});
+
+test("a snoozed conversation leaves 'waiting for you' even owing a reply", async () => {
+  // Ela volta sozinha na hora marcada: manter no topo o que alguem ja decidiu adiar seria
+  // pedir a mesma decisao duas vezes.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const { window, host, rows } = render([
+    { ...row(1, asset), lifecycle: "snoozed", needs_response: true },
+  ]);
+  const app = mount(ConversationList, { target: host, props: props(rows) });
+
+  assert.deepEqual(groupHeadings(host), ["snoozed"]);
+  assert.ok(
+    host.querySelector(".inbox-pill.response"),
+    "fora do grupo que ja diz isso, o selo de aguardando resposta acrescenta algo e fica: esta adiada ainda deve resposta",
+  );
+
+  unmount(app);
+  window.close();
+});
+
+test("the row offers only the actions the server will accept", async () => {
+  // ConversationActions exige ser o responsavel em tudo menos `reopen`. Um botao que responde
+  // erro e pior do que botao nenhum, entao a coluna nao o desenha.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const mine = { id: 4, name: "Eu" };
+  const theirs = { id: 9, name: "Outra pessoa" };
+
+  for (const [conversation, expected, why] of [
+    [{ assignee: null }, ["take"], "sem dono, assumir"],
+    [{ assignee: mine }, ["snooze", "resolve"], "minha, adiar e resolver"],
+    [{ assignee: theirs }, [], "de outra pessoa, nenhuma"],
+    [
+      { assignee: theirs, lifecycle: "resolved" },
+      ["reopen"],
+      "resolvida, reabrir vale para qualquer um",
+    ],
+  ]) {
+    const { window, host, rows } = render([
+      { ...row(1, asset), ...conversation },
+    ]);
+    const app = mount(ConversationList, {
+      target: host,
+      props: { ...props(rows), currentUser: 4 },
+    });
+
+    assert.deepEqual(
+      actionLabels(host),
+      expected.map(
+        (key) =>
+          `mautic.inbox.ui.row_${key === "snooze" ? "snooze_hour" : key}`,
+      ),
+      why,
+    );
+
+    unmount(app);
+    window.close();
+  }
+});
+
+test("the list shows what moderation already did to a comment", async () => {
+  // Antes isto so existia no aplicativo: o web mostrava o comentario sem dizer que ele ja
+  // estava oculto, e o operador ocultava de novo.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 8, name: "@loja.macro", handle: "loja.macro" };
+  const { window, host, rows } = render([
+    {
+      ...row(1, asset),
+      channel: "instagram",
+      recipient: "comment:17841400000011",
+      moderation: { spam: true, hidden: true, blockedAuthor: true },
+      moderation_available: true,
+    },
+  ]);
+  const app = mount(ConversationList, { target: host, props: props(rows) });
+
+  assert.deepEqual(
+    [...host.querySelectorAll(".inbox-pill.moderated")].map((n) =>
+      n.textContent.trim(),
+    ),
+    [
+      "mautic.inbox.ui.moderation_spam_mark",
+      "mautic.inbox.ui.moderation_hidden_mark",
+      "mautic.inbox.ui.moderation_blocked_mark",
+    ],
+  );
+
+  unmount(app);
+  window.close();
+});
+
+test("the web payload carries the moderation the list reads", async () => {
+  // As duas pontas moram em linguagens diferentes e esta suite nao sobe o PHP. Sem o campo no
+  // controlador do web, a tela acima desenharia sempre vazio — e passaria neste arquivo.
+  const controller = await read("Controller/InboxController.php");
+  assert.match(
+    controller,
+    /\$row\['moderation_available'\]/,
+    "a resposta do web precisa dizer se este operador pode moderar",
+  );
+  assert.match(
+    controller,
+    /\$row\['moderation'\] =/,
+    "e precisa dizer o que ja foi marcado",
+  );
+  assert.match(
+    controller,
+    /public function moderation\(/,
+    "sem rota de moderacao no web, os botoes nao teriam para onde escrever",
+  );
+});
+
+test("selecting rows raises the bulk bar, and clearing it takes the bar away", async () => {
+  // A barra so existe quando ha selecao: barra vazia e altura perdida na coluna.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const { window, host, rows } = render([row(1, asset), row(2, asset)]);
+  const app = mount(ConversationList, {
+    target: host,
+    props: { ...props(rows), selection: new Set() },
+  });
+  assert.equal(
+    host.querySelector(".inbox-bulk"),
+    null,
+    "sem selecao, sem barra",
+  );
+  unmount(app);
+
+  const comSelecao = mount(ConversationList, {
+    target: host,
+    props: { ...props(rows), selection: new Set([1, 2]) },
+  });
+  const barra = host.querySelector(".inbox-bulk");
+  assert.ok(barra, "com selecao, a barra aparece");
+  assert.equal(barra.querySelector("strong").textContent.trim(), "2");
+  assert.equal(
+    host.querySelectorAll(".inbox-list-check:checked").length,
+    2,
+    "as linhas selecionadas aparecem marcadas",
+  );
+  unmount(comSelecao);
+  window.close();
+});
+
+test("the bulk bar offers moderation on comments and lifecycle on conversations", async () => {
+  // Marcar spam em lote so faz sentido onde moderar existe. Na aba de conversas a barra traz
+  // adiar e resolver, que e o que o servidor aceita para varias de uma vez.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const { window, host, rows } = render([row(1, asset)]);
+  const rotulos = (node) =>
+    [...node.querySelectorAll(".inbox-bulk .btn")].map((n) =>
+      n.textContent.trim(),
+    );
+
+  const conversas = mount(ConversationList, {
+    target: host,
+    props: { ...props(rows), selection: new Set([1]), view: "inbox" },
+  });
+  assert.deepEqual(rotulos(host), [
+    "mautic.inbox.ui.row_snooze_hour",
+    "mautic.inbox.ui.row_resolve",
+    "mautic.inbox.ui.bulk_clear",
+  ]);
+  unmount(conversas);
+
+  const comentarios = mount(ConversationList, {
+    target: host,
+    props: { ...props(rows), selection: new Set([1]), view: "comments" },
+  });
+  assert.deepEqual(rotulos(host), [
+    "mautic.inbox.ui.moderation_spam",
+    "mautic.inbox.ui.moderation_block",
+    "mautic.inbox.ui.bulk_clear",
+  ]);
+  unmount(comentarios);
+  window.close();
+});
+
+test("the web serves the agent session queue and the contact's e-mail switch", async () => {
+  // A aba de sessoes e o nao perturbe dependem de endpoints que esta suite nao sobe. Sem o
+  // contrato aqui, a tela existiria apontando para rota nenhuma.
+  const [controller, config] = await Promise.all([
+    read("Controller/InboxController.php"),
+    read("Config/config.php"),
+  ]);
+  assert.match(controller, /public function aiSessions\(/);
+  assert.match(controller, /public function doNotContact\(/);
+  assert.match(
+    controller,
+    /'needs_human' => '' !== \$reason/,
+    "a fila precisa dizer quais sessoes pararam esperando uma pessoa",
+  );
+  assert.match(config, /mautic_inbox_ai_sessions/);
+  assert.match(config, /mautic_inbox_dnc/);
+});
+
+test("every url the app asks for is wired in the bootstrap and in the Twig", async () => {
+  // O `url("audio")` existiu antes de a URL ser registrada, e nada quebrou nos testes porque
+  // so quebra no navegador, na hora de gravar. Este teste fecha esse buraco para todas.
+  const [app, bootstrap, twig] = await Promise.all([
+    read("Frontend/inbox/InboxApp.svelte"),
+    read("Frontend/shared/bootstrap.ts"),
+    read("Resources/views/Inbox/_root.html.twig"),
+  ]);
+  const nomes = [...app.matchAll(/\burl\("([a-zA-Z]+)"/g)].map((m) => m[1]);
+  assert.ok(nomes.length > 5, "o app pede varias urls");
+  const kebab = (nome) => nome.replace(/[A-Z]/g, (c) => "-" + c.toLowerCase());
+  for (const nome of new Set(nomes)) {
+    assert.match(
+      bootstrap,
+      new RegExp(`\\b${nome}:\\s*data\\.`),
+      `bootstrap nao monta a url "${nome}"`,
+    );
+    assert.match(
+      twig,
+      new RegExp(`data-${kebab(nome)}-url=`),
+      `o Twig nao expoe data-${kebab(nome)}-url`,
+    );
+  }
+});

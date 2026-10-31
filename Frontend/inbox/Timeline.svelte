@@ -20,6 +20,9 @@
   export let onOlder: () => Promise<void>;
   export let retry: (item: TimelineItem) => void;
   export let retryBusy: Set<number>;
+  export let favorites: Set<string> = new Set();
+  export let onFavorite: (item: TimelineItem) => void = () => {};
+  export let onCopy: (item: TimelineItem) => void = () => {};
   /** A resposta pendente da IA. Nao confundir com pendingMessages, que sao as do atendente. */
   export let pending: AiPendingReply | null = null;
   export let pendingMessages: PendingMessage[] = [];
@@ -127,6 +130,11 @@
         {t}
         {retry}
         retryBusy={retryBusy.has(row.item.id)}
+        favorite={favorites.has(
+          row.item.kind + ":" + (row.item.display_id ?? row.item.id),
+        )}
+        {onFavorite}
+        {onCopy}
       />{/each}{#each pendingMessages as message (message.localId)}<PendingBubble
         {message}
         {locale}

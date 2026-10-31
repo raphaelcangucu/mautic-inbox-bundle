@@ -14,6 +14,8 @@ use MauticPlugin\MauticInboxBundle\Application\ContactLinking;
 use MauticPlugin\MauticInboxBundle\Application\ConversationActions;
 use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Application\InboxQuery;
+use MauticPlugin\MauticInboxBundle\Application\Mobile\AudioStore;
+use MauticPlugin\MauticInboxBundle\Application\Mobile\ModerationStore;
 use MauticPlugin\MauticInboxBundle\Entity\CannedResponse;
 use MauticPlugin\MauticInboxBundle\Entity\CannedResponseRepository;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
@@ -83,16 +85,117 @@ final class InboxController extends CommonController
         }, 200, ['Content-Type' => 'text/event-stream', 'Cache-Control' => 'private, no-cache, no-store', 'X-Accel-Buffering' => 'no']);
     }
 
-    public function conversations(Request $request, CorePermissions $permissions, UserHelper $users, InboxQuery $query): JsonResponse
+    public function conversations(Request $request, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ModerationStore $moderation): JsonResponse
     {
         $this->grant($permissions, 'view');
-        return $this->respond(fn (): array => $query->conversations($this->user($users), $request->query->all()));
+
+        return $this->respond(function () use ($request, $permissions, $users, $query, $moderation): array {
+            $data = $query->conversations($this->user($users), $request->query->all());
+            // A lista precisa do estado tanto quanto a conversa aberta: e nela que o operador ve
+            // de uma vez o que ja foi marcado, sem abrir um por um.
+            $data['items'] = array_map(fn (array $row): array => $this->withModeration($row, $moderation, $permissions), $data['items'] ?? []);
+
+            return $data;
+        });
     }
 
-    public function detail(int $stateId, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ConversationStateRepository $states): JsonResponse
+    public function detail(int $stateId, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ConversationStateRepository $states, ModerationStore $moderation, \MauticPlugin\MauticInboxBundle\Application\ContactDoNotContact $dnc, AudioStore $audioStore): JsonResponse
     {
         $this->grant($permissions, 'view');
-        return $this->respond(fn (): array => $query->detail($this->requireState($states, $stateId), $this->user($users)));
+
+        return $this->respond(function () use ($stateId, $permissions, $users, $query, $states, $moderation, $dnc, $audioStore): array {
+            $state = $this->requireState($states, $stateId);
+            $row = $this->withModeration($query->detail($state, $this->user($users)), $moderation, $permissions);
+            // Só na conversa aberta: o estado sai do contato ligado, e a lista não tem contato
+            // em todas as linhas. Instalação sem o serviço devolve `editable: false` e a tela
+            // esconde o controle, em vez de oferecer um que não grava.
+            $row['do_not_contact'] = $dnc->state($state->getConversation()->getContact());
+            $row['audio_available'] = $this->audioAvailable($state, $audioStore);
+
+            return $row;
+        });
+    }
+
+    /**
+     * Liga e desliga o "não enviar e-mails" do contato desta conversa.
+     *
+     * Exige edição do contato, não só do atendimento: ver uma conversa nunca foi permissão para
+     * silenciar quem está do outro lado.
+     */
+    public function doNotContact(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, InboxQuery $query, ModerationStore $moderation, \MauticPlugin\MauticInboxBundle\Application\ContactDoNotContact $dnc): JsonResponse
+    {
+        $this->grantMutation($request, $permissions, 'edit');
+
+        return $this->respond(function () use ($stateId, $request, $permissions, $users, $states, $query, $moderation, $dnc): array {
+            if (!$permissions->isGranted('lead:leads:editother') && !$permissions->isGranted('lead:leads:editown')) {
+                throw new InboxException('mautic.inbox.ui.dnc_forbidden', 403);
+            }
+            $payload = $this->payload($request);
+            if (!is_bool($payload['blocked'] ?? null)) { throw new InboxException('mautic.inbox.ui.dnc_invalid'); }
+            $state = $this->requireState($states, $stateId);
+            $contact = $state->getConversation()->getContact();
+            if (null === $contact) { throw new InboxException('mautic.inbox.ui.contact_not_linked_yet_e9a529'); }
+            $user = $this->user($users);
+            $dnc->set($contact, $payload['blocked'], $user);
+            $row = $this->withModeration($query->detail($state, $user), $moderation, $permissions);
+            $row['do_not_contact'] = $dnc->state($contact);
+
+            return $row;
+        });
+    }
+
+    /**
+     * O estado de moderação de um comentário, do jeito que o aplicativo já o recebe.
+     *
+     * A marcação mora fora do Mautic (ModerationStore), então ela não vem de InboxQuery junto
+     * com o resto: quem monta a resposta é que a acrescenta. O aplicativo faz isto desde que
+     * ganhou moderação; o web nunca tinha pedido, e por isso a tela não tinha como mostrar que
+     * um comentário está oculto nem oferecer o contrário.
+     *
+     * `moderation_available` é separado de `moderation` de propósito: ver que um comentário foi
+     * marcado como spam é leitura, mudar isso é edição, e são permissões diferentes.
+     */
+    private function withModeration(array $row, ModerationStore $moderation, CorePermissions $permissions): array
+    {
+        $moderatable = str_starts_with((string) ($row['recipient'] ?? ''), 'comment:') || 'webchat' === ($row['channel'] ?? '');
+        $row['moderation_available'] = $moderatable && (bool) $permissions->isGranted(['inbox:conversations:edit', 'meta:messages:edit']);
+        $row['moderation'] = $moderatable ? $moderation->flags($row) : ['spam' => false, 'hidden' => false, 'blockedAuthor' => false];
+
+        return $row;
+    }
+
+    /**
+     * Marcar spam, ocultar, bloquear o autor e desfazer — a mesma operação que o aplicativo faz.
+     *
+     * Ocultar é o único caso que sai daqui para a Meta: `hideInstagram` fala com a API e o
+     * servidor só grava a marcação se a Meta confirmar. Por isso ele vem antes do `apply`, e não
+     * depois: gravar primeiro deixaria a tela dizendo "oculto" sobre um comentário que continua
+     * visível para todo mundo no post.
+     */
+    public function moderation(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, InboxQuery $query, ModerationStore $moderation, \MauticPlugin\MauticInboxBundle\Application\Mobile\PublicationContext $publications, EntityManagerInterface $entityManager): JsonResponse
+    {
+        $this->grantMutation($request, $permissions, 'edit');
+
+        return $this->respond(function () use ($stateId, $request, $users, $states, $query, $moderation, $publications, $entityManager, $permissions): array {
+            $payload = $this->payload($request);
+            $user = $this->user($users);
+            $state = $this->requireState($states, $stateId);
+            if (!str_starts_with($state->getConversation()->getRecipient(), 'comment:') && 'webchat' !== $state->getConversation()->getChannel()) {
+                throw new InboxException('mautic.inbox.ui.moderation_not_comment');
+            }
+            $entityManager->refresh($state);
+            if ($state->getVersion() !== (int) ($payload['version'] ?? 0)) {
+                throw new InboxException('mautic.inbox.ui.conversation_changed_refresh');
+            }
+            $action = (string) ($payload['action'] ?? '');
+            if (in_array($action, ['hide', 'show'], true)) {
+                $detail = $query->detail($state, $user);
+                $publications->hideInstagram($state, $detail['origins'] ?? [], 'hide' === $action);
+            }
+            $moderation->apply($query->summary($state), $action, (int) $user->getId());
+
+            return $this->withModeration($query->detail($state, $user), $moderation, $permissions);
+        });
     }
 
     public function timeline(int $stateId, Request $request, CorePermissions $permissions, InboxQuery $query, ConversationStateRepository $states): JsonResponse
@@ -197,13 +300,22 @@ final class InboxController extends CommonController
         });
     }
 
-    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query): JsonResponse
+    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query, AudioStore $audioStore): JsonResponse
     {
         $this->grantMutation($request, $permissions, 'create');
-        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query): array {
+        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query, $audioStore): array {
             $payload = $this->payload($request);
             $state = $this->requireState($states, $stateId);
-            $outbound = $actions->reply($state, $this->user($users), (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null, null, null, null, is_string($payload['subject'] ?? null) ? $payload['subject'] : null);
+            $user = $this->user($users);
+            // O áudio chega pelo id que o upload devolveu, e o store confere que ele é desta
+            // conversa, deste operador e deste envio. Mandar o id de outro envio não passa.
+            $audio = null;
+            if (isset($payload['audio_id'])) {
+                if (!$this->audioAvailable($state, $audioStore) || !is_string($payload['audio_id'])) { throw new InboxException('mautic.inbox.ui.audio_unsupported'); }
+                try { $audio = $audioStore->forReply($payload['audio_id'], (int) $state->getId(), (int) $user->getId(), (string) ($payload['request_id'] ?? '')); }
+                catch (\DomainException) { throw new InboxException('mautic.inbox.ui.audio_not_yours'); }
+            }
+            $outbound = $actions->reply($state, $user, (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null, null, null, $audio, is_string($payload['subject'] ?? null) ? $payload['subject'] : null);
 
             // O envio devolve o que acabou de criar porque senao ele custa mais duas idas ao
             // servidor: uma para o historico mostrar a mensagem e outra para a lista nao ficar
@@ -422,6 +534,97 @@ final class InboxController extends CommonController
         return $state;
     }
     /** @param callable():array<string,mixed> $callback */
+    /**
+     * As sessões de IA vivas, de todas as conversas de uma vez.
+     *
+     * Até aqui o estado do agente só existia conversa a conversa: para saber que um agente
+     * parou e está esperando uma pessoa, era preciso abrir a conversa onde isso aconteceu — ou
+     * seja, saber antes o que só se descobre depois. Esta é a fila que faltava.
+     *
+     * A ordem não é por relógio: quem parou pedindo gente vem primeiro, porque é o único grupo
+     * em que alguém está esperando. Uma sessão cuja conversa sumiu, ou que este operador não
+     * pode ver, simplesmente não entra — a verificação de acesso é a mesma da conversa.
+     */
+    public function aiSessions(CorePermissions $permissions, UserHelper $users, \MauticPlugin\MauticInboxBundle\Application\Ai\AiStore $store, ConversationStateRepository $states, InboxQuery $query, \MauticPlugin\MauticInboxBundle\Application\Ai\AiService $ai): JsonResponse
+    {
+        $this->grant($permissions, 'view');
+
+        return $this->respond(function () use ($users, $store, $states, $query, $ai): array {
+            $user = $this->user($users);
+            $items = [];
+            foreach ($store->all('assignment') as $record) {
+                $state = $states->find((int) ($record['key'] ?? 0));
+                if (!$state instanceof ConversationState) { continue; }
+                try { $ai->assertConversationAccess($state, $user); } catch (\Throwable) { continue; }
+                $summary = $query->summary($state);
+                $reason = (string) ($record['reason'] ?? '');
+                $items[] = [
+                    'id' => (int) $state->getId(),
+                    'contact_name' => $summary['contact_name'] ?? '',
+                    'channel' => $summary['channel'] ?? '',
+                    'asset' => $summary['asset'] ?? null,
+                    'avatar_url' => $summary['avatar_url'] ?? null,
+                    'agent' => (string) ($record['name'] ?? $record['agent'] ?? ''),
+                    'status' => (string) ($record['status'] ?? ''),
+                    'count' => (int) ($record['count'] ?? 0),
+                    'limit' => (int) ($record['limit'] ?? 0),
+                    'reason' => $reason,
+                    // O rótulo do motivo é o mesmo que a conversa aberta mostra, para a fila e a
+                    // conversa não chamarem a mesma coisa por dois nomes.
+                    'reason_label' => in_array($reason, ['delivery_failed', 'execution_failed', 'limit', 'human', 'offtopic', 'close'], true)
+                        ? $this->translator->trans('mautic.inbox.ai.state.'.$reason) : $reason,
+                    'status_label' => $this->translator->trans('mautic.inbox.ai.state.'.($record['status'] ?? 'paused')),
+                    'needs_human' => '' !== $reason,
+                    'assigned_at' => (string) ($record['assigned_at'] ?? ''),
+                    'last_message_at' => $summary['last_message_at'] ?? null,
+                ];
+            }
+            // Quem pede gente primeiro; dentro de cada grupo, a mais recente antes.
+            usort($items, static fn (array $a, array $b): int => [$b['needs_human'], $b['last_message_at'] ?? ''] <=> [$a['needs_human'], $a['last_message_at'] ?? '']);
+
+            return ['items' => $items, 'waiting' => count(array_filter($items, static fn (array $row): bool => $row['needs_human']))];
+        });
+    }
+
+    /**
+     * O canal aceita áudio? As condições são as mesmas que o aplicativo já aplica.
+     *
+     * O arquivo `enabled` no diretório do store é o interruptor da instalação; fora de uma
+     * sessão de WhatsApp por QR a Meta não aceita o envio, e comentário não é conversa.
+     */
+    private function audioAvailable(ConversationState $state, AudioStore $audioStore): bool
+    {
+        return $audioStore->enabled()
+            && 'whatsapp_qr_session' === $state->getConversation()->getAsset()->getType()->value
+            && !str_starts_with($state->getConversation()->getRecipient(), 'comment:');
+    }
+
+    /**
+     * Recebe o áudio gravado no navegador e o guarda até o envio.
+     *
+     * Guardar e enviar são dois passos de propósito: o envio precisa do `request_id` para não
+     * duplicar numa reconexão, e o store usa o mesmo par para reconhecer o reenvio do MESMO
+     * áudio em vez de gravar outro. O formato é conferido pelo store, que só aceita MPEG-4
+     * nativo — o navegador que não souber gravar nesse formato não mostra o botão.
+     */
+    public function audio(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, AudioStore $audioStore): JsonResponse
+    {
+        $this->grantMutation($request, $permissions, 'create');
+
+        return $this->respond(function () use ($stateId, $request, $users, $states, $audioStore): array {
+            $state = $this->requireState($states, $stateId);
+            $user = $this->user($users);
+            if (!$this->audioAvailable($state, $audioStore)) { throw new InboxException('mautic.inbox.ui.audio_unsupported'); }
+            // Enviar em nome de quem não assumiu é o mesmo problema de sempre: a conversa é de
+            // alguém, e o áudio sai com a voz de uma pessoa.
+            if ($state->getAssignee()?->getId() !== $user->getId()) { throw new InboxException('mautic.inbox.ui.audio_take_first', 403); }
+            $payload = $this->payload($request);
+            if (!is_string($payload['data'] ?? null) || !is_string($payload['request_id'] ?? null)) { throw new InboxException('mautic.inbox.ui.audio_invalid'); }
+            try { return $audioStore->store((int) $state->getId(), (int) $user->getId(), (int) $state->getConversation()->getAsset()->getId(), $payload['request_id'], $payload['data']); }
+            catch (\DomainException $error) { throw new InboxException('audio_too_large' === $error->getMessage() ? 'mautic.inbox.ui.audio_too_large' : 'mautic.inbox.ui.audio_invalid'); }
+        }, Response::HTTP_CREATED);
+    }
+
     private function respond(callable $callback, int $status = 200): JsonResponse
     {
         try { return new JsonResponse($callback(), $status); } catch (InboxException $e) { return new JsonResponse(['error' => $this->translator->trans($e->getMessage())], $e->httpStatus); }

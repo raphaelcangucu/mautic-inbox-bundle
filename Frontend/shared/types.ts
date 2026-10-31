@@ -59,6 +59,20 @@ export interface Conversation {
   recipient: string;
   contact_name: string;
   contact_handle?: string;
+  /** Perfil publico do participante, quando o canal tem um. So instagram e facebook. */
+  profile_url?: string | null;
+  /** So na conversa aberta: o canal aceita audio (sessao de WhatsApp por QR, com o store ligado). */
+  audio_available?: boolean;
+  /** So na conversa aberta. Ausente numa instalacao anterior a este campo. */
+  do_not_contact?: {
+    blocked: boolean;
+    reason: string | null;
+    editable: boolean;
+  };
+  /** So comentarios e webchat. Ausente numa instalacao anterior a este campo. */
+  moderation?: { spam: boolean; hidden: boolean; blockedAuthor: boolean };
+  /** Ver que esta marcado e leitura; mudar e edicao. Sao permissoes diferentes. */
+  moderation_available?: boolean;
   avatar_url?: string;
   asset: Asset;
   last_message_at: string;
@@ -182,6 +196,24 @@ export interface AiPendingReply {
   reason_label?: string;
   error?: string;
   retryable?: boolean;
+}
+/** Uma linha da fila de sessoes: o agente numa conversa, visto de fora dela. */
+export interface AiSessionRow {
+  id: number;
+  contact_name: string;
+  channel: string;
+  asset?: Asset | null;
+  avatar_url?: string | null;
+  agent: string;
+  status: string;
+  status_label: string;
+  count: number;
+  limit: number;
+  reason: string;
+  reason_label: string;
+  needs_human: boolean;
+  assigned_at: string;
+  last_message_at?: string | null;
 }
 export interface AiInfo {
   agents: AiAgentOption[];

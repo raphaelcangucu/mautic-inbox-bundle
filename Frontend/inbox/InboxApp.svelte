@@ -19,6 +19,7 @@
   import type { PendingMessage } from "../shared/store/types";
   import type { PushUiState } from "../shared/types";
   import AutomationView from "./AutomationView.svelte";
+  import SessionsView from "./SessionsView.svelte";
   import { WebChatRealtime } from "./webchatRealtime";
   import {
     webchatTimelineItem,
@@ -39,6 +40,7 @@
   } from "../shared/alerts";
   import type {
     AiInfo,
+    AiSessionRow,
     CannedResponse,
     Conversation,
     TimelineItem,
@@ -441,6 +443,235 @@
       return true;
     } catch {
       return false;
+    }
+  }
+  /**
+   * A mesma transicao de sempre, numa conversa que NAO esta aberta.
+   *
+   * `take` e `mutate` existem para a conversa selecionada: recarregam timeline e ia e trocam o
+   * que esta na tela ao lado. Adiar uma conversa da lista nao deve fazer nada disso, e e por
+   * isso que eles nao servem aqui — so a linha muda, e a conversa aberta so e atualizada se
+   * for a mesma.
+   *
+   * O servidor exige ser o responsavel em tudo menos `reopen` (ConversationActions), por isso a
+   * coluna so desenha o botao onde ele vai funcionar. Ver `rowActions` em ConversationList.
+   */
+  let rowBusy: Set<number> = new Set();
+  async function rowAction(item: Conversation, action: string): Promise<void> {
+    if (rowBusy.has(item.id)) return;
+    rowBusy = new Set(rowBusy).add(item.id);
+    try {
+      const body: Record<string, unknown> = { version: item.version };
+      if (action !== "take") body.action = action;
+      if (action === "snooze")
+        body.until = new Date(Date.now() + 3600000).toISOString();
+      const detail = await api<Conversation>(
+        url(action === "take" ? "take" : "state", item.id),
+        { method: "POST", body: JSON.stringify(body) },
+      );
+      // Sem guardar o detalhe, a version da linha fica velha — e version velha e 409 na acao
+      // seguinte, o mesmo cuidado que o `take` da conversa aberta ja tomava.
+      loja.guardarConversa(detail);
+      if (selected?.id === detail.id) {
+        detail.drafts = {
+          ...(detail.drafts || {}),
+          ...(draftCache[detail.id] || {}),
+        };
+        selected = detail;
+      }
+      await loadList(false, true);
+    } catch (error) {
+      showError((error as Error).message);
+    } finally {
+      const left = new Set(rowBusy);
+      left.delete(item.id);
+      rowBusy = left;
+    }
+  }
+  /**
+   * Moderar o comentario aberto: spam, ocultar, bloquear o autor, e o contrario de cada um.
+   *
+   * Ocultar e o unico que sai daqui para a Meta, e o servidor so grava a marcacao se a Meta
+   * confirmar — por isso a tela nao antecipa o novo estado: ela espera a resposta e desenha o
+   * que voltou. Dizer "oculto" antes da confirmacao e mentir sobre um comentario que continua
+   * no post para todo mundo.
+   */
+  /**
+   * O nao perturbe do contato: o DoNotContact de e-mail do Mautic, que vale para campanha e
+   * para resposta humana. A tela nao antecipa o novo estado — ela desenha o que o servidor
+   * devolveu, porque ligar isto e uma promessa feita a quem recebe.
+   */
+  /**
+   * Favoritos e copia, as duas acoes por mensagem que o aplicativo tem ha tempos.
+   *
+   * O favorito mora no navegador porque no servidor ele nao existe — no aplicativo tambem e do
+   * aparelho. Entao ele nao atravessa maquinas, e dizer o contrario seria prometer o que o
+   * servidor nao guarda. A chave leva o usuario, para duas pessoas no mesmo navegador nao
+   * herdarem a marcacao uma da outra.
+   */
+  const chaveFavoritos = `mautic-inbox-favoritos-${config.currentUser}`;
+  let favorites: Set<string> = new Set();
+  try {
+    favorites = new Set(
+      JSON.parse(localStorage.getItem(chaveFavoritos) || "[]") as string[],
+    );
+  } catch {
+    /* navegador sem armazenamento: a tela funciona, so nao lembra */
+  }
+  const chaveMensagem = (item: TimelineItem) =>
+    item.kind + ":" + (item.display_id ?? item.id);
+  function toggleFavorite(item: TimelineItem): void {
+    const chave = chaveMensagem(item);
+    const proximo = new Set(favorites);
+    proximo.has(chave) ? proximo.delete(chave) : proximo.add(chave);
+    favorites = proximo;
+    try {
+      localStorage.setItem(chaveFavoritos, JSON.stringify([...proximo]));
+    } catch {
+      /* idem: sem armazenamento a marcacao vale so para esta sessao */
+    }
+  }
+  async function copyMessage(item: TimelineItem): Promise<void> {
+    const texto = (item.body || "").replace(/<[^>]*>/g, "").trim();
+    if (!texto) return;
+    try {
+      await navigator.clipboard.writeText(texto);
+      showSuccess(t("mautic.inbox.ui.message_copied"));
+    } catch {
+      showError(t("mautic.inbox.ui.message_copy_failed"));
+    }
+  }
+  /**
+   * Selecao em massa, o que o aplicativo faz com toque longo e o web nao tinha.
+   *
+   * As acoes vao UMA DE CADA VEZ, de proposito: cada conversa tem a sua `version`, e disparar
+   * tudo em paralelo faz as respostas voltarem fora de ordem e a lista recarregar no meio,
+   * produzindo 409 em cima de conversa que ja tinha mudado. Em serie, o que falha falha
+   * sozinho, e as outras seguem.
+   */
+  let selection: Set<number> = new Set();
+  let bulkBusy = false;
+  function toggleSelect(id: number): void {
+    const proximo = new Set(selection);
+    proximo.has(id) ? proximo.delete(id) : proximo.add(id);
+    selection = proximo;
+  }
+  async function bulkAction(action: string): Promise<void> {
+    if (bulkBusy || !selection.size) return;
+    bulkBusy = true;
+    const alvos = rows.filter((item) => selection.has(item.id));
+    let falhas = 0;
+    try {
+      for (const alvo of alvos) {
+        const moderando = ["spam", "block"].includes(action);
+        const corpo: Record<string, unknown> = { version: alvo.version };
+        if (moderando) corpo.action = action;
+        else {
+          corpo.action = action;
+          if (action === "snooze")
+            corpo.until = new Date(Date.now() + 3600000).toISOString();
+        }
+        try {
+          const detail = await api<Conversation>(
+            url(moderando ? "moderation" : "state", alvo.id),
+            { method: "POST", body: JSON.stringify(corpo) },
+          );
+          loja.guardarConversa(detail);
+        } catch {
+          falhas += 1;
+        }
+      }
+      await loadList(false, true);
+      selection = new Set();
+      if (falhas)
+        showError(
+          t("mautic.inbox.ui.bulk_partial").replace("%count%", String(falhas)),
+        );
+      else showSuccess(t("mautic.inbox.ui.bulk_done"));
+    } finally {
+      bulkBusy = false;
+    }
+  }
+  /**
+   * Gravar e enviar um audio. Vai por fora da fila otimista do texto de proposito: guardar e
+   * enviar sao duas idas ao servidor, e uma bolha otimista teria de representar um arquivo que
+   * ainda pode ser recusado pelo formato. A mensagem aparece quando o historico recarrega.
+   *
+   * O `request_id` e o mesmo nas duas chamadas: e assim que o store reconhece o reenvio do
+   * MESMO audio numa reconexao, em vez de guardar outro.
+   */
+  let audioBusy = false;
+  async function sendAudio(data: string): Promise<void> {
+    if (!selected || audioBusy) return;
+    const id = selected.id;
+    audioBusy = true;
+    try {
+      if (!selected.assignee && !(await takeDeuCerto())) return;
+      const pedido = requestId();
+      const guardado = await api<{ audio_id: string }>(url("audio", id), {
+        method: "POST",
+        body: JSON.stringify({ data, request_id: pedido }),
+      });
+      await api(url("reply", id), {
+        method: "POST",
+        body: JSON.stringify({
+          audio_id: guardado.audio_id,
+          request_id: pedido,
+        }),
+      });
+      await Promise.all([
+        loadTimeline(id, selectionRevision),
+        loadList(false, true),
+      ]);
+    } catch (error) {
+      showError((error as Error).message);
+    } finally {
+      audioBusy = false;
+    }
+  }
+  let dncBusy = false;
+  async function toggleDnc(blocked: boolean): Promise<void> {
+    if (!selected || dncBusy) return;
+    const id = selected.id;
+    const revision = selectionRevision;
+    dncBusy = true;
+    try {
+      const detail = await api<Conversation>(url("dnc", id), {
+        method: "POST",
+        body: JSON.stringify({ blocked }),
+      });
+      loja.guardarConversa(detail);
+      if (revision === selectionRevision && selected?.id === id) {
+        detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
+        selected = detail;
+      }
+    } catch (error) {
+      showError((error as Error).message);
+    } finally {
+      dncBusy = false;
+    }
+  }
+  let moderacaoBusy = false;
+  async function moderate(action: string): Promise<void> {
+    if (!selected || moderacaoBusy) return;
+    const id = selected.id;
+    const revision = selectionRevision;
+    moderacaoBusy = true;
+    try {
+      const detail = await api<Conversation>(url("moderation", id), {
+        method: "POST",
+        body: JSON.stringify({ action, version: selected.version }),
+      });
+      loja.guardarConversa(detail);
+      if (revision === selectionRevision && selected?.id === id) {
+        detail.drafts = { ...(detail.drafts || {}), ...(draftCache[id] || {}) };
+        selected = detail;
+      }
+      await loadList(false, true);
+    } catch (error) {
+      showError((error as Error).message);
+    } finally {
+      moderacaoBusy = false;
     }
   }
   async function mutate(
@@ -909,6 +1140,40 @@
       clearSelection(true);
       void loadList(false);
     } else if (selected) history.clear(true);
+    if (nextView === "sessions") void loadSessions();
+  }
+  /**
+   * A fila das sessoes do assistente, que ate aqui so existia conversa a conversa. O contador
+   * da aba vem junto, entao ele continua certo mesmo com a aba fechada — e e por ele que o
+   * operador sabe que alguem parou pedindo gente sem precisar abrir nada.
+   */
+  let sessions: AiSessionRow[] = [];
+  let sessionsWaiting = 0;
+  let sessionsLoading = false;
+  let sessionsError = "";
+  let sessionsRequest = 0;
+  async function loadSessions(): Promise<void> {
+    const pedido = ++sessionsRequest;
+    sessionsLoading = true;
+    sessionsError = "";
+    try {
+      const data = await api<{ items: AiSessionRow[]; waiting: number }>(
+        url("aiSessions"),
+      );
+      if (pedido !== sessionsRequest) return;
+      sessions = data.items || [];
+      sessionsWaiting = data.waiting || 0;
+    } catch (error) {
+      if (pedido === sessionsRequest) sessionsError = (error as Error).message;
+    } finally {
+      if (pedido === sessionsRequest) sessionsLoading = false;
+    }
+  }
+  /** Abrir a conversa da sessao: a decisao se toma la, com a conversa inteira a vista. */
+  function openSession(id: number): void {
+    view = "inbox";
+    void loadList(false);
+    void select(id);
   }
   function soundLabel(): string {
     return alertState.unavailable
@@ -988,6 +1253,8 @@
 
   onMount(() => {
     root.dataset.svelteInboxMounted = "1";
+    // O contador da aba precisa estar certo antes de alguem clicar nela: e ele que avisa.
+    void loadSessions();
     medirMoldura();
     window.addEventListener("resize", medirMoldura);
     window.addEventListener("orientationchange", medirMoldura);
@@ -1190,10 +1457,13 @@
     <span class="inbox-product-icon" data-icon="inbox"
       ><Icon name="inbox" /></span
     >
+    <!-- O titulo desta pagina ja e "caixa de entrada de suporte": vem do headerTitle do Mautic,
+         em index.html.twig, com esta mesma chave de traducao. Repeti-lo aqui custava altura em
+         toda tela para dizer o que ja estava dito uma linha acima. Fica o que a pagina nao diz:
+         de que caixa se trata e se a atualizacao esta viva. -->
     <div>
-      <strong>{t("mautic.inbox.ui.support_inbox_fff9ea")}</strong><span
-        >{t("mautic.inbox.ui.shared_inbox_822665")}
-        <span id="inbox-live-status">{t(liveStatusKey)}</span></span
+      <strong>{t("mautic.inbox.ui.shared_inbox_822665")}</strong><span
+        ><span id="inbox-live-status">{t(liveStatusKey)}</span></span
       >
     </div>
   </div>
@@ -1205,7 +1475,18 @@
         class:active={view === tab[0]}
         on:click={() => setView(tab[0])}
         ><Icon name={tab[1]} />{t(tab[2])}</button
-      >{/each}<button
+      >{/each}<!-- A aba das sessoes carrega o contador de quem parou pedindo gente: e por ele
+        que isso se descobre sem abrir conversa nenhuma. -->
+    <button
+      class:active={view === "sessions"}
+      class="inbox-tab-sessions"
+      on:click={() => setView("sessions")}
+      ><Icon name="agent" />{t(
+        "mautic.inbox.ui.ai_sessions",
+      )}{#if sessionsWaiting}<span class="inbox-tab-badge"
+          >{sessionsWaiting}</span
+        >{/if}</button
+    ><button
       class="inbox-settings-tab"
       class:active={view === "settings"}
       title={t("mautic.inbox.settings.title")}
@@ -1249,6 +1530,14 @@
       {view}
       locale={config.locale}
       {t}
+      currentUser={config.currentUser}
+      busy={rowBusy}
+      {selection}
+      {bulkBusy}
+      onToggleSelect={toggleSelect}
+      onBulk={(action) => void bulkAction(action)}
+      onClearSelection={() => (selection = new Set())}
+      onAction={(item, action) => void rowAction(item, action)}
       onSelect={(id) => void select(id)}
       onQueue={(value) => {
         queue = value;
@@ -1332,6 +1621,58 @@
                 >
               </div>{/if}
             <div class="inbox-actions">
+              <!-- Moderacao: ja existia no servidor e no aplicativo, e nunca no web — a tela
+                   mostrava o comentario e nao tinha como fazer nada a respeito dele.
+                   Ocultar so aparece no Instagram porque e o unico canal em que a Meta aceita
+                   a operacao; nos outros o botao existiria so para responder erro. O bloqueio do
+                   autor nao tem volta pela API, entao ele vira estado, nao um botao que mente. -->
+              {#if selected.moderation_available}<div
+                  class="inbox-moderation"
+                  role="group"
+                  aria-label={t("mautic.inbox.ui.moderation")}
+                >
+                  <button
+                    type="button"
+                    class="btn btn-default btn-sm"
+                    class:marked={selected.moderation?.spam}
+                    disabled={moderacaoBusy}
+                    on:click={() =>
+                      void moderate(
+                        selected?.moderation?.spam ? "restore" : "spam",
+                      )}
+                    >{t(
+                      selected.moderation?.spam
+                        ? "mautic.inbox.ui.moderation_restore"
+                        : "mautic.inbox.ui.moderation_spam",
+                    )}</button
+                  >{#if selected.channel === "instagram"}<button
+                      type="button"
+                      class="btn btn-default btn-sm"
+                      class:marked={selected.moderation?.hidden}
+                      disabled={moderacaoBusy}
+                      on:click={() =>
+                        void moderate(
+                          selected?.moderation?.hidden ? "show" : "hide",
+                        )}
+                      >{t(
+                        selected.moderation?.hidden
+                          ? "mautic.inbox.ui.moderation_show"
+                          : "mautic.inbox.ui.moderation_hide",
+                      )}</button
+                    >{/if}<button
+                    type="button"
+                    class="btn btn-default btn-sm"
+                    class:marked={selected.moderation?.blockedAuthor}
+                    disabled={moderacaoBusy ||
+                      selected.moderation?.blockedAuthor}
+                    on:click={() => void moderate("block")}
+                    >{t(
+                      selected.moderation?.blockedAuthor
+                        ? "mautic.inbox.ui.moderation_blocked"
+                        : "mautic.inbox.ui.moderation_block",
+                    )}</button
+                  >
+                </div>{/if}
               {#if !selected.assignee}<button
                   id="inbox-take"
                   class="btn btn-primary btn-sm"
@@ -1358,6 +1699,55 @@
               >
             </div>
           </header>
+          <!-- A sessao do agente, onde a decisao de assumir e tomada.
+               O estado dele ja existia, espremido num selo de 200 px no canto do cabecalho: cabia
+               o nome e uma palavra de status, e nao o que decide a coisa — quantas respostas ele
+               ja deu do limite, o que ele esta fazendo e por que parou. Quem precisava disso tinha
+               de abrir o painel do contato, do outro lado da tela, longe da conversa que esta
+               lendo. Aqui fica junto do texto, com a unica acao que importa no momento. -->
+          {#if ai?.assignment}<section
+              id="inbox-ai-session"
+              class="inbox-ai-session"
+              class:paused={ai.assignment.status === "paused"}
+              aria-label={t("mautic.inbox.ui.ai_session")}
+            >
+              <span class="inbox-ai-session-mark" data-icon="agent"
+                ><Icon name="agent" /></span
+              >
+              <div class="inbox-ai-session-copy">
+                <strong
+                  >{ai.assignment.name} · {ai.assignment.status_label}</strong
+                >
+                <small>
+                  {#if typeof ai.assignment.limit === "number"}<b
+                      >{ai.assignment.count}/{ai.assignment.limit}</b
+                    >
+                    {t(
+                      "mautic.inbox.ui.ai_replies_used",
+                    )}{/if}{#if ai.assignment.activity}
+                    · {ai.assignment.activity}{/if}
+                </small>
+                {#if ai.assignment.reason_label}<span
+                    class="inbox-ai-session-reason"
+                    >{ai.assignment.reason_label}</span
+                  >{/if}
+              </div>
+              <div class="inbox-ai-session-actions">
+                {#if !selected.assignee || selected.assignee.id !== config.currentUser}<button
+                    type="button"
+                    class="btn btn-primary btn-sm"
+                    disabled={aiMutationBusy}
+                    on:click={() => void takeDeuCerto()}
+                    >{t("mautic.inbox.ui.ai_take_over")}</button
+                  >{/if}{#if ai.assignment.status !== "paused"}<button
+                    type="button"
+                    class="btn btn-default btn-sm"
+                    disabled={aiMutationBusy}
+                    on:click={() => void resetAi()}
+                    >{t("mautic.inbox.ui.ai_pause_agent")}</button
+                  >{/if}
+              </div>
+            </section>{/if}
           <div class="inbox-thread-body">
             {#if selected.channel === "email"}<EmailThread
                 {selected}
@@ -1381,6 +1771,9 @@
                 onOlder={loadOlder}
                 retry={(item) => void retryOutbound(item)}
                 {retryBusy}
+                {favorites}
+                onFavorite={toggleFavorite}
+                onCopy={(item) => void copyMessage(item)}
                 pendingMessages={pendentes}
                 onRetryPending={(mensagem) => void reenviarPendente(mensagem)}
                 pending={ai?.pending_reply || null}
@@ -1406,6 +1799,8 @@
                 value === "unassign"
                   ? void mutate("unassign")
                   : void mutate("transfer", { target_user_id: Number(value) })}
+              {dncBusy}
+              onDnc={(blocked) => void toggleDnc(blocked)}
               onAiAssign={(value) => void assignAi(value)}
               onAiReset={() => void resetAi()}
               onSnooze={snooze}
@@ -1430,6 +1825,10 @@
             />{:else}<Composer
               {selected}
               currentUser={config.currentUser}
+              locale={config.locale}
+              audioAvailable={selected.audio_available === true}
+              {audioBusy}
+              onAudio={(data) => void sendAudio(data)}
               bind:mode
               bind:body={composerBody}
               {feedback}
@@ -1450,7 +1849,15 @@
         </div>{/if}
     </main>
   </div>
-{:else if view === "automation"}<AutomationView
+{:else if view === "sessions"}<SessionsView
+    rows={sessions}
+    loading={sessionsLoading}
+    error={sessionsError}
+    locale={config.locale}
+    {t}
+    onOpen={openSession}
+    onReload={() => void loadSessions()}
+  />{:else if view === "automation"}<AutomationView
     rules={config.automationRules}
     {t}
   />{:else}<SettingsView
