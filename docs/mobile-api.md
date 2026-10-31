@@ -46,6 +46,7 @@ Todas as rotas abaixo começam em `/inbox/mobile/api/`. Header: `Authorization: 
 | POST `messages/{messageId}/original-link` | Link assinado de 5 minutos para o HTML original saneado |
 | GET `forms` | Formulários publicados `[{id,name}]` para o marcador `[[form:ID]]` |
 | GET `contacts/{id}` / POST `contacts/{id}/start` | Sheet de canais; inclui `email:{assetId}` (ver "Canal de e-mail") |
+| PUT `contacts/{id}/dnc` | Liga e desliga o não perturbe (DNC de e-mail) do contato |
 | POST `conversations/{id}/moderation` | Spam/restore/block/unblock no atendimento; hide/show no Instagram, versionamento e registro do ator |
 | POST `assistant/messages` | Pi e MCP de leitura sob permissões do operador |
 
@@ -58,6 +59,8 @@ Comentários conservam o tipo mesmo quando o `recipient` público é o participa
 Contrato do plano `docs/superpowers/plans/2026-10-24-canal-email-threads.md`, seção 1.6. Os campos abaixo **somam-se** aos atuais; nada existente muda de forma. Exige Meta 0.15.0; envio, leitura IMAP, anexos e original são do Multi Mail 0.5.0. Sem o Multi Mail, `has_original` e `available` saem `false` e nenhuma rota de e-mail falha com 500.
 
 **Capacidades.** `GET /inbox/mobile/config` → `capabilities.channels` inclui `"email"`.
+
+**Não perturbe.** `GET contacts/{id}` devolve `do_not_contact: {blocked, reason, editable}`, lido do DoNotContact de e-mail do Mautic. `reason` é `manual`, `unsubscribed`, `bounced` ou `null`. `PUT contacts/{id}/dnc` com `{"blocked": true}` grava o motivo MANUAL com o nome de quem pediu; com `false` remove **apenas** o registro manual. Por isso um descadastro do próprio contato ou um retorno permanente do servidor chegam com `editable: false` e não são desfeitos pelo app: a tentativa é recusada com 422. Exige permissão de edição do contato (`lead:leads:editown`/`editother`), não só de leitura. O bloqueio vale para o canal de e-mail — campanha e resposta humana, que é onde o plugin já respeitava o DNC; WhatsApp, Instagram e Facebook não mudam.
 
 **Sheet de canais.** `GET contacts/{id}` → `channels[]` ganha uma opção por conta `email_account` ativa e publicada que ainda não tem conversa com o contato:
 

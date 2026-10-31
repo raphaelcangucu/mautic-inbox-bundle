@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.12.0
+
+- Nao perturbe pelo app: `PUT /inbox/mobile/api/contacts/{id}/dnc` com `{"blocked":true|false}`
+  liga e desliga o DoNotContact de e-mail do contato, e `GET contacts/{id}` passa a devolver
+  `do_not_contact: {blocked, reason, editable}`. Ligar grava o motivo MANUAL com o nome de quem
+  pediu; desligar remove so o registro manual, entao um descadastro do proprio contato
+  (`unsubscribed`) ou um retorno permanente do servidor (`bounced`) continuam valendo e o app
+  recebe `editable: false` com o motivo. Exige permissao de edicao do contato, nao so de leitura.
+  O bloqueio vale para o e-mail, que e o canal onde o plugin ja respeitava o DNC: campanha e
+  resposta humana. WhatsApp, Instagram e Facebook nao mudam.
+
 ## 1.11.0
 
 - Entrar com usuario e senha do Mautic, para quem nao recebe o codigo por e-mail nem consegue

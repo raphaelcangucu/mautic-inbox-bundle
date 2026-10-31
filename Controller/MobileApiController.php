@@ -206,9 +206,15 @@ final class MobileApiController extends CommonController
             if ($method === 'GET' && $resource === 'contacts') { return $this->data($directory->search($user,$request->query->all())); }
             if ($method === 'GET' && $resource === 'crm-options') { return $this->data($linking->catalogue($user,$request->query->all())); }
             if ($method === 'GET' && $resource === 'contacts/campaigns') { return $this->data(['items'=>$directory->campaigns($user)]); }
-            if (preg_match('#^contacts/([1-9][0-9]*)(?:/(start))?$#D',$resource,$contactRoute)) {
+            if (preg_match('#^contacts/([1-9][0-9]*)(?:/(start|dnc))?$#D',$resource,$contactRoute)) {
                 $contactId=(int)$contactRoute[1];
                 if ($method === 'GET' && empty($contactRoute[2])) { return $this->data($directory->detail($contactId,$user)); }
+                if ($method === 'PUT' && ($contactRoute[2]??'') === 'dnc') {
+                    if(strlen($request->getContent())>256){return $this->error('Requisição inválida.','invalid_request',400);}
+                    try{$payload=json_decode($request->getContent(),true,4,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}
+                    if(!is_array($payload)||!is_bool($payload['blocked']??null)){return $this->error('Requisição inválida.','invalid_request',400);}
+                    return $this->data($directory->setDoNotContact($contactId,$user,$payload['blocked']));
+                }
                 if ($method === 'POST' && ($contactRoute[2]??'') === 'start') {
                     if(strlen($request->getContent())>4096){return $this->error('Requisição inválida.','invalid_request',400);}
                     try{$payload=json_decode($request->getContent(),true,8,JSON_THROW_ON_ERROR);}catch(\JsonException){return $this->error('JSON inválido.','invalid_request',400);}

@@ -74,7 +74,7 @@ final class ContactDirectory
     {
         $contact=$this->contact($id,$user);$campaigns=$this->campaigns($user);
         $members=$this->db->fetchFirstColumn('SELECT campaign_id FROM '.$this->table('campaign_leads').' WHERE lead_id = ? AND manually_removed = 0',[$id]);
-        return ['id'=>$id,'name'=>$contact->getName() ?: $contact->getEmail() ?: '#'.$id,'email'=>$contact->getEmail()??'','phone'=>$contact->getMobile() ?: $contact->getPhone() ?: '', 'social_profiles'=>SocialProfileLinks::contact($contact), 'campaigns'=>array_values(array_filter($campaigns,static fn(array $c):bool=>in_array((string)$c['id'],array_map('strval',$members),true))),'channels'=>$this->options($contact,$user)];
+        return ['id'=>$id,'name'=>$contact->getName() ?: $contact->getEmail() ?: '#'.$id,'email'=>$contact->getEmail()??'','phone'=>$contact->getMobile() ?: $contact->getPhone() ?: '', 'social_profiles'=>SocialProfileLinks::contact($contact), 'campaigns'=>array_values(array_filter($campaigns,static fn(array $c):bool=>in_array((string)$c['id'],array_map('strval',$members),true))),'channels'=>$this->options($contact,$user),'do_not_contact'=>$this->doNotContactState($contact)];
     }
 
     private function options(Lead $contact, User $user): array
@@ -111,6 +111,54 @@ final class ContactDirectory
             $items[]=['key'=>'qr:'.$asset->getId(),'state_id'=>null,'asset_id'=>$asset->getId(),'channel'=>'whatsapp','name'=>$asset->getName().' · QR','phone'=>$asset->getPhoneNumber(),'available'=>$canStart && null===$reason,'reason'=>$reason];
         }
         return $items;
+    }
+
+    /**
+     * Estado do DNC de e-mail do contato. `editable` e falso quando o bloqueio veio do
+     * proprio contato (descadastro) ou de um retorno do servidor (bounce): o atendente
+     * nao desfaz o pedido de quem recebeu nem libera um endereco que quicou.
+     *
+     * @return array{blocked:bool,reason:?string,editable:bool}
+     */
+    public function doNotContactState(Lead $contact): array
+    {
+        if (null === $this->doNotContact) { return ['blocked'=>false,'reason'=>null,'editable'=>false]; }
+        $reasons=[];
+        foreach ($contact->getDoNotContact() as $entry) { if ('email'===$entry->getChannel()) { $reasons[]=(int)$entry->getReason(); } }
+        $blocked=\Mautic\LeadBundle\Entity\DoNotContact::IS_CONTACTABLE!==$this->doNotContact->isContactable($contact,'email');
+        $theirs=in_array(\Mautic\LeadBundle\Entity\DoNotContact::UNSUBSCRIBED,$reasons,true);
+        $bounced=in_array(\Mautic\LeadBundle\Entity\DoNotContact::BOUNCED,$reasons,true);
+        $reason=$theirs?'unsubscribed':($bounced?'bounced':($blocked?'manual':null));
+
+        return ['blocked'=>$blocked,'reason'=>$reason,'editable'=>!$theirs && !$bounced];
+    }
+
+    /**
+     * Liga e desliga o DNC de e-mail pelo app. Ligar grava o motivo MANUAL, com o nome de
+     * quem pediu; desligar remove so o registro manual, para nao apagar um descadastro.
+     */
+    public function setDoNotContact(int $id, User $user, bool $blocked): array
+    {
+        $contact=$this->contact($id,$user);
+        $permissionUser=$contact->getPermissionUser();
+        $permissionUserId=$permissionUser instanceof User ? $permissionUser->getId() : $permissionUser;
+        if (!$this->allowed($user,'lead:leads:editother') && !($this->allowed($user,'lead:leads:editown') && (int)$permissionUserId===$user->getId())) { throw new InboxException('Sem permissão para alterar este contato.',403); }
+        if (null === $this->doNotContact) { throw new InboxException('Esta instalação não oferece o controle de contato.',422); }
+        $state=$this->doNotContactState($contact);
+        // 409 nao serve: o controlador o traduz para 'version_conflict', e nada aqui esta desatualizado.
+        if (!$state['editable']) { throw new InboxException('bounced'===$state['reason'] ? 'O endereço deste contato devolveu erro permanente.' : 'O contato pediu para não receber e-mails.',422); }
+        if ($blocked) {
+            $this->doNotContact->addDncForContact($contact,'email',\Mautic\LeadBundle\Entity\DoNotContact::MANUAL,'Inbox: '.$user->getName());
+        } else {
+            $this->doNotContact->removeDncForContact($contact,'email',true,\Mautic\LeadBundle\Entity\DoNotContact::MANUAL);
+        }
+        $conversation=$this->em->getRepository(MetaConversation::class)->findOneBy(['channel'=>'email','contact'=>$contact]);
+        if ($conversation instanceof MetaConversation) {
+            $this->em->persist((new EventLog())->setConversation($conversation)->setEventType($blocked?'email_dnc_set':'email_dnc_cleared')->setDetails(['source'=>'mobile','user'=>$user->getId()]));
+            $this->em->flush();
+        }
+
+        return ['id'=>$id,'do_not_contact'=>$this->doNotContactState($contact)];
     }
 
     public function start(int $id, User $user, array $payload): ConversationState
