@@ -592,6 +592,43 @@
       bulkBusy = false;
     }
   }
+  /**
+   * Gravar e enviar um audio. Vai por fora da fila otimista do texto de proposito: guardar e
+   * enviar sao duas idas ao servidor, e uma bolha otimista teria de representar um arquivo que
+   * ainda pode ser recusado pelo formato. A mensagem aparece quando o historico recarrega.
+   *
+   * O `request_id` e o mesmo nas duas chamadas: e assim que o store reconhece o reenvio do
+   * MESMO audio numa reconexao, em vez de guardar outro.
+   */
+  let audioBusy = false;
+  async function sendAudio(data: string): Promise<void> {
+    if (!selected || audioBusy) return;
+    const id = selected.id;
+    audioBusy = true;
+    try {
+      if (!selected.assignee && !(await takeDeuCerto())) return;
+      const pedido = requestId();
+      const guardado = await api<{ audio_id: string }>(url("audio", id), {
+        method: "POST",
+        body: JSON.stringify({ data, request_id: pedido }),
+      });
+      await api(url("reply", id), {
+        method: "POST",
+        body: JSON.stringify({
+          audio_id: guardado.audio_id,
+          request_id: pedido,
+        }),
+      });
+      await Promise.all([
+        loadTimeline(id, selectionRevision),
+        loadList(false, true),
+      ]);
+    } catch (error) {
+      showError((error as Error).message);
+    } finally {
+      audioBusy = false;
+    }
+  }
   let dncBusy = false;
   async function toggleDnc(blocked: boolean): Promise<void> {
     if (!selected || dncBusy) return;
@@ -1789,6 +1826,9 @@
               {selected}
               currentUser={config.currentUser}
               locale={config.locale}
+              audioAvailable={selected.audio_available === true}
+              {audioBusy}
+              onAudio={(data) => void sendAudio(data)}
               bind:mode
               bind:body={composerBody}
               {feedback}

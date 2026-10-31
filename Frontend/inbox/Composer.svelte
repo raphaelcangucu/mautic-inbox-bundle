@@ -9,6 +9,58 @@
   export let selected: Conversation;
   export let currentUser: number;
   export let locale = "pt-BR";
+  export let audioAvailable = false;
+  export let audioBusy = false;
+  export let onAudio: (data: string) => void = () => {};
+  /**
+   * Gravar um audio no navegador.
+   *
+   * So aparece onde o canal aceita (sessao de WhatsApp por QR) E o navegador sabe gravar em
+   * MPEG-4 — o servidor so aceita esse formato, e um botao que grava WebM produziria um envio
+   * recusado depois da pessoa ter falado. Preferir mostrar botao nenhum a mostrar um que falha.
+   */
+  const audioFormato = "audio/mp4";
+  const podeGravar =
+    typeof window !== "undefined" &&
+    typeof MediaRecorder !== "undefined" &&
+    Boolean(navigator.mediaDevices?.getUserMedia) &&
+    MediaRecorder.isTypeSupported(audioFormato);
+  let gravando = false;
+  let gravador: MediaRecorder | null = null;
+  async function alternarGravacao(): Promise<void> {
+    if (gravando) {
+      gravador?.stop();
+      return;
+    }
+    let trilha: MediaStream;
+    try {
+      trilha = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      return; // permissao negada: o navegador ja avisou a pessoa
+    }
+    const pedacos: Blob[] = [];
+    const sessao = new MediaRecorder(trilha, { mimeType: audioFormato });
+    sessao.ondataavailable = (evento) => {
+      if (evento.data.size) pedacos.push(evento.data);
+    };
+    sessao.onstop = () => {
+      gravando = false;
+      gravador = null;
+      trilha.getTracks().forEach((t) => t.stop());
+      if (!pedacos.length) return;
+      const leitor = new FileReader();
+      leitor.onload = () => {
+        // O servidor quer os bytes em base64, sem o prefixo do dataURL.
+        const texto = String(leitor.result || "");
+        const corte = texto.indexOf(",");
+        if (corte > 0) onAudio(texto.slice(corte + 1));
+      };
+      leitor.readAsDataURL(new Blob(pedacos, { type: audioFormato }));
+    };
+    gravador = sessao;
+    gravando = true;
+    sessao.start();
+  }
   export let mode = "reply";
   export let body = "";
   /**
@@ -442,7 +494,30 @@
         event.preventDefault();
         void toggleTools();
       }}><Icon name="plus" /></button
-    >{#if ditadoDisponivel}<button
+    >{#if audioAvailable && podeGravar}<button
+        id="inbox-composer-audio"
+        class="inbox-icon-button inbox-composer-audio"
+        class:recording={gravando}
+        type="button"
+        aria-pressed={gravando}
+        disabled={audioBusy}
+        aria-label={t(
+          gravando
+            ? "mautic.inbox.ui.audio_stop"
+            : "mautic.inbox.ui.audio_record",
+        )}
+        title={t(
+          gravando
+            ? "mautic.inbox.ui.audio_stop"
+            : "mautic.inbox.ui.audio_record",
+        )}
+        on:click={() => void alternarGravacao()}
+        ><svg viewBox="0 0 24 24" aria-hidden="true"
+          >{#if gravando}<rect x="7" y="7" width="10" height="10" rx="2"
+            ></rect>{:else}<rect x="9" y="3" width="6" height="11" rx="3"
+            ></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path>{/if}</svg
+        ></button
+      >{/if}{#if ditadoDisponivel}<button
         id="inbox-composer-dictate"
         class="inbox-icon-button inbox-composer-dictate"
         class:dictating={ditando}

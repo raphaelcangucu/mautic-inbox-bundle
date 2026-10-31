@@ -61,6 +61,8 @@ export interface Conversation {
   contact_handle?: string;
   /** Perfil publico do participante, quando o canal tem um. So instagram e facebook. */
   profile_url?: string | null;
+  /** So na conversa aberta: o canal aceita audio (sessao de WhatsApp por QR, com o store ligado). */
+  audio_available?: boolean;
   /** So na conversa aberta. Ausente numa instalacao anterior a este campo. */
   do_not_contact?: {
     blocked: boolean;

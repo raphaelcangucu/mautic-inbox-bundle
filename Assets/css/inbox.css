@@ -687,3 +687,5 @@
 .inbox-bulk span{font-size:12px;color:#3a477c;margin-right:auto}
 .inbox-composer-dictate.dictating{color:#8f5200;background:#fff4e0}
 .inbox-composer-dictate svg{width:17px;height:17px}
+.inbox-composer-audio.recording{color:#a4453c;background:#fdeeec}
+.inbox-composer-audio svg{width:17px;height:17px}

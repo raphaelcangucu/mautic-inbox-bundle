@@ -14,6 +14,7 @@ use MauticPlugin\MauticInboxBundle\Application\ContactLinking;
 use MauticPlugin\MauticInboxBundle\Application\ConversationActions;
 use MauticPlugin\MauticInboxBundle\Application\InboxException;
 use MauticPlugin\MauticInboxBundle\Application\InboxQuery;
+use MauticPlugin\MauticInboxBundle\Application\Mobile\AudioStore;
 use MauticPlugin\MauticInboxBundle\Application\Mobile\ModerationStore;
 use MauticPlugin\MauticInboxBundle\Entity\CannedResponse;
 use MauticPlugin\MauticInboxBundle\Entity\CannedResponseRepository;
@@ -98,17 +99,18 @@ final class InboxController extends CommonController
         });
     }
 
-    public function detail(int $stateId, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ConversationStateRepository $states, ModerationStore $moderation, \MauticPlugin\MauticInboxBundle\Application\ContactDoNotContact $dnc): JsonResponse
+    public function detail(int $stateId, CorePermissions $permissions, UserHelper $users, InboxQuery $query, ConversationStateRepository $states, ModerationStore $moderation, \MauticPlugin\MauticInboxBundle\Application\ContactDoNotContact $dnc, AudioStore $audioStore): JsonResponse
     {
         $this->grant($permissions, 'view');
 
-        return $this->respond(function () use ($stateId, $permissions, $users, $query, $states, $moderation, $dnc): array {
+        return $this->respond(function () use ($stateId, $permissions, $users, $query, $states, $moderation, $dnc, $audioStore): array {
             $state = $this->requireState($states, $stateId);
             $row = $this->withModeration($query->detail($state, $this->user($users)), $moderation, $permissions);
             // Só na conversa aberta: o estado sai do contato ligado, e a lista não tem contato
             // em todas as linhas. Instalação sem o serviço devolve `editable: false` e a tela
             // esconde o controle, em vez de oferecer um que não grava.
             $row['do_not_contact'] = $dnc->state($state->getConversation()->getContact());
+            $row['audio_available'] = $this->audioAvailable($state, $audioStore);
 
             return $row;
         });
@@ -298,13 +300,22 @@ final class InboxController extends CommonController
         });
     }
 
-    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query): JsonResponse
+    public function reply(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, ConversationActions $actions, InboxQuery $query, AudioStore $audioStore): JsonResponse
     {
         $this->grantMutation($request, $permissions, 'create');
-        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query): array {
+        return $this->respond(function () use ($stateId, $request, $users, $states, $actions, $query, $audioStore): array {
             $payload = $this->payload($request);
             $state = $this->requireState($states, $stateId);
-            $outbound = $actions->reply($state, $this->user($users), (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null, null, null, null, is_string($payload['subject'] ?? null) ? $payload['subject'] : null);
+            $user = $this->user($users);
+            // O áudio chega pelo id que o upload devolveu, e o store confere que ele é desta
+            // conversa, deste operador e deste envio. Mandar o id de outro envio não passa.
+            $audio = null;
+            if (isset($payload['audio_id'])) {
+                if (!$this->audioAvailable($state, $audioStore) || !is_string($payload['audio_id'])) { throw new InboxException('mautic.inbox.ui.audio_unsupported'); }
+                try { $audio = $audioStore->forReply($payload['audio_id'], (int) $state->getId(), (int) $user->getId(), (string) ($payload['request_id'] ?? '')); }
+                catch (\DomainException) { throw new InboxException('mautic.inbox.ui.audio_not_yours'); }
+            }
+            $outbound = $actions->reply($state, $user, (string) ($payload['body'] ?? ''), (string) ($payload['request_id'] ?? ''), isset($payload['template_id']) ? ['id' => (int) $payload['template_id'], 'variables' => $payload['variables'] ?? []] : null, null, null, $audio, is_string($payload['subject'] ?? null) ? $payload['subject'] : null);
 
             // O envio devolve o que acabou de criar porque senao ele custa mais duas idas ao
             // servidor: uma para o historico mostrar a mensagem e outra para a lista nao ficar
@@ -573,6 +584,45 @@ final class InboxController extends CommonController
 
             return ['items' => $items, 'waiting' => count(array_filter($items, static fn (array $row): bool => $row['needs_human']))];
         });
+    }
+
+    /**
+     * O canal aceita áudio? As condições são as mesmas que o aplicativo já aplica.
+     *
+     * O arquivo `enabled` no diretório do store é o interruptor da instalação; fora de uma
+     * sessão de WhatsApp por QR a Meta não aceita o envio, e comentário não é conversa.
+     */
+    private function audioAvailable(ConversationState $state, AudioStore $audioStore): bool
+    {
+        return $audioStore->enabled()
+            && 'whatsapp_qr_session' === $state->getConversation()->getAsset()->getType()->value
+            && !str_starts_with($state->getConversation()->getRecipient(), 'comment:');
+    }
+
+    /**
+     * Recebe o áudio gravado no navegador e o guarda até o envio.
+     *
+     * Guardar e enviar são dois passos de propósito: o envio precisa do `request_id` para não
+     * duplicar numa reconexão, e o store usa o mesmo par para reconhecer o reenvio do MESMO
+     * áudio em vez de gravar outro. O formato é conferido pelo store, que só aceita MPEG-4
+     * nativo — o navegador que não souber gravar nesse formato não mostra o botão.
+     */
+    public function audio(int $stateId, Request $request, CorePermissions $permissions, UserHelper $users, ConversationStateRepository $states, AudioStore $audioStore): JsonResponse
+    {
+        $this->grantMutation($request, $permissions, 'create');
+
+        return $this->respond(function () use ($stateId, $request, $users, $states, $audioStore): array {
+            $state = $this->requireState($states, $stateId);
+            $user = $this->user($users);
+            if (!$this->audioAvailable($state, $audioStore)) { throw new InboxException('mautic.inbox.ui.audio_unsupported'); }
+            // Enviar em nome de quem não assumiu é o mesmo problema de sempre: a conversa é de
+            // alguém, e o áudio sai com a voz de uma pessoa.
+            if ($state->getAssignee()?->getId() !== $user->getId()) { throw new InboxException('mautic.inbox.ui.audio_take_first', 403); }
+            $payload = $this->payload($request);
+            if (!is_string($payload['data'] ?? null) || !is_string($payload['request_id'] ?? null)) { throw new InboxException('mautic.inbox.ui.audio_invalid'); }
+            try { return $audioStore->store((int) $state->getId(), (int) $user->getId(), (int) $state->getConversation()->getAsset()->getId(), $payload['request_id'], $payload['data']); }
+            catch (\DomainException $error) { throw new InboxException('audio_too_large' === $error->getMessage() ? 'mautic.inbox.ui.audio_too_large' : 'mautic.inbox.ui.audio_invalid'); }
+        }, Response::HTTP_CREATED);
     }
 
     private function respond(callable $callback, int $status = 200): JsonResponse

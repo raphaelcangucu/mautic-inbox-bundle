@@ -20,6 +20,18 @@
   vinha no payload da conversa (`profile_url`), montado e validado por `SocialProfileLinks`, e
   so o aplicativo o oferecia. A validacao se repete no navegador porque a tela tambem le
   conversa guardada em cache, de uma versao anterior do servidor.
+- Gravar e enviar audio pelo navegador, nas conversas em que o canal aceita.
+  `POST /inbox/api/conversations/{id}/audio` guarda o arquivo e o envio passa a aceitar
+  `audio_id`, com as mesmas recusas que o aplicativo ja aplicava: interruptor da instalacao
+  ligado, sessao de WhatsApp por QR, comentario nao, e o atendimento assumido por quem envia.
+  Guardar e enviar sao duas chamadas com o MESMO `request_id`, que e como o store reconhece o
+  reenvio do mesmo audio numa reconexao em vez de guardar outro. O botao so aparece onde o
+  canal aceita E o navegador sabe gravar em MPEG-4, porque o servidor so aceita esse formato —
+  gravar WebM daria uma recusa depois de a pessoa ja ter falado.
+- A aba das sessoes de IA passa a se chamar "Agentes ativos". "Sessao" ficou ambiguo no plugin:
+  a 1.13.0 chama de sessao a conversa do OPERADOR com o assistente, guardada no servidor, e
+  esta aba e outra coisa — o agente de IA conversando com um CONTATO. A chave de traducao
+  continua a mesma; so o texto mudou.
 - A fila das sessoes do assistente vira uma aba. Ate aqui o estado do agente so existia
   conversa a conversa: para saber que um agente parou esperando uma pessoa era preciso abrir a
   conversa onde isso aconteceu, ou seja, saber antes o que so se descobre depois.
