@@ -698,3 +698,224 @@
    Com flex, as acoes iam para o lado da conversa e espremiam o nome. */
 .inbox-list-row{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;column-gap:7px}
 .inbox-list-row>.inbox-list-actions{grid-column:2}
+
+/* ============================================================================================
+   Paridade com o app (layout mobile aprovado em 28/10/2026)
+   O app e o PWA estavam com cara de produtos diferentes: o PWA herdava a paleta do Mautic
+   (#4e5e9e, Inter, balao enviado verde-claro, avatar quadrado), o app segue o layout aprovado
+   (#1F3C88, Manrope, balao azul cheio, avatar redondo com selo do canal). Os tokens abaixo sao
+   os de src/theme.ts no repositorio do app, com os mesmos nomes de papel.
+   Tudo o que muda de aparencia fica abaixo de 760px: o desktop vive dentro do menu do Mautic e
+   segue com a cara dele.
+   ============================================================================================ */
+@font-face{font-family:Manrope;font-style:normal;font-weight:400;font-display:swap;src:url(../fonts/manrope-400.woff2) format("woff2")}
+@font-face{font-family:Manrope;font-style:normal;font-weight:600;font-display:swap;src:url(../fonts/manrope-600.woff2) format("woff2")}
+@font-face{font-family:Manrope;font-style:normal;font-weight:700;font-display:swap;src:url(../fonts/manrope-700.woff2) format("woff2")}
+
+/* Pecas que so existem no celular nao aparecem no desktop. */
+.inbox-section-tabs,.inbox-search-toggle,.inbox-queues .inbox-queue-filter,.inbox-message-clock,.inbox-message-tick{display:none}
+@media(min-width:761px){.inbox-thread-header .inbox-channel-dot{display:none}}
+
+@media(max-width:760px){
+.inbox-app{
+  --app-blue:#1F3C88;--app-blue-pressed:#16306E;--app-tint:#DCE4F7;--app-on-tint:#16306E;
+  --app-tint-soft:#E8EDF8;--app-tint-softer:#EEF2FA;
+  --app-ink:#141A26;--app-ink-strong:#3A4354;--app-soft:#5E6779;--app-faint:#8A93A3;
+  --app-canvas:#F6F8FC;--app-chat:#F3F5F9;--app-field:#F1F3F7;--app-chip:#EEF1F6;
+  --app-line:#D5DBE6;--app-divider:#E6E9F0;--app-divider-soft:#EEF1F6;
+  --app-ok:#1E7A46;--app-warn:#B4590F;--app-warn-bg:#FBEEDD;--app-warn-text:#8A4B0F;--app-danger:#B42318;
+  --ib-accent:var(--app-blue);--ib-text:var(--app-ink);--ib-muted:var(--app-soft);
+  --ib-border:var(--app-divider);--ib-soft:var(--app-tint-soft);
+  /* O .btn-primary do tema pinta com var(--button-primary) e !important — inclusive na copia
+     do inbox.css que o Mautic embute no media/css/app.css. Trocar a variavel alcanca todos. */
+  --button-primary:var(--app-blue);
+  font-family:Manrope,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:15px;color:var(--app-ink);background:#fff;
+  border:0;border-radius:0;box-shadow:none;
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
+}
+.inbox-shell{background:var(--app-canvas)}
+
+/* --- Cabecalho: selo azul, nome e o ponto de "ao vivo", busca a direita --------------------- */
+.inbox-toolbar{background:var(--app-canvas);border-bottom:0;padding:10px 12px 6px 16px;gap:10px}
+.inbox-product-heading{gap:12px;min-width:0}
+.inbox-product-icon{width:40px;height:40px;border:0;border-radius:12px;background:var(--app-blue);color:#fff}
+.inbox-product-icon svg{width:22px;height:22px}
+.inbox-product-heading strong{font-size:18px;line-height:24px;font-weight:700;letter-spacing:-.2px;color:var(--app-ink)}
+.inbox-product-heading div>span{display:block;margin-top:1px;font-size:13px;line-height:18px;color:var(--app-soft)}
+#inbox-live-status{display:inline-flex;align-items:center;gap:6px}
+#inbox-live-status::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--app-warn)}
+#inbox-live-status[data-live=live]::before,#inbox-live-status[data-live=polling]::before{background:var(--app-ok)}
+.inbox-search-toggle{display:inline-flex;margin-left:auto;width:44px;height:44px;border-radius:22px;color:var(--app-ink)}
+.inbox-search-toggle svg{width:24px;height:24px;stroke-width:2}
+.inbox-search-toggle[aria-expanded=true]{background:var(--app-tint);color:var(--app-on-tint)}
+.inbox-app.has-selection .inbox-search-toggle{display:none}
+
+/* --- Abas de cima: Conversas, Comentarios e Agentes ativos, como no app --------------------- */
+.inbox-section-tabs{display:flex;flex:none;background:var(--app-canvas);border-bottom:1px solid var(--app-divider);padding:0 8px}
+.inbox-section-tabs button{position:relative;flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;gap:6px;border:0;background:none;padding:12px 4px 13px;font-size:16px;line-height:22px;font-weight:600;color:var(--app-soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.inbox-section-tabs button.active{color:var(--app-blue)}
+.inbox-section-tabs button.active::after{content:"";position:absolute;left:14%;right:14%;bottom:-1px;height:3px;border-radius:3px 3px 0 0;background:var(--app-blue)}
+.inbox-section-tabs .inbox-tab-badge{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--app-chip);color:var(--app-ink-strong);font-size:12px;font-weight:700;line-height:20px}
+.inbox-app.has-selection .inbox-section-tabs{display:none}
+
+/* --- Lista: busca recolhida, chips, linhas sem cartao ---------------------------------------- */
+.inbox-list-column{background:#fff}
+.inbox-list-heading{display:none}
+.inbox-search-wrap{display:none;margin:10px 16px 0;padding:0 14px;height:44px;border:0;border-radius:22px;background:var(--app-field);color:var(--app-faint)}
+.inbox-search-wrap.open{display:flex}
+.inbox-search-wrap svg{width:20px;height:20px}
+.inbox-search-wrap input{font-size:16px;color:var(--app-ink)}
+.inbox-queues{justify-content:flex-start;gap:8px;margin:0;padding:12px 16px;border-bottom:0;background:var(--app-canvas);overflow-x:auto;scrollbar-width:none}
+.inbox-queues::-webkit-scrollbar{display:none}
+.inbox-queues button{flex:none;display:inline-flex;align-items:center;gap:6px;height:40px;margin:0;padding:0 14px;border:1px solid var(--app-line);border-radius:10px;background:#fff;color:var(--app-ink-strong);font-size:15px;font-weight:600;white-space:nowrap}
+.inbox-queues button.active{background:var(--app-tint);border-color:var(--app-tint);color:var(--app-on-tint);font-weight:600}
+.inbox-queues button[data-queue].active::before{content:"";width:16px;height:16px;background:currentColor;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E") center/contain no-repeat}
+.inbox-queues b{padding:0;border-radius:0;background:none;color:inherit;font-size:15px;font-weight:600;opacity:.8}
+.inbox-queues .active b{background:none;color:inherit}
+.inbox-queues [data-queue=all]{order:1}
+.inbox-queues [data-queue=mine]{order:2}
+.inbox-queues [data-queue=unassigned]{order:3}
+.inbox-queues .inbox-queue-filter{display:inline-flex;order:0;justify-content:center;min-width:52px}
+.inbox-queue-filter svg{width:20px;height:20px}
+.inbox-queue-filter b{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--app-blue);color:#fff;font-size:12px;font-weight:700;opacity:1}
+.inbox-filters{gap:10px;padding:2px 16px 14px;background:var(--app-canvas);border-bottom:1px solid var(--app-divider)}
+.inbox-filters label{font-size:13px;font-weight:600;color:var(--app-soft)}
+.inbox-filters .form-control{height:44px;margin-top:4px;padding:0 12px;border:1px solid var(--app-line);border-radius:12px;font-size:16px;color:var(--app-ink)}
+.inbox-filters .inbox-check{font-size:15px;color:var(--app-ink-strong)}
+.inbox-list-scroll{padding:0 0 12px;background:#fff}
+.inbox-list-group,.inbox-list-group:first-child,.inbox-list-group[data-group=waiting_you]{margin:0;padding:16px 16px 4px;font-size:13px;line-height:18px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--app-soft)}
+.inbox-list-group svg{display:none}
+.inbox-list-group b{margin-left:2px;color:var(--app-faint);font-weight:600}
+.inbox-list-row{grid-template-columns:minmax(0,1fr);column-gap:0;border-bottom:1px solid var(--app-divider-soft)}
+.inbox-list-column.selecting .inbox-list-row{grid-template-columns:auto minmax(0,1fr)}
+.inbox-list-check{display:none}
+.inbox-list-column.selecting .inbox-list-check{display:block;width:22px;height:22px;margin:30px 0 0 16px;accent-color:var(--app-blue)}
+.inbox-list-row>.inbox-list-actions{display:none}
+.inbox-list-item,.inbox-list-item[data-group]{gap:14px;margin:0;padding:14px 16px;border:0;border-radius:0;background:#fff;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+.inbox-list-item::before,.inbox-list-item.active::before,.inbox-list-item[data-group]::before{display:none}
+.inbox-list-item:hover{background:#fff}
+.inbox-list-item:active,.inbox-list-item.active{background:var(--app-tint-softer)}
+.inbox-list-row.selected{background:var(--app-tint-softer)}
+.inbox-list-row.selected>.inbox-list-item{border:0;background:transparent}
+.inbox-list-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.inbox-list-title{order:0;align-items:baseline;font-size:17px;line-height:23px;font-weight:700;color:var(--app-ink)}
+.inbox-list-time{font-size:13px;color:var(--app-faint)}
+.inbox-list-item.unread .inbox-list-time{color:var(--app-blue);font-weight:700}
+.inbox-list-subject{order:1;font-size:15px;line-height:21px;font-weight:700;color:var(--app-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-list-preview{order:2;margin:0;font-size:16px;line-height:22px;color:var(--app-soft)}
+.inbox-list-item.unread .inbox-list-preview{color:var(--app-ink-strong)}
+.inbox-list-meta{order:3;font-size:13px;line-height:18px;color:var(--app-soft)}
+/* A barra marrom da lateral vira o ponto laranja do app antes da linha do canal: a conversa
+   continua dizendo que espera voce, sem a faixa que o app nao tem. */
+.inbox-list-item[data-group=waiting_you]{box-shadow:none}
+.inbox-list-item[data-group=waiting_you] .inbox-list-meta::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:#C2410C;vertical-align:1px}
+.inbox-list-flags{order:4;margin-top:4px;gap:6px}
+.inbox-list-flags:empty{display:none}
+.inbox-pill{padding:2px 8px;border-radius:8px;background:var(--app-chip);color:var(--app-ink-strong);font-size:12px;line-height:18px;font-weight:600}
+.inbox-pill.response{background:var(--app-warn-bg);color:var(--app-warn-text)}
+.inbox-pill.unread{min-width:24px;height:24px;padding:0 7px;border-radius:12px;background:var(--app-blue);color:#fff;font-size:13px;font-weight:700}
+.inbox-state{color:var(--app-soft);font-size:15px}
+#inbox-more{margin:12px 16px;height:44px;border-radius:14px;font-size:15px}
+
+/* --- Avatar: redondo, fundo palido do canal, iniciais na cor cheia, selo do canal ------------- */
+.inbox-avatar{width:52px;height:52px;border-radius:50%;font-size:18px;font-weight:700;letter-spacing:0;background:#E4E7EC;color:#4A5568}
+.inbox-avatar img{border-radius:50%}
+.inbox-avatar[data-channel=whatsapp]{background:#DDF0E4;color:#1E8E4E}
+.inbox-avatar[data-channel=instagram]{background:#FADCE8;color:#C1356F}
+.inbox-avatar[data-channel=facebook]{background:#DEE8FB;color:#2F6FDB}
+.inbox-avatar[data-channel=webchat]{background:#E4E7EC;color:#4A5568}
+.inbox-avatar[data-channel=email]{background:#FBEADF;color:#B4590F}
+.inbox-avatar .inbox-channel-dot{right:-4px;bottom:-4px;width:22px;height:22px;border:2px solid #fff;border-radius:50%;background:#4A5568;color:#fff}
+.inbox-avatar .inbox-channel-dot svg{width:12px;height:12px;stroke-width:2.2}
+.inbox-avatar .inbox-channel-dot.whatsapp{background:#1E8E4E;color:#fff}
+.inbox-avatar .inbox-channel-dot.instagram{background:#C1356F;color:#fff}
+.inbox-avatar .inbox-channel-dot.facebook{background:#2F6FDB;color:#fff}
+.inbox-avatar .inbox-channel-dot.webchat{background:#4A5568;color:#fff}
+.inbox-avatar .inbox-channel-dot.email{background:#B4590F;color:#fff}
+
+/* --- Selecao em massa: a barra vira um cartao azul acima do menu ------------------------------- */
+.inbox-bulk{margin:8px 12px;padding:10px 12px;border:0;border-radius:16px;background:var(--app-blue);color:#fff;box-shadow:0 6px 18px #16306e33}
+.inbox-bulk strong,.inbox-bulk span{color:#fff}
+.inbox-bulk .btn{height:36px;border:0;border-radius:18px;background:#ffffff26;color:#fff;font-size:14px;font-weight:600}
+.inbox-bulk .btn-link{background:none;color:#fff;opacity:.85}
+
+/* --- Barra de baixo: quatro destinos, indicador em pilula como a barra do app ---------------- */
+.inbox-tabs{padding:6px 4px env(safe-area-inset-bottom,0px);border-top:1px solid var(--app-divider);background:var(--app-canvas);box-shadow:none}
+.inbox-tabs .inbox-nav-section,.inbox-tabs .inbox-tab-sessions{display:none}
+.inbox-tabs button,.inbox-tabs .inbox-tabs-link{min-height:62px;gap:4px;padding:4px 2px 8px;background:none;font-size:12.5px;line-height:16px;font-weight:600;color:var(--app-soft)}
+.inbox-tabs svg{box-sizing:content-box;width:24px;height:24px;padding:4px 18px;border-radius:16px;stroke-width:1.9}
+.inbox-tabs button.active,.inbox-tabs button.inbox-nav-home{background:none;color:var(--app-ink);font-weight:700}
+.inbox-tabs button.active svg,.inbox-tabs button.inbox-nav-home svg{background:var(--app-tint);color:var(--app-on-tint)}
+.inbox-tabs .inbox-tabs-link:hover{color:var(--app-ink)}
+.inbox-app.has-selection .inbox-tabs{display:none}
+
+/* --- Conversa: cabecalho compacto, fundo do chat, baloes com cauda ---------------------------- */
+.inbox-thread-header{gap:10px;min-height:64px;padding:8px 12px 8px 6px;background:#fff;border-bottom:1px solid var(--app-divider)}
+/* A @container de cima monta o cabecalho em grade com 28px e 32px; o voltar e o avatar do app
+   sao 40 e 44, e sem alargar as faixas eles transbordavam por cima do nome. */
+.inbox-thread-header{grid-template-columns:40px 44px minmax(0,1fr) auto;column-gap:12px}
+#inbox-back{width:40px;height:40px;border-radius:20px;color:var(--app-ink)}
+#inbox-back svg{width:24px;height:24px;stroke-width:2}
+.inbox-thread-header .inbox-avatar{width:44px;height:44px;font-size:15px}
+.inbox-thread-header .inbox-avatar .inbox-channel-dot{width:20px;height:20px;right:-3px;bottom:-3px}
+.inbox-thread-header .inbox-avatar .inbox-channel-dot svg{width:11px;height:11px}
+.inbox-thread-identity h3{font-size:18px;line-height:24px;font-weight:700;letter-spacing:-.2px;color:var(--app-ink)}
+.inbox-thread-identity p{font-size:14px;line-height:19px;color:var(--app-soft)}
+.inbox-thread-header .inbox-actions .btn{height:36px;padding:0 14px;border:1px solid var(--app-line);border-radius:18px;background:#fff;color:var(--app-blue);font-size:14px;font-weight:600}
+.inbox-thread-header .inbox-actions .btn-primary{border-color:var(--app-blue);background:var(--app-blue);color:#fff}
+.inbox-thread-header .inbox-icon-button{color:var(--app-ink-strong)}
+.inbox-messages-wrap{background:var(--app-chat)}
+.inbox-history-heading{padding:14px 10px 4px;font-size:12px;color:var(--app-faint)}
+.inbox-timeline{padding:10px 12px 18px;gap:8px}
+.inbox-date-separator{align-self:center;margin:8px 0 4px;padding:5px 14px;border-radius:14px;background:var(--app-divider);font-size:13px;line-height:18px;font-weight:600;color:var(--app-ink-strong)}
+.inbox-date-separator::before,.inbox-date-separator::after{display:none}
+.inbox-message{max-width:82%;padding:9px 14px 7px;border:0;border-radius:18px 18px 18px 6px;background:#fff;color:var(--app-ink);box-shadow:none;line-height:22px}
+.inbox-message p,.inbox-message>div{font-size:16px;line-height:22px}
+.inbox-message p{margin:0}
+/* O tema de cima pinta o enviado com !important (linha do .inbox-message.outbound lavanda);
+   aqui o azul cheio do app precisa da mesma forca para valer. */
+.inbox-message.outbound{border-radius:18px 18px 6px 18px;background:var(--app-blue)!important;border-color:transparent!important;color:#fff}
+.inbox-message.outbound a{color:#fff;text-decoration:underline}
+.inbox-message.note{max-width:100%;border:1px solid #F0DFAC;border-radius:14px;background:#FFF8E5;color:#6B5420}
+.inbox-message.comment{border:0;background:#fff}
+.inbox-message.event{padding:2px 8px;border-radius:0;background:none;font-size:13px;line-height:18px;color:var(--app-soft)}
+.inbox-message small{display:flex;align-items:center;justify-content:flex-end;gap:4px;margin-top:2px;font-size:12px;line-height:16px;color:var(--app-faint)}
+.inbox-message.outbound small{color:#ffffffc7}
+.inbox-message.note small{color:#9A7B33}
+/* A linha de status sai da vista mas fica para o leitor de tela; volta quando a entrega falha. */
+.inbox-message-detail{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+.inbox-message small.inbox-status-failed .inbox-message-detail{position:static;width:auto;height:auto;margin:0 4px 0 0;overflow:visible;clip:auto;clip-path:none;white-space:normal}
+.inbox-message small.inbox-status-failed{justify-content:flex-start;color:#FFD5D0}
+.inbox-message:not(.outbound) small.inbox-status-failed{color:var(--app-danger)}
+.inbox-message-clock{display:inline}
+.inbox-message-tick{display:inline-block;width:16px;height:16px;background:currentColor}
+.inbox-message-tick[data-tick=check]{-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E") center/contain no-repeat}
+.inbox-message-tick[data-tick=checks]{width:18px;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12.5l4.5 4.5L16 7M10.5 16.5l.5.5L20.5 7'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12.5l4.5 4.5L16 7M10.5 16.5l.5.5L20.5 7'/%3E%3C/svg%3E") center/contain no-repeat}
+.inbox-message-tick[data-tick=clock]{width:14px;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") center/contain no-repeat}
+.inbox-message-tick[data-tick=attention]{display:none}
+/* Favoritar e copiar: escondidos ate um toque no balao, como o menu de toque longo do app. */
+.inbox-message-actions,.inbox-message:focus-within .inbox-message-actions{display:none}
+.inbox-message.actions-open .inbox-message-actions{display:flex;position:static;opacity:1;justify-content:flex-end;gap:6px;margin-top:6px}
+.inbox-message.actions-open .inbox-message-actions button{padding:6px;border-radius:10px}
+.inbox-message.outbound.actions-open .inbox-message-actions button{border-color:#ffffff40;background:#ffffff1f;color:#fff}
+
+/* --- Compositor: "+" em circulo, campo em pilula, enviar em circulo azul ---------------------- */
+.inbox-app .inbox-composer{border:0;border-top:1px solid var(--app-divider);border-radius:0;background:#fff;padding-bottom:env(safe-area-inset-bottom,0px)}
+.inbox-composer-top{padding:8px 16px 0}
+.inbox-composer-mode{font-size:12px;font-weight:600;color:var(--app-soft)}
+.inbox-app .inbox-editor-row,.inbox-editor-row:focus-within{margin:8px 10px 10px;padding:0;gap:8px;align-items:end;border:0;border-radius:0;background:none;box-shadow:none}
+.inbox-editor-tools{gap:4px}
+.inbox-app .inbox-composer-plus{width:44px;height:44px;border-radius:22px;background:var(--app-tint);color:var(--app-blue)}
+.inbox-composer-plus svg{width:22px;height:22px;stroke-width:2}
+.inbox-composer-audio,.inbox-composer-dictate{width:40px;height:44px;color:var(--app-soft)}
+.inbox-app .inbox-composer #inbox-composer-text{height:44px;padding:11px 16px;border-radius:22px;background:var(--app-field);font-size:16px;color:var(--app-ink)}
+.inbox-editor-row:focus-within #inbox-composer-text{box-shadow:inset 0 0 0 1.5px var(--app-blue)}
+.inbox-app .inbox-editor-row #inbox-send{width:44px;height:44px;border:0;border-radius:22px;background:var(--app-blue);color:#fff}
+.inbox-app .inbox-editor-row #inbox-send:disabled{background:var(--app-tint)!important;color:var(--app-on-tint);opacity:1}
+.inbox-composer.note-mode{background:#FFF8E5}
+.inbox-composer.note-mode #inbox-composer-text{background:#fff}
+
+/* Campos com menos de 16px fazem o Safari do iPhone dar zoom ao focar. */
+.inbox-app input,.inbox-app select,.inbox-app textarea{font-size:16px}
+}
