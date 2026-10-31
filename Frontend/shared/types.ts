@@ -59,6 +59,8 @@ export interface Conversation {
   recipient: string;
   contact_name: string;
   contact_handle?: string;
+  /** Perfil publico do participante, quando o canal tem um. So instagram e facebook. */
+  profile_url?: string | null;
   avatar_url?: string;
   asset: Asset;
   last_message_at: string;

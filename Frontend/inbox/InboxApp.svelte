@@ -1190,10 +1190,13 @@
     <span class="inbox-product-icon" data-icon="inbox"
       ><Icon name="inbox" /></span
     >
+    <!-- O titulo desta pagina ja e "caixa de entrada de suporte": vem do headerTitle do Mautic,
+         em index.html.twig, com esta mesma chave de traducao. Repeti-lo aqui custava altura em
+         toda tela para dizer o que ja estava dito uma linha acima. Fica o que a pagina nao diz:
+         de que caixa se trata e se a atualizacao esta viva. -->
     <div>
-      <strong>{t("mautic.inbox.ui.support_inbox_fff9ea")}</strong><span
-        >{t("mautic.inbox.ui.shared_inbox_822665")}
-        <span id="inbox-live-status">{t(liveStatusKey)}</span></span
+      <strong>{t("mautic.inbox.ui.shared_inbox_822665")}</strong><span
+        ><span id="inbox-live-status">{t(liveStatusKey)}</span></span
       >
     </div>
   </div>

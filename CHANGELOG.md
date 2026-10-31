@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.14.0
+
+- A lista de conversas passa a agrupar por quem esta esperando: "Esperando voce" (precisa
+  resposta), "Adiadas" e "Esperando o contato". Antes a coluna era uma pilha por relogio, e
+  descobrir onde o atendente travava a fila exigia abrir conversa por conversa. Os tres grupos
+  saem de `needs_response` e `lifecycle`, que o servidor ja mandava, entao nenhuma ponta pede
+  dado novo. Uma conversa adiada sai do "esperando voce" mesmo devendo resposta: ela volta
+  sozinha na hora marcada, e manter no topo algo que alguem ja decidiu adiar seria pedir a
+  mesma decisao duas vezes. O selo "aguardando resposta" da linha desaparece quando repete o
+  cabecalho do grupo e fica onde acrescenta algo, numa adiada que ainda deve resposta.
+- A barra de cima para de repetir o titulo da pagina. O `headerTitle` do Mautic ja mostra
+  "caixa de entrada de suporte" com a mesma chave de traducao, e a barra gastava 76 px para
+  dizer de novo; agora tem 52 px e guarda o que a pagina nao diz, de que caixa se trata e se a
+  atualizacao esta viva. A area de trabalho cresce 24 px em toda tela.
+- O cinza dos textos secundarios passa de `#858b96` para `#646b78`. O tom antigo dava 3,4:1
+  contra o branco em textos de 12 px, abaixo do minimo de 4,5:1; o novo da 5,4:1.
+- O painel do contato ganha o atalho para o perfil publico do participante. O endereco ja
+  vinha no payload da conversa (`profile_url`), montado e validado por `SocialProfileLinks`, e
+  so o aplicativo o oferecia. A validacao se repete no navegador porque a tela tambem le
+  conversa guardada em cache, de uma versao anterior do servidor.
+- A lista fica 20 px mais larga e o painel do contato 30 px, para o nome e o grupo caberem sem
+  cortar.
+
 ## 1.11.0
 
 - Entrar com usuario e senha do Mautic, para quem nao recebe o codigo por e-mail nem consegue

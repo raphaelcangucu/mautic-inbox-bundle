@@ -53,6 +53,39 @@
             email: t("mautic.inbox.ui.email_channel"),
           } as Record<string, string>
         )[value] || value;
+
+  /**
+   * A lista para de ser uma pilha por relogio e passa a dizer o que cada conversa espera.
+   *
+   * Os tres grupos saem de campos que o servidor ja manda — `needs_response` e `lifecycle` —,
+   * entao isto nao pede nada de novo a nenhuma ponta. Uma conversa adiada sai do "esperando
+   * voce" mesmo precisando de resposta: ela volta sozinha na hora marcada, e manter no topo
+   * algo que alguem ja decidiu adiar seria pedir a mesma decisao duas vezes.
+   */
+  const groupLabels: Record<string, string> = {
+    waiting_you: "mautic.inbox.ui.group_waiting_you",
+    snoozed: "mautic.inbox.ui.group_snoozed",
+    waiting_contact: "mautic.inbox.ui.group_waiting_contact",
+  };
+  const groupIcons: Record<string, string> = {
+    waiting_you: "clock",
+    snoozed: "reload",
+    waiting_contact: "reply",
+  };
+  const groupOrder = ["waiting_you", "snoozed", "waiting_contact"];
+  const groupOf = (item: Conversation) =>
+    item.lifecycle === "snoozed"
+      ? "snoozed"
+      : item.needs_response
+        ? "waiting_you"
+        : "waiting_contact";
+  /** Grupo vazio nao vira cabecalho: a coluna nunca mostra um titulo sem nada embaixo. */
+  $: groups = groupOrder
+    .map((key) => ({
+      key,
+      items: rows.filter((item) => groupOf(item) === key),
+    }))
+    .filter((group) => group.items.length > 0);
 </script>
 
 <section
@@ -145,47 +178,61 @@
         {t("mautic.inbox.ui.no_conversations_found_12522a")}
       </div>{/if}
     <div id="inbox-list" class="inbox-list">
-      {#each rows as item (item.id)}<button
-          type="button"
-          class="inbox-list-item"
-          class:active={selected?.id === item.id}
-          on:click={() => onSelect(item.id)}
+      {#each groups as group (group.key)}<h3
+          class="inbox-list-group"
+          data-group={group.key}
         >
-          <Avatar
-            name={item.contact_name}
-            id={item.id}
-            channel={item.channel}
-            photo={item.avatar_url || null}
-            photoLabel={t("mautic.inbox.ui.photo_of_5bece3")}
-          />
-          <div class="inbox-list-copy">
-            <div class="inbox-list-title">
-              <span>{item.contact_name}</span><span class="inbox-list-time"
-                >{shortTime(item.last_message_at)}</span
-              >
+          <Icon name={groupIcons[group.key]} />{t(groupLabels[group.key])}<b
+            >{group.items.length}</b
+          >
+        </h3>
+        {#each group.items as item (item.id)}<button
+            type="button"
+            class="inbox-list-item"
+            data-group={group.key}
+            class:active={selected?.id === item.id}
+            on:click={() => onSelect(item.id)}
+          >
+            <Avatar
+              name={item.contact_name}
+              id={item.id}
+              channel={item.channel}
+              photo={item.avatar_url || null}
+              photoLabel={t("mautic.inbox.ui.photo_of_5bece3")}
+            />
+            <div class="inbox-list-copy">
+              <div class="inbox-list-title">
+                <span>{item.contact_name}</span><span class="inbox-list-time"
+                  >{shortTime(item.last_message_at)}</span
+                >
+              </div>
+              <div class="inbox-list-meta">
+                {channelLabel(item.channel, item.asset.type)} · {item.asset
+                  .handle
+                  ? `@${item.asset.handle}`
+                  : item.asset.phone || item.asset.address || item.asset.name}
+              </div>
+              {#if item.channel === "email"}<div class="inbox-list-subject">
+                  {item.subject || t("mautic.inbox.ui.email_no_subject")}
+                </div>{/if}
+              <div class="inbox-list-preview">
+                {item.preview || item.last_message_preview || item.asset.name}
+              </div>
+              <!-- O selo repete o cabecalho do grupo quando os dois dizem a mesma coisa; nesse
+                 caso ele some, e fica so onde acrescenta algo (adiada que ainda deve resposta). -->
+              <div class="inbox-list-flags">
+                {#if item.needs_response && group.key !== "waiting_you"}<span
+                    class="inbox-pill response"
+                    >{t("mautic.inbox.ui.awaiting_reply_f6a6ba")}</span
+                  >{/if}{#if item.unread}<span class="inbox-pill unread"
+                    >{item.unread}</span
+                  >{/if}{#if item.lifecycle === "snoozed" && group.key !== "snoozed"}<span
+                    class="inbox-pill"
+                    >{t("mautic.inbox.ui.snoozed_435da9")}</span
+                  >{/if}
+              </div>
             </div>
-            <div class="inbox-list-meta">
-              {channelLabel(item.channel, item.asset.type)} · {item.asset.handle
-                ? `@${item.asset.handle}`
-                : item.asset.phone || item.asset.address || item.asset.name}
-            </div>
-            {#if item.channel === "email"}<div class="inbox-list-subject">
-                {item.subject || t("mautic.inbox.ui.email_no_subject")}
-              </div>{/if}
-            <div class="inbox-list-preview">
-              {item.preview || item.last_message_preview || item.asset.name}
-            </div>
-            <div class="inbox-list-flags">
-              {#if item.needs_response}<span class="inbox-pill response"
-                  >{t("mautic.inbox.ui.awaiting_reply_f6a6ba")}</span
-                >{/if}{#if item.unread}<span class="inbox-pill unread"
-                  >{item.unread}</span
-                >{/if}{#if item.lifecycle === "snoozed"}<span class="inbox-pill"
-                  >{t("mautic.inbox.ui.snoozed_435da9")}</span
-                >{/if}
-            </div>
-          </div>
-        </button>{/each}
+          </button>{/each}{/each}
     </div>
     {#if next}<button
         id="inbox-more"

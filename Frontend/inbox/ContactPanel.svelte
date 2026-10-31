@@ -35,6 +35,7 @@
           "www.instagram.com",
           "facebook.com",
           "www.facebook.com",
+          "m.facebook.com",
         ].includes(url.hostname)
         ? url.href
         : null;
@@ -77,6 +78,17 @@
           ? selected.recipient
           : t("mautic.inbox.ui.network_id_f461ad") + selected.recipient)}</span
     >
+    <!-- O perfil publico do participante ja vem no payload da conversa (`profile_url`, montado
+         por SocialProfileLinks), e so o app oferecia o atalho. A validacao se repete aqui porque
+         o navegador tambem le conversa guardada em cache, de uma versao anterior do servidor. -->
+    {#if safeSocial(selected.profile_url || undefined)}<a
+        id="inbox-profile-link"
+        class="inbox-profile-link"
+        href={safeSocial(selected.profile_url || undefined) || ""}
+        target="_blank"
+        rel="noopener noreferrer"
+        ><Icon name={selected.channel} />{t("mautic.inbox.ui.open_profile")}</a
+      >{/if}
     <div id="inbox-contact-card">
       {#if selected.contact}<a href={selected.contact.url} class="text-primary"
           >{selected.contact.name ===
