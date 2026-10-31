@@ -20,6 +20,14 @@
   vinha no payload da conversa (`profile_url`), montado e validado por `SocialProfileLinks`, e
   so o aplicativo o oferecia. A validacao se repete no navegador porque a tela tambem le
   conversa guardada em cache, de uma versao anterior do servidor.
+- A linha da lista oferece as acoes sem abrir a conversa, como o arrastar faz no aplicativo:
+  assumir quando nao tem dono, adiar uma hora e resolver quando e minha, reabrir quando esta
+  resolvida. A coluna desenha so o que o servidor vai aceitar — `ConversationActions` exige ser
+  o responsavel em tudo menos `reopen` —, porque botao que responde erro e pior do que botao
+  nenhum. Elas aparecem ao passar o mouse, ao focar pelo teclado e na linha aberta, e ficam
+  fora do botao da linha porque botao nao aninha em botao. A transicao pela lista nao recarrega
+  timeline nem ia da conversa ao lado, e guarda o detalhe para a `version` da linha nao ficar
+  velha, que e o que produz 409 na acao seguinte.
 - A lista fica 20 px mais larga e o painel do contato 30 px, para o nome e o grupo caberem sem
   cortar.
 

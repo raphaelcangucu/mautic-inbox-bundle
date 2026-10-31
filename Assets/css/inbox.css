@@ -598,3 +598,12 @@
 .inbox-profile-link{display:inline-flex;align-items:center;gap:6px;margin-top:7px;font-size:12.5px;font-weight:600;color:var(--ib-accent);text-decoration:none}
 .inbox-profile-link:hover{text-decoration:underline}
 .inbox-profile-link svg{width:15px;height:15px}
+/* As acoes da linha, que no aplicativo moram atras do arrastar. Ficam fora do botao da linha
+   porque botao nao aninha em botao, e aparecem ao passar o mouse, ao focar pelo teclado ou na
+   linha aberta — nunca em todas de uma vez, senao a coluna vira um mural de botoes. */
+.inbox-list-row{position:relative}
+.inbox-list-row:has(.inbox-list-actions) .inbox-list-item{margin-bottom:0}
+.inbox-list-actions{display:flex;gap:5px;padding:0 10px 7px;margin-bottom:3px;opacity:0;max-height:0;overflow:hidden;transition:opacity .12s ease}
+.inbox-list-row:hover .inbox-list-actions,.inbox-list-row:focus-within .inbox-list-actions,.inbox-list-row:has(.inbox-list-item.active) .inbox-list-actions{opacity:1;max-height:42px}
+.inbox-list-actions button{border:1px solid var(--ib-border);border-radius:7px;background:#fff;color:#5e6573;padding:3px 10px;font-size:11.5px;font-weight:550}
+.inbox-list-actions button:hover:not(:disabled){background:var(--ib-soft);color:var(--ib-accent);border-color:#dce0f0}

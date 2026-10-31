@@ -443,6 +443,49 @@
       return false;
     }
   }
+  /**
+   * A mesma transicao de sempre, numa conversa que NAO esta aberta.
+   *
+   * `take` e `mutate` existem para a conversa selecionada: recarregam timeline e ia e trocam o
+   * que esta na tela ao lado. Adiar uma conversa da lista nao deve fazer nada disso, e e por
+   * isso que eles nao servem aqui — so a linha muda, e a conversa aberta so e atualizada se
+   * for a mesma.
+   *
+   * O servidor exige ser o responsavel em tudo menos `reopen` (ConversationActions), por isso a
+   * coluna so desenha o botao onde ele vai funcionar. Ver `rowActions` em ConversationList.
+   */
+  let rowBusy: Set<number> = new Set();
+  async function rowAction(item: Conversation, action: string): Promise<void> {
+    if (rowBusy.has(item.id)) return;
+    rowBusy = new Set(rowBusy).add(item.id);
+    try {
+      const body: Record<string, unknown> = { version: item.version };
+      if (action !== "take") body.action = action;
+      if (action === "snooze")
+        body.until = new Date(Date.now() + 3600000).toISOString();
+      const detail = await api<Conversation>(
+        url(action === "take" ? "take" : "state", item.id),
+        { method: "POST", body: JSON.stringify(body) },
+      );
+      // Sem guardar o detalhe, a version da linha fica velha — e version velha e 409 na acao
+      // seguinte, o mesmo cuidado que o `take` da conversa aberta ja tomava.
+      loja.guardarConversa(detail);
+      if (selected?.id === detail.id) {
+        detail.drafts = {
+          ...(detail.drafts || {}),
+          ...(draftCache[detail.id] || {}),
+        };
+        selected = detail;
+      }
+      await loadList(false, true);
+    } catch (error) {
+      showError((error as Error).message);
+    } finally {
+      const left = new Set(rowBusy);
+      left.delete(item.id);
+      rowBusy = left;
+    }
+  }
   async function mutate(
     action: string,
     extra: Record<string, unknown> = {},
@@ -1252,6 +1295,9 @@
       {view}
       locale={config.locale}
       {t}
+      currentUser={config.currentUser}
+      busy={rowBusy}
+      onAction={(item, action) => void rowAction(item, action)}
       onSelect={(id) => void select(id)}
       onQueue={(value) => {
         queue = value;

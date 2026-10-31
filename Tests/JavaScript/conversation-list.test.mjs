@@ -178,3 +178,108 @@ test("the conversation payload carries the asset type the badge reads", async ()
     "sem o tipo do asset no payload a lista nao tem como distinguir QR de numero homologado",
   );
 });
+
+const groupHeadings = (host) =>
+  [...host.querySelectorAll(".inbox-list-group")].map((node) =>
+    node.getAttribute("data-group"),
+  );
+const rowGroups = (host) =>
+  [...host.querySelectorAll(".inbox-list-item")].map((node) =>
+    node.getAttribute("data-group"),
+  );
+const actionLabels = (host) =>
+  [...host.querySelectorAll(".inbox-list-actions button")].map((node) =>
+    node.textContent.trim(),
+  );
+
+test("the column groups by what each conversation is waiting for, and skips empty groups", async () => {
+  // Ordenada por relogio, a coluna nao dizia onde a fila travava. O agrupamento sai de
+  // `needs_response` e `lifecycle`, que o payload ja trazia.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const { window, host, rows } = render([
+    { ...row(1, asset), needs_response: false },
+    { ...row(2, asset), needs_response: true },
+    { ...row(3, asset), lifecycle: "snoozed", needs_response: true },
+  ]);
+  const app = mount(ConversationList, { target: host, props: props(rows) });
+
+  assert.deepEqual(
+    groupHeadings(host),
+    ["waiting_you", "snoozed", "waiting_contact"],
+    "quem espera uma pessoa vem primeiro; o que espera o contato, por ultimo",
+  );
+  assert.deepEqual(rowGroups(host), [
+    "waiting_you",
+    "snoozed",
+    "waiting_contact",
+  ]);
+  assert.equal(
+    [...host.querySelectorAll(".inbox-list-item")].length,
+    3,
+    "agrupar nao pode esconder conversa nenhuma",
+  );
+
+  unmount(app);
+  window.close();
+});
+
+test("a snoozed conversation leaves 'waiting for you' even owing a reply", async () => {
+  // Ela volta sozinha na hora marcada: manter no topo o que alguem ja decidiu adiar seria
+  // pedir a mesma decisao duas vezes.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const { window, host, rows } = render([
+    { ...row(1, asset), lifecycle: "snoozed", needs_response: true },
+  ]);
+  const app = mount(ConversationList, { target: host, props: props(rows) });
+
+  assert.deepEqual(groupHeadings(host), ["snoozed"]);
+  assert.ok(
+    host.querySelector(".inbox-pill.response"),
+    "fora do grupo que ja diz isso, o selo de aguardando resposta acrescenta algo e fica: esta adiada ainda deve resposta",
+  );
+
+  unmount(app);
+  window.close();
+});
+
+test("the row offers only the actions the server will accept", async () => {
+  // ConversationActions exige ser o responsavel em tudo menos `reopen`. Um botao que responde
+  // erro e pior do que botao nenhum, entao a coluna nao o desenha.
+  const ConversationList = await loadConversationList();
+  const asset = { id: 7, name: "Suporte", phone: "+55 11 90000-0000" };
+  const mine = { id: 4, name: "Eu" };
+  const theirs = { id: 9, name: "Outra pessoa" };
+
+  for (const [conversation, expected, why] of [
+    [{ assignee: null }, ["take"], "sem dono, assumir"],
+    [{ assignee: mine }, ["snooze", "resolve"], "minha, adiar e resolver"],
+    [{ assignee: theirs }, [], "de outra pessoa, nenhuma"],
+    [
+      { assignee: theirs, lifecycle: "resolved" },
+      ["reopen"],
+      "resolvida, reabrir vale para qualquer um",
+    ],
+  ]) {
+    const { window, host, rows } = render([
+      { ...row(1, asset), ...conversation },
+    ]);
+    const app = mount(ConversationList, {
+      target: host,
+      props: { ...props(rows), currentUser: 4 },
+    });
+
+    assert.deepEqual(
+      actionLabels(host),
+      expected.map(
+        (key) =>
+          `mautic.inbox.ui.row_${key === "snooze" ? "snooze_hour" : key}`,
+      ),
+      why,
+    );
+
+    unmount(app);
+    window.close();
+  }
+});
