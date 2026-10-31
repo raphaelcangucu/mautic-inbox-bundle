@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace MauticPlugin\MauticInboxBundle\Tests\Functional;
 
 use Mautic\CoreBundle\Test\MauticMysqlTestCase;
+use Mautic\UserBundle\Entity\User;
 use MauticPlugin\MauticInboxBundle\Application\InboxQuery;
 use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
 use MauticPlugin\MauticMetaBundle\Entity\{MetaAsset, MetaConnection, MetaConversation, MetaMessage};
@@ -20,18 +21,20 @@ final class NotificationsTest extends MauticMysqlTestCase
         $message = fn (string $direction) => (new MetaMessage())->setAsset($asset)->setConversation($conversation)->setChannel('instagram')->setDirection($direction)->setMessageType('direct_message')->setDateAdded(new \DateTimeImmutable('-2 days'));
         $old = $message('inbound');$this->em->persist($old);$this->em->flush();
         $query = static::getContainer()->get(InboxQuery::class);
-        $baseline = $query->notifications(null);
+        // Notifications are scoped to whoever is asking, so the reader is part of the question.
+        $operator = $this->em->getRepository(User::class)->findOneBy(['username' => 'admin']);
+        $baseline = $query->notifications(null, $operator);
         self::assertSame([], $baseline['notifications']);
         self::assertSame($old->getId(), $baseline['notification_cursor']);
         $this->em->persist($message('outbound'));
         $new = $message('inbound');$this->em->persist($new);$this->em->flush();
-        $update = $query->notifications($baseline['notification_cursor']);
+        $update = $query->notifications($baseline['notification_cursor'], $operator);
         self::assertCount(1, $update['notifications']);
         self::assertEquals($new->getId(), $update['notifications'][0]['id']);
         self::assertEquals($state->getId(), $update['notifications'][0]['state_id']);
-        self::assertSame([], $query->notifications($update['notification_cursor'])['notifications']);
+        self::assertSame([], $query->notifications($update['notification_cursor'], $operator)['notifications']);
         // Replay and contact/status changes do not create another notification.
         $new->setPayload(['text'=>'enriched']);$this->em->persist($new);$this->em->flush();
-        self::assertSame([], $query->notifications($update['notification_cursor'])['notifications']);
+        self::assertSame([], $query->notifications($update['notification_cursor'], $operator)['notifications']);
     }
 }

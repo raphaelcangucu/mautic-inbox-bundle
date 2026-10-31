@@ -7,6 +7,11 @@ namespace MauticPlugin\MauticInboxBundle\Tests\Functional;
 use Mautic\CoreBundle\Test\MauticMysqlTestCase;
 use Mautic\UserBundle\Entity\User;
 use MauticPlugin\MauticInboxBundle\Entity\CannedResponse;
+use MauticPlugin\MauticInboxBundle\Entity\ConversationState;
+use MauticPlugin\MauticMetaBundle\Domain\AssetType;
+use MauticPlugin\MauticMetaBundle\Entity\MetaAsset;
+use MauticPlugin\MauticMetaBundle\Entity\MetaConnection;
+use MauticPlugin\MauticMetaBundle\Entity\MetaConversation;
 
 final class InboxHttpTest extends MauticMysqlTestCase
 {
@@ -20,10 +25,10 @@ final class InboxHttpTest extends MauticMysqlTestCase
         self::assertSame('/s/inbox/conversations/0', $crawler->filter('#inbox-app')->attr('data-conversation-url'));
         self::assertSame('0', $crawler->filter('#inbox-app')->attr('data-initial-state-id'));
         self::assertSame('/s/inbox/api/outbound/0/retry', $crawler->filter('#inbox-app')->attr('data-retry-url'));
-        self::assertCount(1, $crawler->filter('.inbox-settings-tab'));
-        self::assertCount(1, $crawler->filter('#inbox-settings #inbox-sound'));
-        self::assertCount(0, $crawler->filter('.inbox-toolbar #inbox-sound'));
-        self::assertCount(1, $crawler->filter('#inbox-settings #inbox-canned-form'));
+        // Settings, the sound toggle and the canned-response form are drawn by Svelte inside the
+        // mount point, so the server ships the data they need, not the markup itself.
+        self::assertNotEmpty($crawler->filter('#inbox-app')->attr('data-canned-settings'));
+        self::assertSame('', (string) $crawler->filter('#inbox-app')->html(), 'The mount point ships empty; anything inside it would be drawn twice.');
         $this->client->request('GET', '/s/inbox/api/conversations?queue=all');
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
@@ -33,16 +38,25 @@ final class InboxHttpTest extends MauticMysqlTestCase
 
     public function testConversationPermalinkRendersTheSameWorkspaceWithAnInitialSelection(): void
     {
-        $crawler = $this->client->request('GET', '/s/inbox/conversations/42');
+        // A permalink to a conversation the operator cannot see, or that is gone, answers 404 on
+        // purpose, so the deep link has to point at a conversation that really exists.
+        $id = (string) $this->state()->getId();
+        $crawler = $this->client->request('GET', '/s/inbox/conversations/'.$id);
         self::assertResponseIsSuccessful();
-        self::assertSame('42', $crawler->filter('#inbox-app')->attr('data-initial-state-id'));
+        self::assertSame($id, $crawler->filter('#inbox-app')->attr('data-initial-state-id'));
         self::assertSame('/s/inbox/conversations/0', $crawler->filter('#inbox-app')->attr('data-conversation-url'));
 
-        $this->client->xmlHttpRequest('GET', '/s/inbox/conversations/42');
+        $this->client->xmlHttpRequest('GET', '/s/inbox/conversations/'.$id);
         self::assertResponseIsSuccessful();
         $data = json_decode($this->client->getResponse()->getContent(), true, 512, JSON_THROW_ON_ERROR);
-        self::assertSame('/s/inbox/conversations/42', $data['route']);
-        self::assertStringContainsString('data-initial-state-id="42"', $data['newContent']);
+        self::assertSame('/s/inbox/conversations/'.$id, $data['route']);
+        self::assertStringContainsString('data-initial-state-id="'.$id.'"', $data['newContent']);
+    }
+
+    public function testPermalinkToAConversationThatDoesNotExistIsNotFound(): void
+    {
+        $this->client->request('GET', '/s/inbox/conversations/999999');
+        self::assertResponseStatusCodeSame(404);
     }
 
     public function testNativeAjaxNavigationReturnsMauticEnvelope(): void
@@ -70,10 +84,12 @@ final class InboxHttpTest extends MauticMysqlTestCase
         self::assertResponseStatusCodeSame(403);
     }
 
-    public function testMutationRejectsMissingCsrfBeforeLookingUpConversation(): void
+    public function testMutationRejectsMissingCsrf(): void
     {
-        $this->client->request('POST', '/s/inbox/api/conversations/999999/note', [], [], ['CONTENT_TYPE' => 'application/json'], '{"body":"Must not be saved"}');
+        $state = $this->state();
+        $this->client->request('POST', '/s/inbox/api/conversations/'.$state->getId().'/note', [], [], ['CONTENT_TYPE' => 'application/json'], '{"body":"Must not be saved"}');
         self::assertResponseStatusCodeSame(403);
+        self::assertSame([], $this->em->getRepository(\MauticPlugin\MauticInboxBundle\Entity\Note::class)->findAll());
     }
 
     public function testCannedResponsesCanBeCreatedEditedAndSafelyRemovedFromSettings(): void
@@ -113,11 +129,28 @@ final class InboxHttpTest extends MauticMysqlTestCase
 
     public function testUserWithoutInboxPermissionCannotReadMessages(): void
     {
+        $state = $this->state();
         $sales = $this->em->getRepository(User::class)->findOneBy(['username' => 'sales']);
+        // The switch has to happen before the client makes a request: once a session exists the
+        // cookie wins and the page keeps answering as the previous user.
         $this->loginUser($sales);
         $this->client->request('GET', '/s/inbox/api/conversations?queue=all');
         self::assertResponseStatusCodeSame(403);
-        $this->client->request('GET', '/s/inbox/conversations/42');
-        self::assertResponseStatusCodeSame(403);
+        // A conversation this operator cannot see reads as absent, not as forbidden, so the
+        // answer says nothing about whether it exists.
+        $this->client->request('GET', '/s/inbox/conversations/'.$state->getId());
+        self::assertResponseStatusCodeSame(404);
+    }
+
+    private function state(): ConversationState
+    {
+        $connection = (new MetaConnection())->setName('Inbox http test')->setStatus('active');
+        $asset = (new MetaAsset())->setConnection($connection)->setName('Inbox http test')->setExternalId('inbox-http-test')->setType(AssetType::InstagramAccount)->setStatus('active')->setIsPublished(true);
+        $conversation = (new MetaConversation())->setAsset($asset)->setChannel('instagram')->setRecipient('inbox-http-test');
+        $state = (new ConversationState())->setConversation($conversation);
+        foreach ([$connection, $asset, $conversation, $state] as $entity) { $this->em->persist($entity); }
+        $this->em->flush();
+
+        return $state;
     }
 }

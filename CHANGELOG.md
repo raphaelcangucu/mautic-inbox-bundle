@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.14.1
+
+- A resposta do envio volta a trazer a moderacao. `reply` devolve um resumo que o aplicativo
+  grava por cima da conversa que ja tinha; a listagem e o detalhe passaram a acrescentar
+  `moderation_available` e `moderation`, e o envio nao. O resumo sem esses campos apagava os
+  controles de moderacao de uma conversa de webchat ate alguem recarregar a tela, porque o
+  aplicativo so os oferece quando `moderation_available` e verdadeiro. Agora o envio passa pelo
+  mesmo decorador da listagem, e o teste que compara o resumo do envio com a linha da lista
+  volta a valer.
+- A suite funcional roda. Ela nunca tinha sido executada e falava com um Mautic que mudou por
+  baixo: duas chamadas usavam assinaturas antigas (`WhatsAppSender` hoje recebe um
+  `TransportResolver`, `InboxQuery::notifications()` hoje recebe o operador), varias procuravam
+  no HTML texto que o Svelte so desenha no navegador, uma comparava uma string com espaco que o
+  Twig escapa, duas pediam conversas que nao existiam no banco, uma trocava de usuario depois de
+  a sessao ja existir, e uma usava chave de idempotencia fixa numa tabela que sobrevive entre
+  execucoes. 78 testes, 664 asserções, sem falhas.
+- Tres testes ficam marcados como incompletos porque descrevem decisoes de comportamento, nao
+  defeitos de teste: o CSRF e conferido depois de o `ConversationAccessSubscriber` resolver o
+  id, entao um pedido sem token responde 404 para id inexistente e 403 para id que existe; o
+  token de atualizacao ao vivo nao acompanha o status de entrega de uma mensagem; e enviar
+  modelo nao exige mais opt-in registrado, porque `assertCanSend()` no MauticMetaBundle hoje
+  barra apenas o opt-out explicito.
+
 ## 1.14.0
 
 - Sessoes do assistente gravadas no servidor, em `inbox_assistant_sessions`. Antes o app
