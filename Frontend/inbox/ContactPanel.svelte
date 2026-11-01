@@ -92,11 +92,9 @@
         ><Icon name={selected.channel} />{t("mautic.inbox.ui.open_profile")}</a
       >{/if}
     <div id="inbox-contact-card">
+      <!-- O nome ja esta logo acima; o link diz para onde leva. -->
       {#if selected.contact}<a href={selected.contact.url} class="text-primary"
-          >{selected.contact.name ===
-          t("mautic.inbox.ui.unnamed_contact_666b99")
-            ? t("mautic.inbox.ui.view_contact_in_mautic_199894")
-            : selected.contact.name}</a
+          >{t("mautic.inbox.ui.view_contact_in_mautic_199894")}</a
         >{#if selected.contact.email}<div>
             {selected.contact.email}
           </div>{/if}{#if selected.contact.phone}<div>

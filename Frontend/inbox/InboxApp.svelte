@@ -1639,8 +1639,21 @@
                   : selected.asset.phone ||
                     selected.asset.address ||
                     selected.asset.name}{selected.assignee
-                  ? ` · ${selected.assignee.name}`
-                  : t("mautic.inbox.ui.unassigned_3986c8")}
+                  ? selected.assignee.id === config.currentUser
+                    ? ` · ${t("mautic.inbox.ui.with_you")}`
+                    : ` · ${selected.assignee.name}`
+                  : t(
+                      "mautic.inbox.ui.unassigned_3986c8",
+                    )}{selected.lifecycle === "snoozed" &&
+                selected.snoozed_until
+                  ? ` · ${t("mautic.inbox.ui.snoozed_until").replace(
+                      "%time%",
+                      new Intl.DateTimeFormat(config.locale, {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }).format(new Date(selected.snoozed_until)),
+                    )}`
+                  : ""}
               </p>
             </div>
             {#if ai?.assignment}<div
@@ -1716,9 +1729,12 @@
                   class="btn btn-primary btn-sm"
                   on:click={() => void takeDeuCerto()}
                   >{t("mautic.inbox.ui.assign_to_me_96f796")}</button
-                >{/if}{#if selected.lifecycle !== "resolved"}<button
+                >{/if}<!-- Uma acao principal por vez: sem dono, o passo seguinte e assumir; resolver
+                     continua ali, mas sem disputar o mesmo peso. -->{#if selected.lifecycle !== "resolved"}<button
                   id="inbox-resolve"
-                  class="btn btn-primary btn-sm"
+                  class="btn btn-sm"
+                  class:btn-primary={Boolean(selected.assignee)}
+                  class:btn-default={!selected.assignee}
                   on:click={() => void mutate("resolve")}
                   >{t("mautic.inbox.ui.resolve_3628ac")}</button
                 >{:else}<button

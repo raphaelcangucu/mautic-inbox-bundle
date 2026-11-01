@@ -122,6 +122,8 @@
   class:outbound={isOutbound}
   class:ai-authored={Boolean(item.ai)}
   class:actions-open={actionsOpen}
+  class:failed={isOutbound &&
+    (item.status === "failed" || item.status === "uncertain")}
   on:click={revealActions}
 >
   {#if item.kind === "event"}{named(item) ?? event(item.event)} · {time(

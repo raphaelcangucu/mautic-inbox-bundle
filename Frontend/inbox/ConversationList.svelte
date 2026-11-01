@@ -320,8 +320,16 @@
                 {#if item.channel === "email"}<div class="inbox-list-subject">
                     {item.subject || t("mautic.inbox.ui.email_no_subject")}
                   </div>{/if}
+                <!-- O numero de nao lidas mora na linha da previa, como no app: numa linha so
+                     dele, a conversa ficava mais alta que as outras sem dizer mais nada. -->
                 <div class="inbox-list-preview">
-                  {item.preview || item.last_message_preview || item.asset.name}
+                  <span class="inbox-list-preview-text"
+                    >{item.preview ||
+                      item.last_message_preview ||
+                      item.asset.name}</span
+                  >{#if item.unread}<span class="inbox-pill unread"
+                      >{item.unread}</span
+                    >{/if}
                 </div>
                 <!-- O selo repete o cabecalho do grupo quando os dois dizem a mesma coisa; nesse
                  caso ele some, e fica so onde acrescenta algo (adiada que ainda deve resposta). -->
@@ -329,8 +337,6 @@
                   {#if item.needs_response && group.key !== "waiting_you"}<span
                       class="inbox-pill response"
                       >{t("mautic.inbox.ui.awaiting_reply_f6a6ba")}</span
-                    >{/if}{#if item.unread}<span class="inbox-pill unread"
-                      >{item.unread}</span
                     >{/if}{#if item.lifecycle === "snoozed" && group.key !== "snoozed"}<span
                       class="inbox-pill"
                       >{t("mautic.inbox.ui.snoozed_435da9")}</span

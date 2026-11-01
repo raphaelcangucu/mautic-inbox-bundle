@@ -82,6 +82,8 @@ export interface Conversation {
   needs_response?: boolean;
   conversation_kind?: string;
   assignee?: Assignee | null;
+  /** Quando adiada: ate quando. */
+  snoozed_until?: string | null;
   contact?: Contact | null;
   origins?: Origin[];
   drafts?: Record<string, string>;

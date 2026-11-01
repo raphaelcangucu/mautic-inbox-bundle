@@ -23,6 +23,11 @@
     if (!photo || failed) return null;
     try {
       const url = new URL(photo, location.origin);
+      // O Mautic cai no Gravatar sempre que o contato tem e-mail, e o Gravatar sem foto
+      // devolve um boneco cinza. Com d=404 a imagem falha, o erro cai em `failed` e o avatar
+      // mostra as iniciais na cor do canal — a mesma regra do app (src/api/avatar.ts).
+      if (/^(.+\.)?gravatar\.com$/i.test(url.hostname))
+        url.searchParams.set("d", "404");
       return url.protocol === "https:" || url.origin === location.origin
         ? url.href
         : null;

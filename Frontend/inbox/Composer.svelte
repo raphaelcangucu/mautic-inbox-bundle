@@ -542,17 +542,24 @@
       bind:value={body}
       maxlength={maximum}
       rows="1"
-      placeholder={estreita
+      disabled={disabled && !body}
+      placeholder={disabled
         ? t(
-            note
-              ? "mautic.inbox.ui.note_placeholder_short"
-              : "mautic.inbox.ui.message_placeholder_short",
+            selected.lifecycle === "resolved"
+              ? "mautic.inbox.ui.reply_unavailable"
+              : "mautic.inbox.ui.reply_unavailable_note",
           )
-        : note
-          ? t("mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89")
-          : publicReply
-            ? t("mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01")
-            : t("mautic.inbox.ui.write_a_private_reply_394bc1")}
+        : estreita
+          ? t(
+              note
+                ? "mautic.inbox.ui.note_placeholder_short"
+                : "mautic.inbox.ui.message_placeholder_short",
+            )
+          : note
+            ? t("mautic.inbox.ui.write_a_note_visible_only_to_your_team_10eb89")
+            : publicReply
+              ? t("mautic.inbox.ui.write_a_public_reply_to_the_comment_251f01")
+              : t("mautic.inbox.ui.write_a_private_reply_394bc1")}
       aria-label={t("mautic.inbox.ui.reply_text_680d6f")}
       on:input={() => {
         ajustarAltura();

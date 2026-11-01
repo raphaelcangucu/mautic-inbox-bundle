@@ -794,7 +794,7 @@
 .inbox-list-preview{order:2;margin:0;color:var(--app-soft)}
 .inbox-list-item.unread .inbox-list-preview{color:var(--app-ink-strong)}
 .inbox-list-meta{order:3;font-size:13px;line-height:18px;color:var(--app-soft)}
-.inbox-list-item[data-group=waiting_you]{box-shadow:none}
+.inbox-list-item[data-group]{box-shadow:none}
 .inbox-list-item[data-group=waiting_you] .inbox-list-meta::before{content:"";display:inline-block;width:8px;height:8px;margin-right:6px;border-radius:50%;background:#C2410C;vertical-align:1px}
 .inbox-list-flags{order:4;margin-top:4px;gap:6px}
 .inbox-list-flags:empty{display:none}
@@ -870,6 +870,24 @@
 .inbox-message-tick[data-tick=checks]{width:18px;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12.5l4.5 4.5L16 7M10.5 16.5l.5.5L20.5 7'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 26 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2 12.5l4.5 4.5L16 7M10.5 16.5l.5.5L20.5 7'/%3E%3C/svg%3E") center/contain no-repeat}
 .inbox-message-tick[data-tick=clock]{width:14px;-webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") center/contain no-repeat;mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E") center/contain no-repeat}
 .inbox-message-tick[data-tick=attention]{display:none}
+/* Mensagem que nao saiu: deixa de parecer enviada. O azul cheio com texto vermelho por cima
+   era ilegivel e dizia "foi" com a cor e "nao foi" com a letra. Agora o balao inteiro avisa,
+   a linha de status aparece uma vez so (sem repetir a hora) e o reenviar fica a vista. */
+.inbox-message.outbound.failed{background:#FDECEA!important;border:1px solid #F5C2BC!important;color:var(--app-ink)}
+.inbox-message.outbound.failed a{color:var(--app-ink)}
+.inbox-message.failed small,.inbox-message small.inbox-status-failed{color:var(--app-danger)!important;font-weight:600}
+.inbox-message small.inbox-status-failed .inbox-message-clock{display:none}
+.inbox-message.failed .inbox-retry{margin-top:6px;border-color:#F5C2BC;color:var(--app-danger)}
+
+/* Nao lidas na linha da previa. */
+.inbox-list-preview{display:flex;align-items:center;gap:8px;white-space:normal;overflow:visible}
+.inbox-list-preview-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-list-preview .inbox-pill.unread{flex:none;margin:0;display:inline-flex;align-items:center;justify-content:center}
+.inbox-list-flags:empty{display:none}
+
+/* Compositor bloqueado: o campo apagado explica, em vez de convidar a digitar. */
+.inbox-app .inbox-composer #inbox-composer-text:disabled{opacity:1;cursor:not-allowed;background:var(--app-chip);color:var(--app-soft)}
+.inbox-app .inbox-composer #inbox-composer-text:disabled::placeholder{color:var(--app-soft)}
 .inbox-message.outbound .inbox-message-actions button{border-color:#ffffff40;background:#ffffff1f;color:#fff}
 
 /* --- Comum: compositor — "+" em circulo, campo em pilula, enviar em circulo azul -------------- */
