@@ -101,6 +101,7 @@
           ? outbound(item.status)
           : t("mautic.inbox.ui.message_received_0d110d");
   $: author = item.ai ? `${item.ai.agent || "AI"} · AI` : item.author;
+  $: detail = `${item.kind === "automatic" && !item.ai ? t("mautic.inbox.ui.channel_message_f3ffdf") : ""}${label}${author ? ` · ${author}` : ""} · ${time(item.timestamp)}`;
   /**
    * No celular favoritar e copiar saem de cima de cada balao, como no app, e voltam com um
    * toque no proprio balao. No desktop eles ja aparecem ao passar o mouse e o toque nao muda
@@ -148,17 +149,13 @@
         {attachment}
         {t}
       />{/each}
-    <!-- O desktop le a linha inteira; o celular mostra so a hora e, na enviada, os tiques —
-         o resto continua no DOM para o leitor de tela e volta a aparecer se a entrega falhar. -->
-    <small class:inbox-status-failed={item.status === "failed"}
-      ><span class="inbox-message-detail"
-        >{item.kind === "automatic" && !item.ai
-          ? t("mautic.inbox.ui.channel_message_f3ffdf")
-          : ""}{label}{author ? ` · ${author}` : ""} · {time(
-          item.timestamp,
-        )}</span
-      ><time class="inbox-message-clock" datetime={item.timestamp}
-        >{clock(item.timestamp)}</time
+    <!-- A linha mostra so a hora e, na enviada, os tiques, como no app. O status inteiro
+         continua no DOM para o leitor de tela, aparece ao passar o mouse e volta a ficar
+         visivel se a entrega falhar. -->
+    <small class:inbox-status-failed={item.status === "failed"} title={detail}
+      ><span class="inbox-message-detail">{detail}</span><time
+        class="inbox-message-clock"
+        datetime={item.timestamp}>{clock(item.timestamp)}</time
       >{#if isOutbound && item.kind !== "note" && item.kind !== "comment"}<span
           class="inbox-message-tick"
           data-tick={tick(item.status)}
