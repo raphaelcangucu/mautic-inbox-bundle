@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.16.0
+
+- O inbox no desktop passa a falar a lingua do app. A 1.15.0 levou o visual do app so para o
+  celular; o desktop, dentro do Mautic, seguia com a paleta dele. Agora os tokens do app (azul
+  `#1F3C88`, Manrope, os tons de `src/theme.ts`) valem em qualquer largura, e o desktop ganha:
+  abas da barra de cima em pilula como o indicador da barra do app, busca em pilula, filas em
+  chips com o filtro na frente, a coluna da lista sem cabecalho e mais larga (380px), linhas sem
+  cartao com avatar redondo na cor do canal e selo, o ponto laranja de "esperando voce",
+  baloes com cauda, so a hora com os tiques do app (o status completo aparece ao passar o mouse),
+  o compositor em pilula, o estado vazio no tom do app, e o painel do contato em cartoes como a
+  tela Contato, com "nao enviar e-mail" como interruptor.
+- A selecao em massa no desktop mora sobre o avatar, como nas listas do Material: ao passar o
+  mouse a foto vira um circulo de marcar, e marcada fica azul. A coluna de caixas que empurrava
+  as linhas sumiu, e o recurso continua a um clique.
+- Responder e Encaminhar no e-mail viram pilulas com texto azul, como no layout aprovado, e os
+  links (Show recipients) ficam azuis em vez do verde-acinzentado do Mautic. Isso vale tambem no
+  celular; o resto do celular segue identico a 1.15.0, comparado pixel a pixel na lista e na
+  conversa.
+
 ## 1.15.0
 
 - O Macro Zap (o app instalavel em `/inbox/app`) no celular passa a ter a cara do app iOS. Os dois
