@@ -14,6 +14,8 @@
   export let threadSubject = "";
   export let feedback = "";
   export let feedbackError = false;
+  /** Ha mensagem com texto para encaminhar (a linha do tempo pode estar carregando). */
+  export let canForward = true;
   export let draftState = "";
   export let canned: CannedResponse[] = [];
   export let t: (key: string) => string;
@@ -119,6 +121,7 @@
         id="inbox-email-forward"
         type="button"
         class="btn btn-default"
+        disabled={!canForward}
         on:click={onForward}
         ><Icon name="send" />{t("mautic.inbox.ui.email_forward")}</button
       ><button
@@ -136,6 +139,17 @@
       role="status"
     >
       {selected.reply_hint || ""}
+    </div>
+    <!-- O aviso tambem com o compositor fechado: resolver, assumir e encaminhar escrevem aqui,
+         e sem esta area o resultado (ou o erro) era gravado e nunca aparecia. -->
+    <div id="inbox-feedback" role="alert">
+      {#if feedback}
+        {#if feedbackError}<div class="inbox-error">{feedback}</div>{:else}<div
+            class="inbox-feedback-success"
+          >
+            {feedback}
+          </div>{/if}
+      {/if}
     </div>
   {:else}
     {#if note}<div class="inbox-composer-top">

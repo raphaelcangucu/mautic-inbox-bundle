@@ -884,6 +884,22 @@
 /* A ultima mensagem e nossa e nao saiu: a lista avisa antes do texto, no tom de erro. */
 .inbox-list-failed{display:inline-flex;align-items:center;gap:4px;margin-right:6px;color:var(--app-danger);font-weight:700}
 .inbox-list-failed::before{content:"!";display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--app-danger);color:#fff;font-size:11px;line-height:1}
+/* Encaminhar: a lista de conversas onde o texto vai cair, como no app. */
+.inbox-forward-sheet{display:flex;flex-direction:column;gap:10px;max-height:min(80dvh,640px)}
+.inbox-forward-sheet .inbox-secondary{margin:0;font-size:13px;line-height:19px;color:var(--app-soft)}
+.inbox-forward-search{height:44px;border-radius:22px;background:var(--app-field);border:0}
+.inbox-forward-list{display:flex;flex-direction:column;overflow:auto;min-height:0;margin:0 -8px}
+.inbox-forward-target{display:flex;align-items:center;gap:12px;width:100%;padding:10px 8px;border:0;border-radius:14px;background:none;text-align:left}
+.inbox-forward-target:hover,.inbox-forward-target:focus-visible{background:var(--app-tint-softer)}
+.inbox-forward-target .inbox-avatar{width:40px;height:40px;font-size:14px}
+.inbox-forward-target span{display:flex;flex-direction:column;min-width:0}
+.inbox-forward-target strong{font-size:15px;font-weight:700;color:var(--app-ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inbox-forward-target small{font-size:13px;color:var(--app-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Aviso do compositor de e-mail fechado: logo abaixo de Responder/Encaminhar. */
+.inbox-email-composer:not(.open) #inbox-feedback:empty{display:none}
+.inbox-email-composer:not(.open) #inbox-feedback{margin:0 16px 10px}
+/* Menu de acoes vazio (conversa de outra pessoa, sem moderacao): o botao some. */
+.inbox-actions:not(:has(.inbox-actions-main > *)) .inbox-actions-more{display:none}
 /* Nao lidas na linha da previa. */
 .inbox-list-preview{display:flex;align-items:center;gap:8px;white-space:normal;overflow:visible}
 .inbox-list-preview-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

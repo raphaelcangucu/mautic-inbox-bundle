@@ -90,6 +90,7 @@ export interface Conversation {
   origins?: Origin[];
   drafts?: Record<string, string>;
   can_reply?: boolean;
+  can_take?: boolean;
   can_take_and_reply?: boolean;
   reply_blocked_reason?: string | null;
   reply_hint?: string;

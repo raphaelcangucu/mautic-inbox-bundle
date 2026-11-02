@@ -4,6 +4,17 @@
 
 Os ajustes que a revisao de UX da 1.16.1 deixou de fora.
 
+- Resolver e Encaminhar no e-mail voltam a fazer alguma coisa visivel. Tres defeitos somados:
+  o compositor de e-mail so desenhava a area de aviso quando aberto, entao com ele fechado nenhum
+  resultado ou erro aparecia; num 409 o erro era mostrado e logo apagado pela recarga da
+  conversa; e o cabecalho oferecia Resolver para quem nao e o responsavel, que o servidor recusa.
+  Agora o aviso aparece com o compositor fechado, o erro do 409 vem depois da recarga, e os
+  botoes seguem as regras do servidor: Resolver so para o responsavel, Assumir quando nao ha
+  dono ou quando quem pede pode tomar (`can_take`), Reabrir para qualquer um.
+- Encaminhar faz o que o app faz: escolhe outra conversa e coloca o texto no rascunho dela,
+  depois do que ja estava escrito, sem enviar nada sozinho. Antes so copiava para a area de
+  transferencia, com o aviso de "copiado" invisivel. O botao fica desabilitado enquanto nao ha
+  mensagem para encaminhar, em vez de nao fazer nada.
 - A lista avisa quando a ultima mensagem e nossa e nao saiu: "! Nao enviada" no tom de erro,
   antes da previa. O servidor manda `last_message_failed` em cada linha; sem isso a conversa
   parecia respondida e ninguem voltava nela. Uma mensagem nova do contato apaga o aviso.

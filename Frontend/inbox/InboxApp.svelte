@@ -705,9 +705,14 @@
         loadAi(id, true),
       ]);
     } catch (error) {
-      showError((error as Error).message);
-      if (error instanceof RequestError && error.status === 409 && selected)
-        void select(selected.id, false);
+      const message = (error as Error).message;
+      // No 409 a conversa mudou do lado do servidor e e recarregada. A recarga limpa o aviso,
+      // entao o erro so pode ser mostrado depois dela — antes ele piscava e sumia, e o botao
+      // parecia nao fazer nada.
+      if (error instanceof RequestError && error.status === 409 && selected) {
+        await select(selected.id, false);
+      }
+      showError(message);
     }
   }
   /**
@@ -830,12 +835,37 @@
    * Encaminhar reaproveita o que o atendente ja faz: o texto da ultima mensagem vai para a area
    * de transferencia, e dali para o rascunho de outra conversa. O texto, nunca o HTML.
    */
-  async function forwardEmail(): Promise<void> {
+  /**
+   * Encaminhar, como no app (src/api/message-forward.ts): escolhe outra conversa e coloca o
+   * texto no rascunho dela, depois do que ja estava escrito. Nunca envia sozinho — quem
+   * encaminha revisa e manda. O web so copiava para a area de transferencia, e o aviso de
+   * "copiado" caia numa area que, com o compositor fechado, nao aparecia.
+   */
+  let forwardOpen = false,
+    forwardText = "",
+    forwardQuery = "";
+  $: forwardTargets = rows.filter((row) => {
+    if (row.id === selected?.id) return false;
+    if ((row.recipient || "").startsWith("comment:")) return false;
+    if (row.moderation?.spam || row.moderation?.blockedAuthor) return false;
+    const search = forwardQuery.trim().toLocaleLowerCase();
+    return (
+      !search ||
+      [row.contact_name, row.asset.name, row.asset.phone || "", row.recipient]
+        .filter(Boolean)
+        .some((value) => String(value).toLocaleLowerCase().includes(search))
+    );
+  });
+  function forwardEmail(): void {
     const last = [...timeline]
       .reverse()
-      .find((item) => ["message", "outbound", "automatic"].includes(item.kind));
+      .find(
+        (item) =>
+          ["message", "outbound", "automatic"].includes(item.kind) &&
+          (item.body || "").trim(),
+      );
     if (!last) return;
-    const text = [
+    forwardText = [
       last.subject
         ? `${t("mautic.inbox.ui.email_subject")}: ${last.subject}`
         : "",
@@ -843,12 +873,24 @@
     ]
       .filter(Boolean)
       .join("\n\n");
-    try {
-      await navigator.clipboard.writeText(text);
-      showSuccess(t("mautic.inbox.ui.email_forward_copied"));
-    } catch (error) {
-      showError((error as Error).message);
+    forwardQuery = "";
+    forwardOpen = true;
+  }
+  async function forwardTo(target: Conversation): Promise<void> {
+    const text = forwardText;
+    forwardOpen = false;
+    await select(target.id);
+    if (selected?.id !== target.id) return;
+    const draft = composerBody.trim() ? `${composerBody}\n\n${text}` : text;
+    if (draft.length > 4000) {
+      showError(t("mautic.inbox.ui.forward_too_long"));
+      return;
     }
+    composerBody = draft;
+    draftInput();
+    showSuccess(
+      t("mautic.inbox.ui.forward_done").replace("%name%", target.contact_name),
+    );
   }
   function showError(message: string, source = ""): void {
     feedback = message;
@@ -1740,24 +1782,26 @@
                       )}</button
                     >
                   </div>{/if}
-                {#if !selected.assignee}<button
-                    id="inbox-take"
-                    class="btn btn-primary btn-sm"
-                    on:click={() => void takeDeuCerto()}
-                    >{t("mautic.inbox.ui.assign_to_me_96f796")}</button
-                  >{/if}<!-- Uma acao principal por vez: sem dono, o passo seguinte e assumir; resolver
-                     continua ali, mas sem disputar o mesmo peso. -->{#if selected.lifecycle !== "resolved"}<button
-                    id="inbox-resolve"
-                    class="btn btn-sm"
-                    class:btn-primary={Boolean(selected.assignee)}
-                    class:btn-default={!selected.assignee}
-                    on:click={() => void mutate("resolve")}
-                    >{t("mautic.inbox.ui.resolve_3628ac")}</button
-                  >{:else}<button
+                <!-- Os botoes seguem o que o servidor aceita (ConversationActions): resolver
+                     so quem e o responsavel; assumir quando nao ha dono, ou quando o dono e
+                     outra pessoa e quem pede e administrador (can_take); reabrir qualquer um.
+                     Mostrar resolver para quem nao e o dono desenhava um botao que respondia
+                     409 — e, com o compositor de e-mail fechado, nem o erro aparecia. -->
+                {#if selected.lifecycle === "resolved"}<button
                     id="inbox-reopen"
                     class="btn btn-default btn-sm"
                     on:click={() => void mutate("reopen")}
                     >{t("mautic.inbox.ui.reopen_3a7b78")}</button
+                  >{:else if selected.assignee?.id === config.currentUser}<button
+                    id="inbox-resolve"
+                    class="btn btn-primary btn-sm"
+                    on:click={() => void mutate("resolve")}
+                    >{t("mautic.inbox.ui.resolve_3628ac")}</button
+                  >{:else if selected.can_take !== false}<button
+                    id="inbox-take"
+                    class="btn btn-primary btn-sm"
+                    on:click={() => void takeDeuCerto()}
+                    >{t("mautic.inbox.ui.assign_to_me_96f796")}</button
                   >{/if}
               </div>
               <button
@@ -1902,7 +1946,12 @@
               onMode={changeMode}
               onInput={draftInput}
               onSend={(subject) => void send(subject)}
-              onForward={() => void forwardEmail()}
+              canForward={timeline.some(
+                (item) =>
+                  ["message", "outbound", "automatic"].includes(item.kind) &&
+                  Boolean((item.body || "").trim()),
+              )}
+              onForward={() => forwardEmail()}
               {loadForms}
             />{:else}<Composer
               {selected}
@@ -1987,6 +2036,56 @@
 
 <!-- Fora do bloco de abas: a folha cobre a tela, e prende-la ao ramo da conversa a faria
      desmontar no instante em que a acao mudasse a conversa selecionada. -->
+{#if forwardOpen}<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
+  <div
+    class="inbox-sheet-backdrop"
+    on:click={() => (forwardOpen = false)}
+  ></div>
+  <div
+    class="inbox-sheet inbox-forward-sheet"
+    role="dialog"
+    aria-modal="true"
+    aria-label={t("mautic.inbox.ui.forward_title")}
+  >
+    <header class="inbox-sheet-head">
+      <strong>{t("mautic.inbox.ui.forward_title")}</strong>
+      <button class="btn btn-link btn-sm" on:click={() => (forwardOpen = false)}
+        >{t("mautic.inbox.contact.cancel")}</button
+      >
+    </header>
+    <p class="inbox-secondary">{t("mautic.inbox.ui.forward_hint")}</p>
+    <!-- svelte-ignore a11y-autofocus -->
+    <input
+      class="form-control inbox-forward-search"
+      type="search"
+      bind:value={forwardQuery}
+      placeholder={t("mautic.inbox.ui.search_conversations_519789")}
+      aria-label={t("mautic.inbox.ui.search_conversations_519789")}
+      autofocus
+    />
+    <div class="inbox-forward-list">
+      {#each forwardTargets as row (row.id)}<button
+          type="button"
+          class="inbox-forward-target"
+          on:click={() => void forwardTo(row)}
+          ><Avatar
+            name={row.contact_name}
+            id={row.id}
+            channel={row.channel}
+            photo={row.avatar_url || null}
+            photoLabel={t("mautic.inbox.ui.photo_of_5bece3")}
+          /><span
+            ><strong>{row.contact_name}</strong><small
+              >{row.asset.handle
+                ? `@${row.asset.handle}`
+                : row.asset.phone || row.asset.address || row.asset.name}</small
+            ></span
+          ></button
+        >{:else}<div class="inbox-state">
+          {t("mautic.inbox.ui.forward_none")}
+        </div>{/each}
+    </div>
+  </div>{/if}
 {#if null !== emailAberto && selected}<EmailActions
     email={emailAberto}
     stateId={selected.id}
