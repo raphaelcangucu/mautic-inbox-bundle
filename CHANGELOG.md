@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.16.2
+
+Os ajustes que a revisao de UX da 1.16.1 deixou de fora.
+
+- A lista avisa quando a ultima mensagem e nossa e nao saiu: "! Nao enviada" no tom de erro,
+  antes da previa. O servidor manda `last_message_failed` em cada linha; sem isso a conversa
+  parecia respondida e ninguem voltava nela. Uma mensagem nova do contato apaga o aviso.
+- No celular, as acoes da conversa (assumir, resolver, reabrir, moderacao) ficam num menu de
+  tres pontos, como no app. O cabecalho volta a caber numa linha so; antes, com "Assumir", os
+  botoes desciam para uma segunda linha e comiam 70px do chat. Escolher uma acao fecha o menu,
+  e trocar de conversa tambem. No desktop nada muda.
+- O painel do contato mostra o que o atendente reconhece (@usuario, telefone, e-mail ou o
+  canal) em vez de "Network ID: ig-user-..."; o id continua no title, para o suporte.
+- No painel, Status e Responsavel vem antes de "Nao enviar e-mail": e o que se decide em toda
+  conversa.
+- Verificado tambem que a fila "Minhas" conta e lista certo uma conversa atribuida: o "Mine 0"
+  da revisao anterior era dos dados de teste, nao do produto.
+
 ## 1.16.1
 
 Revisao de experiencia de uso, navegando a caixa com os casos que doem no dia a dia (mensagem

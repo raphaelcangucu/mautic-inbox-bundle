@@ -34,6 +34,8 @@
     plus: "M12 5v14 M5 12h14",
     close: "M6 6l12 12 M18 6L6 18",
     clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z M12 7v5l3 2",
+    // Tres pontos na vertical: o menu de acoes da conversa no celular, como no app.
+    more: "M12 5h.01 M12 12h.01 M12 19h.01",
   };
 </script>
 

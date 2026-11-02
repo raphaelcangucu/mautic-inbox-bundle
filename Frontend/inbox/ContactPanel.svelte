@@ -74,11 +74,21 @@
       photoLabel={t("mautic.inbox.ui.photo_of_5bece3")}
     />
     <h3 id="inbox-profile-name">{selected.contact_name}</h3>
-    <span id="inbox-profile-handle"
+    <!-- O que o atendente reconhece: @usuario, telefone ou e-mail. O id interno da Meta
+         ("ig-user-...") nao diz nada a quem atende; ele continua no title, para o suporte. -->
+    <span
+      id="inbox-profile-handle"
+      title={t("mautic.inbox.ui.network_id_f461ad") + selected.recipient}
       >{selected.contact_handle ||
-        (selected.channel === "whatsapp"
+        (selected.channel === "whatsapp" || selected.channel === "email"
           ? selected.recipient
-          : t("mautic.inbox.ui.network_id_f461ad") + selected.recipient)}</span
+          : (
+              {
+                instagram: "Instagram",
+                facebook: "Messenger",
+                webchat: "Web Chat",
+              } as Record<string, string>
+            )[selected.channel] || selected.channel)}</span
     >
     <!-- O perfil publico do participante ja vem no payload da conversa (`profile_url`, montado
          por SocialProfileLinks), e so o app oferecia o atalho. A validacao se repete aqui porque
@@ -104,34 +114,8 @@
         )}{/if}
     </div>
   </div>
-  <!-- O nao perturbe: o mesmo DoNotContact de e-mail que o aplicativo ja grava. Uma instalacao
-       anterior a este campo nao manda nada e a secao some, em vez de mentir um estado. O rotulo
-       diz "e-mail" de proposito: o DNC do Mautic e por canal, e WhatsApp, Instagram e Facebook
-       continuam valendo. -->
-  {#if selected.do_not_contact}<section class="inbox-detail-section">
-      <h4>{t("mautic.inbox.ui.dnc_title")}</h4>
-      <label class="inbox-dnc">
-        <input
-          id="inbox-dnc"
-          type="checkbox"
-          checked={selected.do_not_contact.blocked}
-          disabled={!selected.do_not_contact.editable || dncBusy}
-          on:change={(event) => onDnc(event.currentTarget.checked)}
-        />
-        <span>
-          <b>{t("mautic.inbox.ui.dnc_label")}</b>
-          <small
-            >{t(
-              selected.do_not_contact.editable
-                ? "mautic.inbox.ui.dnc_hint"
-                : selected.do_not_contact.reason === "bounced"
-                  ? "mautic.inbox.ui.dnc_bounced"
-                  : "mautic.inbox.ui.dnc_unsubscribed",
-            )}</small
-          >
-        </span>
-      </label>
-    </section>{/if}
+  <!-- Status e responsavel vem antes: e o que se decide em toda conversa. O e-mail e uma
+       preferencia do contato, consultada de vez em quando. -->
   <section class="inbox-detail-section">
     <h4>{t("mautic.inbox.ui.conversation_b70a33")}</h4>
     <div class="inbox-detail-row">
@@ -251,6 +235,34 @@
           : ""}
     </div>
   </section>
+  <!-- O nao perturbe: o mesmo DoNotContact de e-mail que o aplicativo ja grava. Uma instalacao
+       anterior a este campo nao manda nada e a secao some, em vez de mentir um estado. O rotulo
+       diz "e-mail" de proposito: o DNC do Mautic e por canal, e WhatsApp, Instagram e Facebook
+       continuam valendo. -->
+  {#if selected.do_not_contact}<section class="inbox-detail-section">
+      <h4>{t("mautic.inbox.ui.dnc_title")}</h4>
+      <label class="inbox-dnc">
+        <input
+          id="inbox-dnc"
+          type="checkbox"
+          checked={selected.do_not_contact.blocked}
+          disabled={!selected.do_not_contact.editable || dncBusy}
+          on:change={(event) => onDnc(event.currentTarget.checked)}
+        />
+        <span>
+          <b>{t("mautic.inbox.ui.dnc_label")}</b>
+          <small
+            >{t(
+              selected.do_not_contact.editable
+                ? "mautic.inbox.ui.dnc_hint"
+                : selected.do_not_contact.reason === "bounced"
+                  ? "mautic.inbox.ui.dnc_bounced"
+                  : "mautic.inbox.ui.dnc_unsubscribed",
+            )}</small
+          >
+        </span>
+      </label>
+    </section>{/if}
   <section class="inbox-detail-section">
     <h4>{t("mautic.inbox.ui.next_action_dd848a")}</h4>
     <div class="inbox-snooze-controls">

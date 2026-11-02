@@ -58,7 +58,14 @@
     search = "",
     filtersOpen = false,
     // No celular a busca mora atras de um icone, como no app; no desktop o campo segue aberto.
-    searchOpen = false;
+    searchOpen = false,
+    headerMenuOpen = false;
+  /** Trocar de conversa fecha o menu de acoes: ele pertencia a anterior. */
+  let menuOwner: number | undefined;
+  $: if (selected?.id !== menuOwner) {
+    menuOwner = selected?.id;
+    headerMenuOpen = false;
+  }
   let rows: Conversation[] = [];
   let counts: Record<string, number> = { mine: 0, unassigned: 0, all: 0 };
   let next: string | null = null;
@@ -1671,78 +1678,99 @@
                   ></span
                 >
               </div>{/if}
-            <div class="inbox-actions">
-              <!-- Moderacao: ja existia no servidor e no aplicativo, e nunca no web — a tela
+            <div class="inbox-actions" class:menu-open={headerMenuOpen}>
+              <!-- No celular as acoes da conversa cabem num menu, como no app; no desktop o
+                   embrulho some (display: contents) e os botoes ficam na linha. Escolher uma
+                   fecha o menu. -->
+              <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+              <div
+                class="inbox-actions-main"
+                id="inbox-actions-main"
+                on:click={() => (headerMenuOpen = false)}
+              >
+                <!-- Moderacao: ja existia no servidor e no aplicativo, e nunca no web — a tela
                    mostrava o comentario e nao tinha como fazer nada a respeito dele.
                    Ocultar so aparece no Instagram porque e o unico canal em que a Meta aceita
                    a operacao; nos outros o botao existiria so para responder erro. O bloqueio do
                    autor nao tem volta pela API, entao ele vira estado, nao um botao que mente. -->
-              {#if selected.moderation_available}<div
-                  class="inbox-moderation"
-                  role="group"
-                  aria-label={t("mautic.inbox.ui.moderation")}
-                >
-                  <button
-                    type="button"
-                    class="btn btn-default btn-sm"
-                    class:marked={selected.moderation?.spam}
-                    disabled={moderacaoBusy}
-                    on:click={() =>
-                      void moderate(
-                        selected?.moderation?.spam ? "restore" : "spam",
-                      )}
-                    >{t(
-                      selected.moderation?.spam
-                        ? "mautic.inbox.ui.moderation_restore"
-                        : "mautic.inbox.ui.moderation_spam",
-                    )}</button
-                  >{#if selected.channel === "instagram"}<button
+                {#if selected.moderation_available}<div
+                    class="inbox-moderation"
+                    role="group"
+                    aria-label={t("mautic.inbox.ui.moderation")}
+                  >
+                    <button
                       type="button"
                       class="btn btn-default btn-sm"
-                      class:marked={selected.moderation?.hidden}
+                      class:marked={selected.moderation?.spam}
                       disabled={moderacaoBusy}
                       on:click={() =>
                         void moderate(
-                          selected?.moderation?.hidden ? "show" : "hide",
+                          selected?.moderation?.spam ? "restore" : "spam",
                         )}
                       >{t(
-                        selected.moderation?.hidden
-                          ? "mautic.inbox.ui.moderation_show"
-                          : "mautic.inbox.ui.moderation_hide",
+                        selected.moderation?.spam
+                          ? "mautic.inbox.ui.moderation_restore"
+                          : "mautic.inbox.ui.moderation_spam",
                       )}</button
-                    >{/if}<button
-                    type="button"
-                    class="btn btn-default btn-sm"
-                    class:marked={selected.moderation?.blockedAuthor}
-                    disabled={moderacaoBusy ||
-                      selected.moderation?.blockedAuthor}
-                    on:click={() => void moderate("block")}
-                    >{t(
-                      selected.moderation?.blockedAuthor
-                        ? "mautic.inbox.ui.moderation_blocked"
-                        : "mautic.inbox.ui.moderation_block",
-                    )}</button
-                  >
-                </div>{/if}
-              {#if !selected.assignee}<button
-                  id="inbox-take"
-                  class="btn btn-primary btn-sm"
-                  on:click={() => void takeDeuCerto()}
-                  >{t("mautic.inbox.ui.assign_to_me_96f796")}</button
-                >{/if}<!-- Uma acao principal por vez: sem dono, o passo seguinte e assumir; resolver
+                    >{#if selected.channel === "instagram"}<button
+                        type="button"
+                        class="btn btn-default btn-sm"
+                        class:marked={selected.moderation?.hidden}
+                        disabled={moderacaoBusy}
+                        on:click={() =>
+                          void moderate(
+                            selected?.moderation?.hidden ? "show" : "hide",
+                          )}
+                        >{t(
+                          selected.moderation?.hidden
+                            ? "mautic.inbox.ui.moderation_show"
+                            : "mautic.inbox.ui.moderation_hide",
+                        )}</button
+                      >{/if}<button
+                      type="button"
+                      class="btn btn-default btn-sm"
+                      class:marked={selected.moderation?.blockedAuthor}
+                      disabled={moderacaoBusy ||
+                        selected.moderation?.blockedAuthor}
+                      on:click={() => void moderate("block")}
+                      >{t(
+                        selected.moderation?.blockedAuthor
+                          ? "mautic.inbox.ui.moderation_blocked"
+                          : "mautic.inbox.ui.moderation_block",
+                      )}</button
+                    >
+                  </div>{/if}
+                {#if !selected.assignee}<button
+                    id="inbox-take"
+                    class="btn btn-primary btn-sm"
+                    on:click={() => void takeDeuCerto()}
+                    >{t("mautic.inbox.ui.assign_to_me_96f796")}</button
+                  >{/if}<!-- Uma acao principal por vez: sem dono, o passo seguinte e assumir; resolver
                      continua ali, mas sem disputar o mesmo peso. -->{#if selected.lifecycle !== "resolved"}<button
-                  id="inbox-resolve"
-                  class="btn btn-sm"
-                  class:btn-primary={Boolean(selected.assignee)}
-                  class:btn-default={!selected.assignee}
-                  on:click={() => void mutate("resolve")}
-                  >{t("mautic.inbox.ui.resolve_3628ac")}</button
-                >{:else}<button
-                  id="inbox-reopen"
-                  class="btn btn-default btn-sm"
-                  on:click={() => void mutate("reopen")}
-                  >{t("mautic.inbox.ui.reopen_3a7b78")}</button
-                >{/if}<button
+                    id="inbox-resolve"
+                    class="btn btn-sm"
+                    class:btn-primary={Boolean(selected.assignee)}
+                    class:btn-default={!selected.assignee}
+                    on:click={() => void mutate("resolve")}
+                    >{t("mautic.inbox.ui.resolve_3628ac")}</button
+                  >{:else}<button
+                    id="inbox-reopen"
+                    class="btn btn-default btn-sm"
+                    on:click={() => void mutate("reopen")}
+                    >{t("mautic.inbox.ui.reopen_3a7b78")}</button
+                  >{/if}
+              </div>
+              <button
+                type="button"
+                class="inbox-icon-button inbox-actions-more"
+                aria-haspopup="true"
+                aria-expanded={headerMenuOpen}
+                aria-controls="inbox-actions-main"
+                aria-label={t("mautic.inbox.ui.conversation_actions")}
+                title={t("mautic.inbox.ui.conversation_actions")}
+                on:click={() => (headerMenuOpen = !headerMenuOpen)}
+                ><Icon name="more" /></button
+              ><button
                 id="inbox-contact-toggle"
                 class="inbox-icon-button"
                 aria-expanded={panelOpen}

@@ -324,7 +324,9 @@
                      dele, a conversa ficava mais alta que as outras sem dizer mais nada. -->
                 <div class="inbox-list-preview">
                   <span class="inbox-list-preview-text"
-                    >{item.preview ||
+                    >{#if item.last_message_failed}<b class="inbox-list-failed"
+                        >{t("mautic.inbox.ui.not_sent_3f0e80")}</b
+                      >{/if}{item.preview ||
                       item.last_message_preview ||
                       item.asset.name}</span
                   >{#if item.unread}<span class="inbox-pill unread"

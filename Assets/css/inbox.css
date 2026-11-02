@@ -741,6 +741,8 @@
 
 /* Pecas que so existem no celular. */
 .inbox-section-tabs,.inbox-search-toggle{display:none}
+.inbox-actions-main{display:contents}
+.inbox-actions-more{display:none}
 
 /* --- Comum: cabecalho com selo azul e o ponto de "ao vivo" ------------------------------------ */
 .inbox-product-icon{border:0;background:var(--app-blue);color:#fff}
@@ -879,6 +881,9 @@
 .inbox-message small.inbox-status-failed .inbox-message-clock{display:none}
 .inbox-message.failed .inbox-retry{margin-top:6px;border-color:#F5C2BC;color:var(--app-danger)}
 
+/* A ultima mensagem e nossa e nao saiu: a lista avisa antes do texto, no tom de erro. */
+.inbox-list-failed{display:inline-flex;align-items:center;gap:4px;margin-right:6px;color:var(--app-danger);font-weight:700}
+.inbox-list-failed::before{content:"!";display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;background:var(--app-danger);color:#fff;font-size:11px;line-height:1}
 /* Nao lidas na linha da previa. */
 .inbox-list-preview{display:flex;align-items:center;gap:8px;white-space:normal;overflow:visible}
 .inbox-list-preview-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -968,6 +973,22 @@
 .inbox-app.has-selection .inbox-tabs{display:none}
 
 .inbox-thread-header{gap:10px;min-height:64px;padding:8px 12px 8px 6px}
+/* Acoes da conversa num menu, como no app: o cabecalho fica numa linha so. */
+.inbox-thread-header{position:relative}
+.inbox-thread-header .inbox-actions{gap:2px}
+/* Com as acoes no menu, elas cabem na primeira linha mesmo quando ha "Assumir". A regra de
+   container antiga as mandava para uma segunda linha; o :has(#inbox-take) repete a dela. */
+.inbox-thread-header .inbox-actions,.inbox-thread-header:has(#inbox-take) .inbox-actions{grid-column:4;grid-row:1;width:auto;justify-content:flex-end}
+.inbox-thread-header .inbox-thread-identity,.inbox-thread-header:has(#inbox-take) .inbox-thread-identity{grid-column:3;grid-row:1}
+.inbox-actions-more{display:inline-flex;width:40px;height:40px;border-radius:20px;color:var(--app-ink)}
+.inbox-actions-more svg{width:24px;height:24px;stroke-width:3}
+.inbox-actions-more[aria-expanded=true]{background:var(--app-tint);color:var(--app-on-tint)}
+.inbox-actions-main{display:none}
+.inbox-actions.menu-open .inbox-actions-main{display:flex;flex-direction:column;align-items:stretch;gap:6px;position:absolute;right:10px;top:calc(100% + 6px);z-index:40;min-width:220px;padding:8px;border:1px solid var(--app-divider);border-radius:17px;background:#fff;box-shadow:0 12px 32px #141a2624}
+.inbox-actions.menu-open .inbox-actions-main>.btn,.inbox-actions.menu-open .inbox-actions-main .btn{width:100%;height:44px;justify-content:flex-start;border:0;border-radius:12px;background:none;color:var(--app-ink);font-size:16px;font-weight:600;text-align:left}
+.inbox-actions.menu-open .inbox-actions-main .btn:hover,.inbox-actions.menu-open .inbox-actions-main .btn:focus-visible{background:var(--app-tint-softer)}
+.inbox-actions.menu-open .inbox-actions-main .btn-primary{background:var(--app-tint)!important;color:var(--app-on-tint)}
+.inbox-actions.menu-open .inbox-actions-main>div{display:flex;flex-direction:column;gap:2px;padding-top:6px;margin-top:2px;border-top:1px solid var(--app-divider-soft)}
 #inbox-back{width:40px;height:40px;border-radius:20px;color:var(--app-ink)}
 #inbox-back svg{width:24px;height:24px;stroke-width:2}
 .inbox-thread-header .inbox-avatar{width:44px;height:44px;font-size:15px}

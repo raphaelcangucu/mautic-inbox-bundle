@@ -78,6 +78,8 @@ export interface Conversation {
   last_message_at: string;
   last_message_preview?: string;
   preview?: string;
+  /** A ultima mensagem e nossa e nao saiu. */
+  last_message_failed?: boolean;
   unread?: number;
   needs_response?: boolean;
   conversation_kind?: string;
