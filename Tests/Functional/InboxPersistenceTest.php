@@ -95,6 +95,22 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         self::markTestIncomplete('The live-update token does not follow a message delivery status; widening it changes what the open screens refresh on.');
     }
 
+    public function testListRowSaysWhenTheLastMessageIsOursAndDidNotGoOut(): void
+    {
+        $conversation = $this->conversation();
+        $this->inbound($conversation, 'failed-row-question');
+        $failed = (new MetaMessage())->setAsset($conversation->getAsset())->setConversation($conversation)->setChannel('instagram')->setDirection('outbound')->setMessageType('direct_message')
+            ->setRecipient($conversation->getRecipient())->setExternalId('failed-row-answer')->setPayload(['text' => 'Resposta que nao saiu'])->setStatus('failed')->setDateAdded(new DateTimeImmutable('+1 minute'));
+        $this->em->persist($failed); $this->em->flush();
+        $row = fn (): array => current(array_filter(static::getContainer()->get(InboxQuery::class)->conversations($this->em->getRepository(User::class)->findOneBy(['username' => 'admin']), ['queue' => 'all'])['items'], fn (array $item): bool => $conversation->getId() === $item['conversation_id']));
+        self::assertTrue($row()['last_message_failed']);
+        // Uma mensagem nova do contato e agora a ultima: a lista volta a mostrar so a previa.
+        $newer = (new MetaMessage())->setAsset($conversation->getAsset())->setConversation($conversation)->setChannel('instagram')->setDirection('inbound')->setMessageType('direct_message')
+            ->setRecipient($conversation->getRecipient())->setExternalId('failed-row-followup')->setPayload(['text' => 'Oi?'])->setStatus('received')->setDateAdded(new DateTimeImmutable('+2 minutes'));
+        $this->em->persist($newer); $this->em->flush();
+        self::assertFalse($row()['last_message_failed']);
+    }
+
     public function testHumanWhatsAppReplyPreservesInboundWaIdAndPersistsAcceptedResult(): void
     {
         $conversation = $this->conversation();

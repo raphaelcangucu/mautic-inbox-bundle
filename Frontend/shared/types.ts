@@ -78,14 +78,19 @@ export interface Conversation {
   last_message_at: string;
   last_message_preview?: string;
   preview?: string;
+  /** A ultima mensagem e nossa e nao saiu. */
+  last_message_failed?: boolean;
   unread?: number;
   needs_response?: boolean;
   conversation_kind?: string;
   assignee?: Assignee | null;
+  /** Quando adiada: ate quando. */
+  snoozed_until?: string | null;
   contact?: Contact | null;
   origins?: Origin[];
   drafts?: Record<string, string>;
   can_reply?: boolean;
+  can_take?: boolean;
   can_take_and_reply?: boolean;
   reply_blocked_reason?: string | null;
   reply_hint?: string;

@@ -1,5 +1,57 @@
 # Changelog
 
+## 1.16.2
+
+Os ajustes que a revisao de UX da 1.16.1 deixou de fora.
+
+- Resolver e Encaminhar no e-mail voltam a fazer alguma coisa visivel. Tres defeitos somados:
+  o compositor de e-mail so desenhava a area de aviso quando aberto, entao com ele fechado nenhum
+  resultado ou erro aparecia; num 409 o erro era mostrado e logo apagado pela recarga da
+  conversa; e o cabecalho oferecia Resolver para quem nao e o responsavel, que o servidor recusa.
+  Agora o aviso aparece com o compositor fechado, o erro do 409 vem depois da recarga, e os
+  botoes seguem as regras do servidor: Resolver so para o responsavel, Assumir quando nao ha
+  dono ou quando quem pede pode tomar (`can_take`), Reabrir para qualquer um.
+- Encaminhar faz o que o app faz: escolhe outra conversa e coloca o texto no rascunho dela,
+  depois do que ja estava escrito, sem enviar nada sozinho. Antes so copiava para a area de
+  transferencia, com o aviso de "copiado" invisivel. O botao fica desabilitado enquanto nao ha
+  mensagem para encaminhar, em vez de nao fazer nada.
+- A lista avisa quando a ultima mensagem e nossa e nao saiu: "! Nao enviada" no tom de erro,
+  antes da previa. O servidor manda `last_message_failed` em cada linha; sem isso a conversa
+  parecia respondida e ninguem voltava nela. Uma mensagem nova do contato apaga o aviso.
+- No celular, as acoes da conversa (assumir, resolver, reabrir, moderacao) ficam num menu de
+  tres pontos, como no app. O cabecalho volta a caber numa linha so; antes, com "Assumir", os
+  botoes desciam para uma segunda linha e comiam 70px do chat. Escolher uma acao fecha o menu,
+  e trocar de conversa tambem. No desktop nada muda.
+- O painel do contato mostra o que o atendente reconhece (@usuario, telefone, e-mail ou o
+  canal) em vez de "Network ID: ig-user-..."; o id continua no title, para o suporte.
+- No painel, Status e Responsavel vem antes de "Nao enviar e-mail": e o que se decide em toda
+  conversa.
+- Verificado tambem que a fila "Minhas" conta e lista certo uma conversa atribuida: o "Mine 0"
+  da revisao anterior era dos dados de teste, nao do produto.
+
+## 1.16.1
+
+Revisao de experiencia de uso, navegando a caixa com os casos que doem no dia a dia (mensagem
+que nao saiu, conversa adiada, janela de 24h fechada, nome longo, e-mail sem foto).
+
+- Mensagem que nao saiu deixa de parecer enviada. O balao seguia azul cheio, com "Nao enviada"
+  em vermelho por cima — ilegivel, e a cor dizia "foi" enquanto o texto dizia "nao foi". Agora o
+  balao inteiro fica no tom de erro, o status aparece uma vez so (antes a hora saia duas vezes)
+  e o reenviar, quando existe, fica no mesmo tom.
+- Com a resposta bloqueada (janela de 24h fechada, conversa resolvida), o campo deixa de
+  convidar a digitar algo que nao vai poder ser enviado: fica apagado e diz "Resposta
+  indisponivel · use + para uma nota interna". Um rascunho que ja existia continua editavel.
+- O cabecalho da conversa diz "Com voce" em vez do proprio nome do atendente, e uma conversa
+  adiada mostra "Adiada ate 11:49" — antes isso so aparecia num selo no fim do painel lateral.
+- Uma acao principal por vez: sem dono, "Assumir" e o botao cheio e "Resolver" fica com
+  contorno; os dois cheios lado a lado nao diziam qual era o proximo passo.
+- O numero de nao lidas sobe para a linha da previa, como no app; numa linha so dele, a conversa
+  ficava mais alta que as outras sem dizer mais nada.
+- Contato com e-mail e sem foto mostra as iniciais na cor do canal em vez do boneco cinza do
+  Gravatar (mesma regra do app: `d=404`).
+- O link do painel diz "Ver contato no Mautic" em vez de repetir o nome que esta logo acima.
+- A faixa lateral cinza das conversas adiadas sai, como ja tinha saido a marrom.
+
 ## 1.16.0
 
 - O inbox no desktop passa a falar a lingua do app. A 1.15.0 levou o visual do app so para o

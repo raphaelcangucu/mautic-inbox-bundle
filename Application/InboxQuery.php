@@ -389,6 +389,9 @@ final class InboxQuery
             'profile_url' => \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialProfileLinks::url($c->getChannel(), $identity['contact']['profile']['link'] ?? $identity['from']['link'] ?? null) ?? ('instagram' === $c->getChannel() ? \MauticPlugin\MauticInboxBundle\Application\Mobile\SocialProfileLinks::url('instagram', $handle, true) : null),
             'avatar_url' => $this->participantAvatars?->url($c) ?? ($cachedPhoto ?: $profilePhoto ?: ($contact && ($contact->getEmail() || 'custom' === $contact->getPreferredProfileImage() || $contact->getSocialCache()) ? $this->avatars->getAvatar($contact) : null)),
             'preview' => $preview,
+            // A previa mostra o texto da ultima mensagem, e quando essa mensagem e nossa e nao saiu
+            // a lista precisa dizer: sem isso a conversa parece respondida e ninguem volta nela.
+            'last_message_failed' => $latest instanceof MetaMessage && 'outbound' === $latest->getDirection() && 'failed' === $latest->getStatus(),
             'id' => (int) $state->getId(), 'conversation_id' => (int) $c->getId(), 'version' => $state->getVersion(),
             // O tipo vai junto porque `channel` nao distingue os dois WhatsApp: o
             // homologado e a sessao por QR chegam ambos como "whatsapp", e quem olha a
