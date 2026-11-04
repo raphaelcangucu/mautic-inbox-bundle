@@ -772,10 +772,39 @@
 .inbox-queues .inbox-queue-filter{display:inline-flex;order:0;justify-content:center}
 .inbox-queue-filter svg{width:18px;height:18px}
 .inbox-queue-filter b{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:var(--app-blue);color:#fff;font-size:12px;font-weight:700;opacity:1}
-.inbox-filters{gap:10px;background:var(--app-canvas);border-bottom:1px solid var(--app-divider)}
-.inbox-filters label{font-size:13px;font-weight:600;color:var(--app-soft)}
-.inbox-filters .form-control{height:40px;margin-top:4px;padding:0 12px}
-.inbox-filters .inbox-check{color:var(--app-ink-strong)}
+
+/* --- Comum: a folha de filtros, como no layout aprovado (Filtros.png) -------------------------- */
+.inbox-sheet-backdrop{background:#0f1420;opacity:.46}
+.inbox-filter-sheet{gap:0;padding:0;outline:0;overflow:hidden;color:var(--app-ink)}
+.inbox-filter-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:20px 24px 8px}
+.inbox-filter-head strong{font-size:21px;line-height:28px;font-weight:700;letter-spacing:-.2px}
+.inbox-filter-head .inbox-filter-clear{min-height:40px;padding:0 4px;border:0;background:none;color:var(--app-blue);font-size:15px;font-weight:600}
+.inbox-filter-body{flex:1 1 auto;min-height:0;overflow:auto;padding:0 24px}
+.inbox-filter-body section{padding:10px 0}
+.inbox-filter-body h4{margin:0 0 10px;font-size:13px;line-height:18px;font-weight:600;color:var(--app-ink-strong)}
+.inbox-filter-segments{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--app-line);border-radius:20px;overflow:hidden}
+.inbox-filter-segments button{display:flex;align-items:center;justify-content:center;gap:6px;min-height:42px;padding:4px 8px;border:0;border-left:1px solid var(--app-line);background:#fff;color:var(--app-ink-strong);font-size:14px;line-height:18px;font-weight:600;text-align:center}
+.inbox-filter-segments button:first-child{border-left:0}
+.inbox-filter-segments button.active{background:var(--app-tint);color:var(--app-on-tint)}
+.inbox-filter-segments button.active::before,.inbox-filter-chips button.active::before{content:"";flex:none;width:15px;height:15px;background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2316306E' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E") center/contain no-repeat}
+.inbox-filter-chips{display:flex;flex-wrap:wrap;gap:8px}
+.inbox-filter-chips button{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:0 12px;border:1px solid var(--app-line);border-radius:10px;background:#fff;color:var(--app-ink-strong);font-size:14px;font-weight:600}
+.inbox-filter-chips button.active{border-color:var(--app-tint);background:var(--app-tint);color:var(--app-on-tint)}
+.inbox-filter-channels{display:flex;flex-direction:column}
+.inbox-filter-channel{display:flex;align-items:center;gap:14px;min-height:52px;margin:0;font-weight:600;cursor:pointer}
+.inbox-filter-channel-icon{flex:none;display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;background:#4A5568;color:#fff}
+.inbox-filter-channel-icon svg{width:18px;height:18px;stroke-width:2.1}
+.inbox-filter-channel-icon.whatsapp{background:#1E8E4E}
+.inbox-filter-channel-icon.instagram{background:#C1356F}
+.inbox-filter-channel-icon.facebook{background:#2F6FDB}
+.inbox-filter-channel-icon.email{background:#B4590F}
+.inbox-filter-channel-name{flex:1 1 auto;min-width:0;font-size:15px;color:var(--app-ink)}
+.inbox-filter-channel-count{font-size:14px;font-weight:400;color:var(--app-soft)}
+/* A regra do Mautic para input[type=checkbox] pesa mais que uma classe so. */
+.inbox-filter-channel input[type=checkbox]{flex:none;width:24px;height:24px;margin:0;border:2px solid var(--app-faint);border-radius:7px;-webkit-appearance:none;appearance:none;background:#fff center/18px no-repeat;cursor:pointer}
+.inbox-filter-channel input[type=checkbox]:checked{border-color:var(--app-blue);background-color:var(--app-blue);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7'/%3E%3C/svg%3E")}
+.inbox-filter-channel input[type=checkbox]:focus-visible{outline:2px solid var(--app-blue);outline-offset:2px}
+.inbox-app .inbox-filter-show{flex:none;display:block;width:calc(100% - 48px);height:52px;margin:10px 24px calc(20px + env(safe-area-inset-bottom,0px));border:0;border-radius:16px;font-size:16px;font-weight:700}
 
 /* --- Comum: linhas sem cartao, grupo como rotulo, ponto laranja no lugar da barra ------------- */
 .inbox-list-scroll{padding:0 0 12px;background:#fff}
@@ -959,8 +988,6 @@
 .inbox-queues .inbox-queue-filter{min-width:52px}
 .inbox-queue-filter svg{width:20px;height:20px}
 .inbox-search-wrap svg{width:20px;height:20px}
-.inbox-filters{padding:2px 16px 14px}
-.inbox-filters .form-control{height:44px}
 
 .inbox-list-row{grid-template-columns:minmax(0,1fr);column-gap:0}
 .inbox-list-column.selecting .inbox-list-row{grid-template-columns:auto minmax(0,1fr)}
@@ -1067,7 +1094,6 @@
 .inbox-queues b{font-size:13.5px}
 .inbox-queues button[data-queue].active::before{width:14px;height:14px}
 .inbox-queues .inbox-queue-filter{min-width:44px}
-.inbox-filters{padding:4px 16px 14px}
 .inbox-list-row{column-gap:0}
 .inbox-list-item,.inbox-list-item[data-group]{gap:12px;padding:12px 16px}
 .inbox-list-item:hover{background:var(--app-tint-softer)}
@@ -1129,3 +1155,9 @@
 .inbox-takeover{color:var(--app-ok)}
 }
 @media(min-width:761px) and (max-width:1199px){.inbox-workspace{grid-template-columns:330px minmax(0,1fr)}}
+/* Celular: folha presa embaixo, com a alca do layout aprovado. Desktop: a mesma folha, centrada. */
+@media(max-width:760px){
+.inbox-filter-sheet{max-height:92dvh;border-radius:28px 28px 0 0}
+.inbox-filter-sheet::before{content:"";flex:none;align-self:center;width:36px;height:4px;margin-top:10px;border-radius:2px;background:var(--app-line)}
+}
+@media(min-width:761px){.inbox-filter-sheet{width:440px;max-height:min(86dvh,720px);border-radius:24px}}

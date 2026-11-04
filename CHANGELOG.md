@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.17.0
+
+- Os filtros do web viram a folha do layout aprovado, a mesma do app: Fila em segmentos, Situacao
+  em chips, Canais com icone, contagem e caixa de marcar, e "Mostrar N conversas". No celular ela
+  sobe de baixo, com a alca; no desktop e a mesma folha, centrada. Sai o painel com dois selects
+  e uma caixa, que empurrava a lista para baixo.
+- Cada escolha vale na hora: a lista atras acompanha, e o numero do botao e o da lista real. O
+  botao so fecha. Limpar volta ao padrao, Esc e o fundo fecham, e o ultimo canal marcado nao
+  desmarca, porque uma lista sem canal nenhum nao responde pergunta alguma.
+- Para isso a listagem passou a aceitar varios canais (`channels=whatsapp,email`) e a devolver, na
+  primeira pagina, `total` (quantas o filtro acha) e `channel_counts` (quantas por canal, sem
+  contar o proprio filtro de canal, para dizer o que aparece ao marcar um canal desmarcado).
+  `channel`, um so, continua valendo para o app.
+
 ## 1.16.2
 
 Os ajustes que a revisao de UX da 1.16.1 deixou de fora.

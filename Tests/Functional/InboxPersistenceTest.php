@@ -95,6 +95,39 @@ final class InboxPersistenceTest extends MauticMysqlTestCase
         self::markTestIncomplete('The live-update token does not follow a message delivery status; widening it changes what the open screens refresh on.');
     }
 
+    public function testListFiltersSeveralChannelsAndCountsEachOne(): void
+    {
+        $instagram = $this->conversation();
+        $this->inbound($instagram, 'filter-instagram');
+        $whatsapp = (new MetaAsset())->setConnection($instagram->getAsset()->getConnection())->setName('Filter WhatsApp')->setExternalId('filter-whatsapp')->setType(AssetType::WhatsAppPhoneNumber)->setStatus('active');
+        $whatsapp->setIsPublished(true);
+        $second = (new MetaConversation())->setAsset($whatsapp)->setChannel('whatsapp')->setRecipient('5511900000000');
+        $state = (new ConversationState())->setConversation($second);
+        foreach ([$whatsapp, $second, $state] as $entity) { $this->em->persist($entity); }
+        $this->em->flush();
+        $query = static::getContainer()->get(InboxQuery::class);
+        $admin = $this->em->getRepository(User::class)->findOneBy(['username' => 'admin']);
+
+        $all = $query->conversations($admin, ['queue' => 'all']);
+        self::assertSame(2, $all['total']);
+        self::assertSame(1, $all['channel_counts']['instagram']);
+        self::assertSame(1, $all['channel_counts']['whatsapp']);
+        self::assertSame(0, $all['channel_counts']['email']);
+
+        // A contagem nao olha o proprio filtro de canal: ela diz quantas aparecem ao marcar o outro.
+        $one = $query->conversations($admin, ['queue' => 'all', 'channels' => 'whatsapp']);
+        self::assertSame(1, $one['total']);
+        self::assertCount(1, $one['items']);
+        self::assertSame('whatsapp', $one['items'][0]['channel']);
+        self::assertSame(1, $one['channel_counts']['instagram']);
+        self::assertSame(2, $query->conversations($admin, ['queue' => 'all', 'channels' => 'whatsapp,instagram'])['total']);
+
+        // O parametro antigo, que o app ainda manda, continua valendo.
+        self::assertSame(1, $query->conversations($admin, ['queue' => 'all', 'channel' => 'instagram'])['total']);
+        $this->expectException(InboxException::class);
+        $query->conversations($admin, ['queue' => 'all', 'channels' => 'whatsapp,telegram']);
+    }
+
     public function testListRowSaysWhenTheLastMessageIsOursAndDidNotGoOut(): void
     {
         $conversation = $this->conversation();

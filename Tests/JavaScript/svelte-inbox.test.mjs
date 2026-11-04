@@ -419,6 +419,27 @@ test("the compiled Svelte inbox mounts, loads, selects and releases its root", a
   );
   assert.equal(mutation[2].get("X-CSRF-Token"), "csrf-token");
 
+  // A folha de filtros busca no instante do clique, sem esperar um reativo recalcular: com o
+  // valor antigo, cada filtro de canal respondia sempre ao clique anterior.
+  root.querySelector(".inbox-queue-filter").click();
+  for (let volta = 0; volta < 60; volta += 1) {
+    if (root.querySelector('[data-channel="whatsapp"] input')) break;
+    await tick();
+  }
+  root.querySelector('[data-channel="whatsapp"] input').click();
+  const semWhatsApp = /channels=instagram%2Cfacebook%2Cwebchat%2Cemail/;
+  for (let volta = 0; volta < 60; volta += 1) {
+    if (requests.some(([url]) => semWhatsApp.test(url))) break;
+    await tick();
+  }
+  assert.ok(
+    requests.some(([url]) => semWhatsApp.test(url)),
+    "desmarcar um canal precisa buscar sem ele na mesma hora",
+  );
+  root.querySelector(".inbox-filter-clear").click();
+  root.querySelector("#inbox-filter-show").click();
+  await tick();
+
   root
     .querySelector(".inbox-settings-tab")
     .dispatchEvent(new window.Event("click", { bubbles: true }));

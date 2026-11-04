@@ -24,6 +24,8 @@ use MauticPlugin\MauticMetaBundle\MetaEvents;
 
 final class InboxQuery
 {
+    private const CHANNELS = ['whatsapp', 'instagram', 'facebook', 'webchat', 'email'];
+
     /** Os quatro tipos do historico, cada um com o desempate de ordem para quando o instante empata. */
     private const TIMELINE_TYPES = [
         MetaMessage::class => ['message', 4],
@@ -84,11 +86,6 @@ final class InboxQuery
         if (filter_var($filters['needs_response'] ?? false, FILTER_VALIDATE_BOOL)) {
             $qb->andWhere('s.needsResponse = :needs')->setParameter('needs', true);
         }
-        $channel = trim((string) ($filters['channel'] ?? ''));
-        if ('' !== $channel) {
-            if (!in_array($channel, ['whatsapp', 'instagram', 'facebook', 'webchat', 'email'], true)) { throw new InboxException('mautic.inbox.ui.invalid_channel_df77fb'); }
-            $qb->andWhere('c.channel = :channel')->setParameter('channel', $channel);
-        }
         $kind = (string) ($filters['kind'] ?? 'private');
         if ('comments' === $kind) {
             $qb->andWhere('c.recipient LIKE :commentRecipient')->setParameter('commentRecipient', 'comment:%');
@@ -102,6 +99,23 @@ final class InboxQuery
             $qb->andWhere("LOWER(c.recipient) LIKE :search OR LOWER(a.name) LIKE :search OR LOWER(CONCAT(COALESCE(contact.firstname, ''), CONCAT(' ', COALESCE(contact.lastname, '')))) LIKE :search")
                 ->setParameter('search', '%'.mb_strtolower($search).'%');
         }
+        // A contagem por canal olha tudo o que ja foi filtrado, menos o proprio canal: ela responde
+        // "quantas aparecem se eu marcar este", inclusive para um canal hoje desmarcado.
+        $channelCounts = null;
+        if ('' === (string) ($filters['cursor'] ?? '')) {
+            $channelCounts = array_fill_keys(self::CHANNELS, 0);
+            foreach ((clone $qb)->select('c.channel AS channel, COUNT(s.id) AS total')->groupBy('c.channel')->getQuery()->getArrayResult() as $row) {
+                $channelCounts[(string) $row['channel']] = (int) $row['total'];
+            }
+        }
+        // `channels` traz varios separados por virgula (a folha de filtros do web); `channel`, um
+        // so, continua valendo para quem ja o manda (o app).
+        $channels = array_values(array_filter(array_map('trim', explode(',', (string) ($filters['channels'] ?? ($filters['channel'] ?? ''))))));
+        if ([] !== $channels) {
+            if ([] !== array_diff($channels, self::CHANNELS)) { throw new InboxException('mautic.inbox.ui.invalid_channel_df77fb'); }
+            $qb->andWhere('c.channel IN (:channels)')->setParameter('channels', $channels);
+        }
+        $total = null === $channelCounts ? null : (int) (clone $qb)->select('COUNT(s.id)')->getQuery()->getSingleScalarResult();
         $cursor = $this->decodeCursor((string) ($filters['cursor'] ?? ''));
         if (null !== $cursor) {
             $qb->andWhere('(c.lastMessageAt < :cursorDate OR (c.lastMessageAt = :cursorDate AND s.id < :cursorId))')
@@ -119,6 +133,11 @@ final class InboxQuery
             'next_cursor' => $hasMore && $last instanceof ConversationState ? $this->encodeCursor($last->getConversation()->getLastMessageAt(), (int) $last->getId()) : null,
             'counts' => $this->queueCounts($user, $kind),
         ];
+        // So na primeira pagina: as seguintes nao mudam o total, e a conta nao precisa repetir.
+        if (null !== $channelCounts) {
+            $summary['total'] = $total;
+            $summary['channel_counts'] = $channelCounts;
+        }
 
         return $summary;
     }
