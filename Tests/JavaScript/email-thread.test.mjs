@@ -460,6 +460,5 @@ test("the list draws the envelope, the channel label, the subject and offers the
     target.querySelector(".inbox-list-subject").textContent.trim(),
     "Re: Por que você ainda não depositou?",
   );
-  assert.ok(target.querySelector('#inbox-channel option[value="email"]'));
   ui.unmount(app);
 });

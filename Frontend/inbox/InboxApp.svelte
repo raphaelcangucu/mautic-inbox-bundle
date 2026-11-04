@@ -5,6 +5,7 @@
   import { umPorVez } from "../shared/umPorVez";
   import Icon from "../shared/Icon.svelte";
   import Avatar from "./Avatar.svelte";
+  import FilterSheet from "./FilterSheet.svelte";
   import ConversationList from "./ConversationList.svelte";
   import Timeline from "./Timeline.svelte";
   import EmailActions from "./EmailActions.svelte";
@@ -53,7 +54,6 @@
   let view = "inbox",
     queue = "all",
     lifecycle = "active",
-    channel = "",
     needsResponse = false,
     search = "",
     filtersOpen = false,
@@ -66,6 +66,27 @@
     menuOwner = selected?.id;
     headerMenuOpen = false;
   }
+  const CHANNELS = ["whatsapp", "instagram", "facebook", "webchat", "email"];
+  let channels = [...CHANNELS];
+  /** Comentario publico so existe em Instagram e Facebook. */
+  $: filterChannels =
+    view === "comments" ? ["instagram", "facebook"] : CHANNELS;
+  /**
+   * O parametro `channels` da lista: vazio quando nada foi desmarcado nesta aba, ou quando
+   * nenhum marcado existe nela (so E-mail, e a pessoa foi para Comentarios). E uma funcao, e nao
+   * um `$:`, porque a busca sai no mesmo instante do clique, antes de o reativo recalcular — a
+   * lista respondia ao filtro anterior e ficava sempre um passo atras.
+   */
+  function channelParam(): string {
+    const offered = view === "comments" ? ["instagram", "facebook"] : CHANNELS;
+    const marked = channels.filter((item) => offered.includes(item));
+    return marked.length > 0 && marked.length < offered.length
+      ? marked.join(",")
+      : "";
+  }
+  $: channelsFiltered = Boolean(channels && view && channelParam());
+  let filteredTotal = 0;
+  let channelCounts: Record<string, number> = {};
   let rows: Conversation[] = [];
   let counts: Record<string, number> = { mine: 0, unassigned: 0, all: 0 };
   let next: string | null = null;
@@ -177,7 +198,7 @@
       queue,
       kind: kind(),
       lifecycle,
-      channel,
+      channels: channelParam(),
       search: search.trim(),
       needs_response: needsResponse ? "1" : "0",
       limit: "25",
@@ -196,11 +217,16 @@
         items: Conversation[];
         next_cursor: string | null;
         counts: Record<string, number>;
+        total?: number;
+        channel_counts?: Record<string, number>;
       }>(`${url("list")}?${query(append ? next : null)}`);
       if (revision !== listRevision) return;
       rows = append ? [...rows, ...data.items] : data.items;
       next = data.next_cursor;
       counts = data.counts;
+      // So a primeira pagina traz os dois; "carregar mais" nao muda nenhum.
+      if (undefined !== data.total) filteredTotal = data.total;
+      if (data.channel_counts) channelCounts = data.channel_counts;
     } catch (error) {
       if (revision === listRevision) listError = (error as Error).message;
     } finally {
@@ -1600,9 +1626,9 @@
   >
     <ConversationList
       bind:queue
-      bind:lifecycle
-      bind:channel
-      bind:needsResponse
+      {lifecycle}
+      {channelsFiltered}
+      {needsResponse}
       bind:search
       {searchOpen}
       {rows}
@@ -1631,7 +1657,6 @@
         void loadList(false);
       }}
       onFilters={() => (filtersOpen = !filtersOpen)}
-      onFilter={() => void loadList(false)}
       onSearch={() => {
         clearTimeout(searchTimer);
         searchTimer = window.setTimeout(() => void loadList(false), 350);
@@ -2036,6 +2061,31 @@
 
 <!-- Fora do bloco de abas: a folha cobre a tela, e prende-la ao ramo da conversa a faria
      desmontar no instante em que a acao mudasse a conversa selecionada. -->
+{#if filtersOpen}<FilterSheet
+    {queue}
+    bind:lifecycle
+    bind:needsResponse
+    bind:channels
+    available={filterChannels}
+    {channelCounts}
+    total={filteredTotal}
+    {t}
+    onQueue={(value) => {
+      queue = value;
+      next = null;
+      void loadList(false);
+    }}
+    onChange={() => void loadList(false)}
+    onClear={() => {
+      queue = "all";
+      lifecycle = "active";
+      needsResponse = false;
+      channels = [...CHANNELS];
+      next = null;
+      void loadList(false);
+    }}
+    onClose={() => (filtersOpen = false)}
+  />{/if}
 {#if forwardOpen}<!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
   <div
     class="inbox-sheet-backdrop"

@@ -16,7 +16,8 @@
   export let next: string | null = null;
   export let filtersOpen = false;
   export let lifecycle = "active";
-  export let channel = "";
+  /** Algum canal desmarcado na folha de filtros. */
+  export let channelsFiltered = false;
   export let needsResponse = false;
   export let search = "";
   export let searchOpen = false;
@@ -26,7 +27,6 @@
   export let onSelect: (id: number) => void;
   export let onQueue: (q: string) => void;
   export let onFilters: () => void;
-  export let onFilter: () => void;
   export let onSearch: () => void;
   export let onMore: () => void;
   export let currentUser = 0;
@@ -48,7 +48,7 @@
   /** Quantos filtros fogem do padrao, para o chip de filtro mostrar o numero como no app. */
   $: activeFilters =
     Number(lifecycle !== "active") +
-    Number(channel !== "") +
+    Number(channelsFiltered) +
     Number(needsResponse);
 
   /**
@@ -211,48 +211,6 @@
         ><span>{t(item[1])}</span><b>{counts[item[0]] || 0}</b></button
       >{/each}
   </nav>
-  {#if filtersOpen}<div id="inbox-filter-panel" class="inbox-filters">
-      <label
-        >{t("mautic.inbox.ui.status_2d3abf")}<select
-          id="inbox-lifecycle"
-          bind:value={lifecycle}
-          class="not-chosen form-control"
-          on:change={onFilter}
-          ><option value="active"
-            >{t("mautic.inbox.ui.in_progress_5ca373")}</option
-          ><option value="open">{t("mautic.inbox.ui.open_bcd313")}</option
-          ><option value="snoozed">{t("mautic.inbox.ui.snoozed_ae3ae2")}</option
-          ><option value="resolved"
-            >{t("mautic.inbox.ui.resolved_6d70e1")}</option
-          ><option value="all">{t("mautic.inbox.ui.all_8a3c34")}</option
-          ></select
-        ></label
-      >
-      <label
-        >{t("mautic.inbox.ui.channel_61f21e")}<select
-          id="inbox-channel"
-          bind:value={channel}
-          class="not-chosen form-control"
-          on:change={onFilter}
-          ><option value="">{t("mautic.inbox.ui.all_channels_44265e")}</option
-          ><option value="whatsapp">WhatsApp</option><option value="instagram"
-            >Instagram</option
-          ><option value="facebook">Facebook / Messenger</option><option
-            value="webchat">Web Chat</option
-          ><option value="email">{t("mautic.inbox.ui.email_channel")}</option
-          ></select
-        ></label
-      >
-      <label class="inbox-check"
-        ><input
-          id="inbox-needs-response"
-          bind:checked={needsResponse}
-          type="checkbox"
-          on:change={onFilter}
-        />
-        {t("mautic.inbox.ui.awaiting_reply_f6a6ba")}</label
-      >
-    </div>{/if}
   <div class="inbox-list-scroll">
     {#if loading}<div id="inbox-list-status" class="inbox-state">
         {t("mautic.inbox.ui.loading_conversations_cb1a50")}
